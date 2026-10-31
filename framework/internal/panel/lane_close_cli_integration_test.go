@@ -421,8 +421,10 @@ func TestLaneCloseThroughTheSocket(t *testing.T) {
 	}
 	sock := shortSocket(t)
 	var out outLog
+	polls := newPollCounter()
 	p := startPanelWith(t, root, home, tsock, func(o *Options) {
 		o.CLISocket, o.Out, o.Runner, o.TrustConfig, o.Ticks = sock, &out, run, true, stallTicks()
+		o.OnPoll = polls.hook
 		o.LaneProgram = []string{"/bin/sh", "-c", `while [ ! -e ` + shq(exitDir) + `/"$(basename "$PWD")" ]; do sleep 0.2; done`, "lane"}
 	})
 	project := projectIDOf(t, p)
@@ -553,6 +555,12 @@ func TestLaneCloseThroughTheSocket(t *testing.T) {
 			}
 			return n == 2
 		})
+		// Auto-close checks a lane only when it saw the pull request open at one of its
+		// polls and gone at the next (autoclose.go), so the round waits until it has seen
+		// them open: of two more autoclose polls, the second began after the view above
+		// listed them. Without this a reopened pair could come and go between two of its
+		// polls, and the round would wait for a check that never comes.
+		polls.more(t, "autoclose", 2)
 		nums := map[string]int{"bgauto": 21 + 2*round, "unread": 22 + 2*round}
 		w.set(func(w *stallWorld) {
 			for id, n := range nums {
