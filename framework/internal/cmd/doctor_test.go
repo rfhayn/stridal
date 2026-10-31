@@ -102,26 +102,32 @@ func subjectLine(out, subject string, levels ...string) string {
 	return ""
 }
 
-// needLine is the output's first line holding every part, and fails the test when there is none.
-// When the first part is a level label, the first two parts are the line's level and subject
-// COLUMNS (subjectLine), never substrings: the template line prints the checkout's path, so
-// "warn", "drift" would otherwise find it from a checkout under .../warn-drift/ (#359).
-func needLine(t *testing.T, out string, parts ...string) string {
-	t.Helper()
-	l := lineWith(out, parts...)
+// findLine is the output's first line holding every part, or "". When the first part is a level
+// label, the first two parts are the line's level and subject COLUMNS (subjectLine), never
+// substrings: the template and tool lines print the checkout's path and the test's, so "warn",
+// "drift" would otherwise find them from a checkout under .../warn-drift/ (#359). needLine and
+// needNoLine both look a line up here, so a present line and an absent one are matched alike.
+func findLine(out string, parts ...string) string {
 	level := false
 	for _, label := range levelLabels {
 		level = level || (len(parts) >= 2 && parts[0] == label)
 	}
-	if level {
-		l = ""
-		for _, c := range strings.Split(out, "\n") {
-			if subjectLine(c, parts[1], parts[0]) != "" && lineWith(c, parts[2:]...) != "" {
-				l = c
-				break
-			}
+	if !level {
+		return lineWith(out, parts...)
+	}
+	for _, l := range strings.Split(out, "\n") {
+		if subjectLine(l, parts[1], parts[0]) != "" && lineWith(l, parts[2:]...) != "" {
+			return l
 		}
 	}
+	return ""
+}
+
+// needLine is the output's first line holding every part (findLine), and fails the test when there
+// is none.
+func needLine(t *testing.T, out string, parts ...string) string {
+	t.Helper()
+	l := findLine(out, parts...)
 	if l == "" {
 		t.Fatalf("no line holds %q:\n%s", parts, out)
 	}
@@ -494,7 +500,7 @@ func TestDoctorRunsFromRootWithTemplateDir(t *testing.T) {
 		t.Fatalf("stridal doctor --template-dir: %v\n%s%s", err, out.String(), errOut.String())
 	}
 	needLine(t, out.String(), "ok", "sentineltool", "/opt/sentinel")
-	needLine(t, out.String(), "template", dir)
+	needLine(t, out.String(), "ok", "template", dir)
 }
 
 // [DOCTOR-3-S2] In the terminal a user runs doctor in, a failure ends on the count line: through
@@ -1042,12 +1048,12 @@ func TestDoctorTemplateWarningIsSaidOnce(t *testing.T) {
 	template.OverrideDir = other
 	out, _ := doctor(t, gitPath(t, allTools...))
 	const warning = "using it because --template-dir names it"
+	// Printed once, and that once on the template line, so the drift line does not repeat it. The
+	// count needs no line lookup: the warning is a phrase no path holds, while "drift" is a word the
+	// template line's path may hold (#359).
 	needLine(t, out, "warn", "template", warning)
 	if n := strings.Count(out, warning); n != 1 {
 		t.Errorf("the template's warning is printed %d times, want once (on the template line):\n%s", n, out)
-	}
-	if l := lineWith(out, "drift", warning); l != "" {
-		t.Errorf("the drift line repeats the template's warning: %s", l)
 	}
 }
 

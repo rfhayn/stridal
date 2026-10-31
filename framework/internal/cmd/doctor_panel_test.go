@@ -73,10 +73,12 @@ func needNoProblem(t *testing.T, out string) {
 	}
 }
 
-// needNoLine fails when a line holds every part.
+// needNoLine fails when a line holds every part, looked up as needLine looks it up (findLine): a
+// level and a subject are columns. A bare word is never looked up on its own: a test asks for the
+// subject's line (subjectLine), since the output prints paths that may hold the word (#359).
 func needNoLine(t *testing.T, out string, parts ...string) {
 	t.Helper()
-	if l := lineWith(out, parts...); l != "" {
+	if l := findLine(out, parts...); l != "" {
 		t.Errorf("unexpected line %q holding %q:\n%s", l, parts, out)
 	}
 }
@@ -268,10 +270,12 @@ func TestDoctorHasNoPanelLinesOffMacOS(t *testing.T) {
 	doctorGOOS = "linux"
 	writePlist(t, home)
 	out, _ := doctorIn(t, projectWithConfig(t, "Fine", ""))
-	for _, subject := range []string{"registry", "running", "build", "serves"} {
-		needNoLine(t, out, subject)
+	// The login agent is said only on the panel and running lines.
+	for _, subject := range []string{"panel", "registry", "running", "build", "serves", "config", "trust"} {
+		if l := subjectLine(out, subject); l != "" {
+			t.Errorf("a panel line off macOS: %q\n%s", l, out)
+		}
 	}
-	needNoLine(t, out, "login agent")
 }
 
 // [DOCTOR-1-S5] A login agent whose panel is not running warns, naming the restart and the log;
@@ -401,12 +405,14 @@ func TestDoctorRegistryThatDoesNotLoadFails(t *testing.T) {
 	}
 	needLine(t, out, "FAIL", "registry", "projects.json")
 	needLine(t, out, "note", "serves", "did not run")
-	needNoLine(t, out, "not installed")
+	needNoLine(t, out, "note", "panel", "not installed")
 	// Nothing is built from the empty stand-in: no "0 projects" as ok, and no advice to start a
 	// panel that cannot start from this registry.
 	needNoLine(t, out, "0 projects")
-	needNoLine(t, out, "ok panel")
-	needNoLine(t, out, "running")
+	needNoLine(t, out, "ok", "panel")
+	if l := subjectLine(out, "running"); l != "" {
+		t.Errorf("a running line from a registry that does not load: %q\n%s", l, out)
+	}
 	needLine(t, out, "note", "panel", "not known")
 }
 
@@ -474,8 +480,11 @@ func TestDoctorProjectThePanelDoesNotServeIsANote(t *testing.T) {
 	}
 	needLine(t, out, "note", "serves", "does not serve")
 	needExact(t, out, "fix: stridal panel add --project "+install.ShellWord(mine))
-	needNoLine(t, out, "config")
-	needNoLine(t, out, "trust")
+	for _, subject := range []string{"config", "trust"} {
+		if l := subjectLine(out, subject); l != "" {
+			t.Errorf("a %s line for a project the panel does not serve: %q\n%s", subject, l, out)
+		}
+	}
 
 	write(t, mine, ".stridal/panel.json", panelJSON("Mine", `,"tmux_socket":"stridal"`))
 	out, err = doctorIn(t, mine)
@@ -564,7 +573,9 @@ func TestDoctorServedConfigThatDoesNotLoadFails(t *testing.T) {
 		t.Errorf("doctor must exit 1:\n%s", out)
 	}
 	needLine(t, out, "FAIL", "config", loadErr.Error())
-	needNoLine(t, out, "trust")
+	if l := subjectLine(out, "trust"); l != "" {
+		t.Errorf("a trust line for a config that does not load: %q\n%s", l, out)
+	}
 }
 
 // A served project whose config file is gone is a note, with panel init when the registry reads
@@ -616,7 +627,7 @@ func TestDoctorFromALaneWorktreeReadsTheMainCheckout(t *testing.T) {
 	needLine(t, out, "ok", "serves")
 	needLine(t, out, "ok", "trust")
 	needLine(t, out, "ok", "drift", "matches the template")
-	needNoLine(t, out, "panel add")
+	needNoLine(t, out, "fix: stridal panel add")
 
 	// The drift line reads the worktree: a file gone from it alone is missing there.
 	if err := os.Remove(filepath.Join(lane, ".claude", "hooks", "focus-staleness.sh")); err != nil {
