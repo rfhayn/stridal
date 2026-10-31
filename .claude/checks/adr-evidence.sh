@@ -1,24 +1,32 @@
 #!/bin/sh
 # An ADR rests on evidence before it is accepted (PRAC-0023's practices 1 and 2). An ADR numbered
 # ADR_EVIDENCE_FROM or later, written since RECORDS_BASELINE, is held: its Status line must read
-# Proposed, Accepted or Superseded (an unreadable or other Status fails: the check fails closed),
-# and an Accepted one must have a `## Rests on` section whose every item (a top-level `- ` bullet
-# and its continuation lines) has one of two shapes, and nothing else passes:
-#   - CITED: it carries **passed** and a result: a spike id from a table in an ADR_EVIDENCE_SPIKES
-#     file (a row whose first cell is the id, such as `| S1a |`), a PR (`#371`), or a gate receipt
-#     named by its commit (`receipt 75c86686`, 7 to 40 hex digits);
-#   - AT RISK: it reads `— accepted at risk by the owner (YYYY-MM-DD)` (PRAC-0023's exception: the
-#     owner accepts it with the assumption named). Any negation ("not accepted at risk") fails.
-# An item marked **untested** or **pending** (both mean: not yet evidence) fails unless it is AT
-# RISK. Proposed and Superseded ADRs are not judged: drafting one with untested items is the point
-# of the section. Practice records are not judged either. ADR_EVIDENCE_FROM empty: nothing is held.
+# exactly one of Proposed, Accepted or Superseded (an unreadable Status, another word, or two of
+# them, as in "Proposed → Accepted", fails: the check fails closed), and an Accepted one must have
+# a `## Rests on` section whose every item has one of two FORMS (the template's), and nothing else
+# passes. A form is matched in its position, never as words found anywhere in the item:
+#   - CITED: `<assumption>: <cite>, **passed**` and then `.`, ` (` or the item's end, where the
+#     cites follow the colon, joined by ` and ` or ` to `, and each is a spike id from a table in
+#     an ADR_EVIDENCE_SPIKES file (a row whose first cell is the id, such as `| S1a |`), a PR
+#     (`#371`) or a gate receipt named by its commit (`receipt 75c86686`, 7 to 40 hex digits);
+#   - AT RISK: it reads `— accepted at risk by the owner (YYYY-MM-DD)`, a real date (PRAC-0023's
+#     exception: the owner accepts it with the assumption named). A negation ("not accepted at
+#     risk") fails.
+# An item marked **untested** or **pending** (bold: both mean not yet evidence) fails unless it is
+# AT RISK. An item is a column-0 `- ` line and its continuation lines (indented, or directly under
+# it); any other list line (`* `, `+ `, `1. `, an indented `- `) or a column-0 paragraph after a
+# blank line, once the items have begun, is text the check cannot read, and fails. Prose before
+# the first item is not an item. Proposed and Superseded ADRs are not judged: drafting one with
+# untested items is the point of the section. Practice records are not judged either.
+# ADR_EVIDENCE_FROM empty: nothing is held.
 #
 # ADR_EVIDENCE_KNOWN lists Accepted ADRs found with items that cite nothing, as NNNN:COUNT, so
 # the check can land on a history that predates it: each is printed on every run as KNOWN (waived,
 # not passed, with OWNER_QUEUE as its addressee: the entry's owner-queue item closes it), an ADR
 # whose count rises fails, and one whose count falls fails until the entry is lowered. Only "cites
 # nothing" is waived this way; a missing section, an untested or pending item not at risk, a
-# negated acceptance and an unreadable Status always fail. Falsified on fixtures below.
+# negated acceptance, an unreadable line and an unreadable Status always fail. Falsified on
+# fixtures below.
 . "$(dirname "$0")/lib.sh"
 . "$ROOT/.claude/lib/records.sh"
 
@@ -27,7 +35,7 @@ if [ -z "${ADR_EVIDENCE_SELFTEST:-}" ]; then
   mke() {  # mke NAME: a fixture project with one spike table, held from ADR 0010
     F="$(scratch)/ev-$1"; A="$F/docs/adr"; mkdir -p "$F/.claude/checks" "$A" "$F/docs/plans"
     cp -R "$ROOT/.claude/lib" "$F/.claude/"; cp "$ROOT/.claude/checks/lib.sh" "$ROOT/.claude/checks/adr-evidence.sh" "$F/.claude/checks/"
-    printf '# Spikes\n\n| Id | Probe | Result |\n|---|---|---|\n| S1a | a hook | blocked |\n| S2 | a server | works |\n' > "$F/docs/plans/spikes.md"
+    printf '# Spikes\n\n| Id | Probe | Result |\n|---|---|---|\n| S1a | a hook | blocked |\n| S1e | a hang | blocked |\n| S2 | a server | works |\n' > "$F/docs/plans/spikes.md"
     printf 'ADR_EVIDENCE_FROM="0010"\nADR_EVIDENCE_SPIKES="docs/plans/spikes.md"\n' > "$F/.claude/project.conf"
     # An old Accepted ADR below the floor, with no section: history, never judged.
     printf '# ADR 0003: Old\n\n- **Status**: Accepted\n- **Date**: 2026-01-01\n\n## Decision\nx\n' > "$A/0003-old.md"
@@ -73,9 +81,78 @@ if [ -z "${ADR_EVIDENCE_SELFTEST:-}" ]; then
   ebad "'S1a would show it, not run yet'" "$uncited"
   mke bare-receipt; adr 0010 Accepted '- The gate ran: its receipt, **passed**.'
   ebad "a receipt not named by its commit" "$uncited"
+  # Round 2's probes: **passed** and a citation each present, but not in the template's form.
+  mke negpassed; adr 0010 Accepted '- X: has not **passed** yet; see #400.'
+  ebad "'has not **passed** yet; see #400'" "$uncited"
+  mke negpassed2; adr 0010 Accepted '- X: S1a, never **passed**.'
+  ebad "'S1a, never **passed**'" "$uncited"
+  mke failed; adr 0010 Accepted '- X: **passed**? No, it failed in #400.'
+  ebad "'**passed**? No, it failed in #400'" "$uncited"
+  mke passed-question; adr 0010 Accepted '- X: S1a, **passed**? No, it failed.'
+  ebad "'S1a, **passed**? No, it failed' (only '.', ' (' or the end follows **passed**)" "$uncited"
+  mke url; adr 0010 Accepted '- X: **passed** (https://example.com/doc#3).'
+  ebad "'**passed** (https://example.com/doc#3)'" "$uncited"
+  mke codespan; adr 0010 Accepted '- X: **passed**, see `#1` in the notes.'
+  ebad "'**passed**, see \`#1\` in the notes'" "$uncited"
+  mke itemref; adr 0010 Accepted '- X: same as item #2, **passed** there.'
+  ebad "'same as item #2, **passed** there'" "$uncited"
+  mke itemref-end; adr 0010 Accepted '- X: same as item #2, **passed**.'
+  ebad "'same as item #2, **passed**.' (the cites follow the colon)" "$uncited"
+  mke receiptword; adr 0010 Accepted '- X: **passed**, no receipt for defaced runs.'
+  ebad "'**passed**, no receipt for defaced runs'" "$uncited"
+  mke deadbeef; adr 0010 Accepted '- X: **passed**, the receipt deadbeef is a placeholder.'
+  ebad "'**passed**, the receipt deadbeef is a placeholder'" "$uncited"
+  mke s1a-like; adr 0010 Accepted '- X: S1a-like, **passed**.'
+  ebad "'S1a-like, **passed**' (an id inside a word)" "$uncited"
+  mke range-unknown; adr 0010 Accepted '- X: S1a to S9z, **passed**.'
+  ebad "a range whose end no spike table holds" "$uncited"
+  # Round 2's probes: a line the item parser cannot read fails, never joins or drops silently.
+  mke starbullet; adr 0010 Accepted '- X: S1a, **passed**.
+* Y: nothing at all.'
+  ebad "a '* ' item after a cited one" "Rests on line 11 is a list line but not a column-0 \`- \` item"
+  mke numbered; adr 0010 Accepted '- X: S1a, **passed**.
+2. Y: nothing at all.'
+  ebad "a numbered item after a cited one" "Rests on line 11 is a list line but not a column-0 \`- \` item"
+  mke nested; adr 0010 Accepted '- X: S1a, **passed**.
+  - Y: nothing at all.'
+  ebad "an indented '- ' item under a cited one" "Rests on line 11 is a list line but not a column-0 \`- \` item"
+  mke indented-only; adr 0010 Accepted '  - X: nothing.'
+  ebad "an indented '- ' item and no column-0 one" "Rests on line 10 is a list line but not a column-0 \`- \` item"
+  mke proseafter; adr 0010 Accepted '- X: S1a, **passed**.
+
+Also assumed: Y, which nothing has shown.'
+  ebad "a column-0 paragraph after the items" "Rests on line 12 is text after a blank line that belongs to no item"
+  # Round 2's probes: the at-risk date is a date; only the bold markers mean untested or pending.
+  mke baddate; adr 0010 Accepted '- X: **untested** — accepted at risk by the owner (2026-99-99).'
+  ebad "an acceptance at risk dated 2026-99-99" "Rests on item 1 is untested"
+  mke notadate; adr 0010 Accepted '- X: **untested** — accepted at risk by the owner (0000-00-00).'
+  ebad "an acceptance at risk dated 0000-00-00" "Rests on item 1 is untested"
+  mke passed-untested; adr 0010 Accepted '- X: S1a, **passed**; the hang case is **untested**.'
+  ebad "a cited item that marks a case **untested**" "Rests on item 1 is untested"
+  mke words; adr 0010 Accepted '- A pending tool call is cancelled on timeout: S1a, **passed**.
+- Untested hooks fail open: S2, **passed**.'
+  eok "a cited item that says 'pending' or 'untested' without the bold marker"
+  # Round 2's probe: a Status naming two states is read by neither.
+  mke st-arrow; raw '- **Status**: Proposed → Accepted (the owner, 2026-10-31)'
+  ebad "a Status 'Proposed → Accepted'" "names more than one of Proposed, Accepted and Superseded"
+  # Shapes the parser reads: wrapped lines (a trailing blank too), and CRLF line ends.
+  mke wrapped; adr 0010 Accepted '- X: S1a,
+  **passed**.
+- Y: **untested** —
+  accepted at risk by the owner (2026-10-31).
+'"$(printf -- '- Z: **untested** — accepted at risk by the \n  owner (2026-10-31).')"
+  eok "items wrapped across lines, one with a trailing blank"
+  mke crlf; adr 0010 Accepted '- X: S1a, **passed**.
+- Y: **pending**.'
+  awk '{ printf "%s\r\n", $0 }' "$A/0010-a-decision.md" > "$A/x" && mv "$A/x" "$A/0010-a-decision.md"
+  ebad "a pending item in a CRLF file" "Rests on item 2 is pending"
+  adr 0010 Accepted '- X: S1a, **passed**.'
+  awk '{ printf "%s\r\n", $0 }' "$A/0010-a-decision.md" > "$A/x" && mv "$A/x" "$A/0010-a-decision.md"
+  eok "a cited item in a CRLF file"
   mke cited; adr 0010 Accepted 'These are the assumptions (PRAC-0023).
 - A hook blocks: S1a to S1e, **passed**.
 - A server starts: S2, **passed**.
+- A hang ends: S1a and S1e, **passed** (both runs).
 - The port measured it: #371, **passed**.
 - The gate ran: receipt 75c86686, **passed**.'
   eok "an Accepted ADR whose every assumption is **passed** on a spike, a PR or a receipt"
@@ -145,26 +222,34 @@ for s in ${ADR_EVIDENCE_SPIKES:-}; do
   else fail "ADR_EVIDENCE_SPIKES names $s, which does not exist"; fi
 done
 
-# items FILE: the Rests on section's items, one per line (a `- ` bullet joined with its
-# continuation lines); prose before the first bullet is not an item.
+# items FILE: the Rests on section, one line each: `i ITEM` (a column-0 `- ` line joined with its
+# continuation lines, trailing blanks and CRs dropped) or `b WHY` (a line the check cannot read,
+# so the ADR fails: closed, never a shorter list). Prose before the first item is not an item.
 items() {
-  awk '/^## Rests on[[:space:]]*$/ { p = 1; next }
-       p && /^## / { p = 0 }
+  awk 'function flush() { if (it != "") print "i " it; it = "" }
+       { sub(/[[:space:]]+$/, "") }
+       /^## Rests on$/ { p = 1; next }
+       p && /^## / { flush(); p = 0 }
        !p { next }
-       /^- / { if (it != "") print it; it = substr($0, 3); next }
-       /^[[:space:]]*$/ { next }
+       /^- / { flush(); it = substr($0, 3); seen = 1; gap = 0; next }
+       /^[[:space:]]*([-*+]|[0-9]+[.)])([[:space:]]|$)/ {
+         print "b line " NR " is a list line but not a column-0 `- ` item (write each assumption as a `- ` item): " $0; gap = 0; next }
+       /^$/ { gap = 1; next }
+       !seen { next }
+       gap && /^[^[:space:]]/ {
+         flush(); print "b line " NR " is text after a blank line that belongs to no item (continue an item on indented lines): " $0; gap = 0; next }
        it != "" { sub(/^[[:space:]]+/, ""); it = it " " $0 }
-       END { if (it != "") print it }' "$1"
+       END { flush() }' "$1"
 }
 # has ITEM ERE: 0 when ITEM matches the extended regular expression.
 has() { printf '%s' "$1" | grep -qE -- "$2"; }
-# cited ITEM: 0 only for the CITED shape: **passed** and a spike id, a PR or a receipt's commit.
-cited() {
-  has "$1" '\*\*passed\*\*' || return 1
-  for i in $ids; do printf '%s' "$1" | grep -qw -- "$i" && return 0; done
-  has "$1" '#[0-9]+' || has "$1" '(^|[^[:alnum:]])receipt (for |of )?[0-9a-f]{7,40}([^[:alnum:]]|$)'
-}
-at_risk='— accepted at risk by the owner \([0-9]{4}-[0-9]{2}-[0-9]{2}\)'
+# The CITED form, in its position: after a colon, cites joined by `and` or `to`, then
+# `, **passed**` and a full stop, ` (` or the item's end. A cite is a spike id from the tables
+# (letters, digits, letters: safe in an ERE as written), a PR or a receipt's commit.
+cite='#[0-9]+|receipt [0-9a-f]{7,40}'
+for i in $ids; do cite="$cite|$i"; done
+cited_form=":[[:space:]]+($cite)([[:space:]]+(and|to)[[:space:]]+($cite))*,[[:space:]]*\*\*passed\*\*(\.|[[:space:]]+\(|$)"
+at_risk='— accepted at risk by the owner \(20[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])\)'
 negated="(not|never|n't|no longer)[[:space:]]+(yet[[:space:]]+)?accepted at risk"
 
 held=0; known_seen=""
@@ -178,6 +263,9 @@ for f in $(ls "$dir" 2>/dev/null | grep -E '^[0-9]{4}-.*\.md$'); do
     fail "$f has no readable Status line ('- **Status**: Proposed | Accepted | Superseded …'): a held ADR's Status is read, never skipped"; continue
   fi
   status=$(printf '%s' "$line" | sed -E 's/^(- )?(\*\*)?[Ss][Tt][Aa][Tt][Uu][Ss](\*\*)?:(\*\*)?[[:space:]]*//; s/^[*_[:space:]]+//')
+  if [ "$(printf '%s' "$status" | grep -oiwE 'proposed|accepted|superseded' | tr 'A-Z' 'a-z' | sort -u | wc -l)" -gt 1 ]; then
+    fail "$f has Status '$status', which names more than one of Proposed, Accepted and Superseded: a held ADR's Status is exactly one"; continue
+  fi
   case "$(printf '%s' "$status" | sed -E 's/^([A-Za-z]*).*/\1/' | tr 'A-Z' 'a-z')" in
     accepted) ;;
     proposed|superseded) continue ;;
@@ -188,34 +276,39 @@ for f in $(ls "$dir" 2>/dev/null | grep -E '^[0-9]{4}-.*\.md$'); do
     fail "$f is Accepted but has no '## Rests on' section: list each assumption with the result it rests on (PRAC-0023)"; continue
   fi
   list=$(items "$dir/$f")
-  [ -n "$list" ] || { fail "$f is Accepted but its '## Rests on' lists no assumption ('- ' items)"; continue; }
   k=0; uncited=0; bad=0
-  while IFS= read -r it; do
+  while IFS= read -r ln; do
+    case $ln in
+      "b "*) fail "$f, Rests on ${ln#b }"; bad=1; continue ;;
+      "i "*) it=${ln#i } ;;
+      *) continue ;;
+    esac
     k=$((k + 1))
     risk=0; has "$it" "$at_risk" && risk=1
-    word=$(printf '%s' "$it" | grep -oiwE 'untested|pending' | head -1 | tr 'A-Z' 'a-z')
+    word=$(printf '%s' "$it" | grep -oiE '\*\*(untested|pending)\*\*' | head -1 | tr -d '*' | tr 'A-Z' 'a-z')
     if printf '%s' "$it" | grep -qiE -- "$negated"; then
       fail "$f, Rests on item $k negates the owner's acceptance at risk: only the owner accepts it, as '— accepted at risk by the owner (YYYY-MM-DD)'"; bad=1
     elif [ -n "$word" ] && [ "$risk" -eq 0 ]; then
       fail "$f, Rests on item $k is $word (not yet evidence) and not accepted at risk by the owner as '— accepted at risk by the owner (YYYY-MM-DD)'"; bad=1
-    elif [ "$risk" -eq 0 ] && ! cited "$it"; then
+    elif [ "$risk" -eq 0 ] && ! has "$it" "$cited_form"; then
       uncited=$((uncited + 1)); eval "u_$k=1"
     fi
   done <<EOF
 $list
 EOF
+  [ "$k" -gt 0 ] || { fail "$f is Accepted but its '## Rests on' lists no assumption ('- ' items)"; bad=1; }
   want=$(printf '%s\n' ${ADR_EVIDENCE_KNOWN:-} | sed -n "s/^$n:\([0-9][0-9]*\)$/\1/p" | head -1)
   if [ -n "$want" ]; then
     known_seen="$known_seen $n"
     if [ "$uncited" -gt "$want" ]; then
-      fail "$f has $uncited item(s) that cite no result; ADR_EVIDENCE_KNOWN acknowledges $want: cite a spike, a PR or a receipt with **passed**, or have the owner accept it at risk"
+      fail "$f has $uncited item(s) that cite no result; ADR_EVIDENCE_KNOWN acknowledges $want: write '<assumption>: <spike id, #N or receipt <commit>>, **passed**.', or have the owner accept it at risk"
     elif [ "$uncited" -lt "$want" ]; then
       fail "ADR_EVIDENCE_KNOWN acknowledges $want uncited item(s) in ADR-$n, which has $uncited: lower the entry (or remove it at 0)"
     else
       echo "KNOWN ADR-$n: $uncited Rests on item(s) cite no result: WAIVED by ADR_EVIDENCE_KNOWN, not passed; its addressee is $queue (the owner cites each or accepts it at risk, then the entry goes)"
     fi
   elif [ "$uncited" -gt 0 ]; then
-    j=0; while [ "$j" -lt "$k" ]; do j=$((j + 1)); eval "[ -n \"\${u_$j:-}\" ]" && fail "$f, Rests on item $j cites no result: write **passed** with a spike id, a PR (#N) or a receipt (receipt <commit>), or have the owner write '— accepted at risk by the owner (YYYY-MM-DD)'"; done
+    j=0; while [ "$j" -lt "$k" ]; do j=$((j + 1)); eval "[ -n \"\${u_$j:-}\" ]" && fail "$f, Rests on item $j cites no result in the template's form: write '<assumption>: <spike id, #N or receipt <commit>>, **passed**.', or have the owner write '— accepted at risk by the owner (YYYY-MM-DD)'"; done
   elif [ "$bad" -eq 0 ]; then
     ok "$f rests on cited results ($k item(s))"
   fi
