@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -82,20 +83,20 @@ func lineWith(out string, parts ...string) string {
 	return ""
 }
 
-// subjectLine is the output's first line whose subject column is subject, or "". A test that
-// asserts a line is absent asks for it, not lineWith(out, "drift"): the output prints the
-// checkout's path and the test's, and a path may hold the word (#359: a worktree named
-// ...-owned-files matched lineWith(out, "own")).
-func subjectLine(out, subject string) string {
+// subjectLine is the output's first line whose subject column is subject, at one of levels (any
+// level when none is given), or "". A test that asserts a line is absent asks for it, not
+// lineWith(out, "drift"): the output prints the checkout's path and the test's, and a path may
+// hold the word (#359: a worktree named ...-owned-files matched lineWith(out, "own")).
+func subjectLine(out, subject string, levels ...string) string {
+	if len(levels) == 0 {
+		for _, label := range levelLabels {
+			levels = append(levels, label)
+		}
+	}
 	for _, l := range strings.Split(out, "\n") {
 		f := strings.Fields(l)
-		if len(f) < 2 || f[1] != subject {
-			continue
-		}
-		for _, label := range levelLabels {
-			if f[0] == label {
-				return l
-			}
+		if len(f) >= 2 && f[1] == subject && slices.Contains(levels, f[0]) {
+			return l
 		}
 	}
 	return ""
@@ -149,7 +150,7 @@ func TestDoctorMissingRequiredToolFails(t *testing.T) {
 	if !errors.Is(err, errDoctorFailed) {
 		t.Errorf("doctor returned %v, want errDoctorFailed (exit 1)", err)
 	}
-	if lineWith(out, "FAIL", "git") != "" {
+	if subjectLine(out, "git", "FAIL") != "" {
 		t.Errorf("a present tool failed:\n%s", out)
 	}
 }
@@ -187,7 +188,7 @@ func TestDoctorUnreadableToolRowsIsANote(t *testing.T) {
 	if !strings.Contains(l, "could not be read") {
 		t.Errorf("the note does not say the tools could not be read: %s", l)
 	}
-	if lineWith(out, "ok", "jq") != "" || lineWith(out, "git", "/usr/bin/git") != "" {
+	if subjectLine(out, "jq", "ok") != "" || lineWith(subjectLine(out, "git"), "/usr/bin/git") != "" {
 		t.Errorf("tool lines were printed from a report that is not rows:\n%s", out)
 	}
 }
@@ -571,7 +572,7 @@ func TestDoctorOutsideARepositoryChecksOnlyTheMachine(t *testing.T) {
 	needLine(t, out, "ok", "jq") // a machine line
 	needLine(t, out, "note", "repository", "the project checks did not run")
 	for _, subject := range []string{"model", "drift"} {
-		if l := lineWith(out, subject); l != "" {
+		if l := subjectLine(out, subject); l != "" {
 			t.Errorf("a project line ran outside a repository: %s", l)
 		}
 	}
@@ -718,7 +719,7 @@ func TestDoctorDriftWarnsWithTheUpdateThatFixesIt(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out)
 	}
 	needLine(t, out, "ok", "drift", "matches the template")
-	if l := lineWith(out, "warn", "drift"); l != "" {
+	if l := subjectLine(out, "drift", "warn"); l != "" {
 		t.Errorf("the drift warning survived the printed update: %s", l)
 	}
 }
