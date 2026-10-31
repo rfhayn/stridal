@@ -14,9 +14,10 @@
 #
 # ITEMS, each its lines joined by a space (trailing blanks and CRs dropped):
 #   - CITED: `<assumption>: <cites>, **passed**`, then nothing, `.`, or ` (<detail>)` and an
-#     optional `.`. The assumption holds no sentence end (`.`, `;`, `!` or `?` before a space;
-#     `e.g.` and `i.e.` excepted), no `: ` outside a code span and no `<!`. The cites are joined by
-#     ` and ` or ` to `; each is a spike id from a table in an ADR_EVIDENCE_SPIKES file (a row whose
+#     optional `.`. The assumption holds no sentence end: outside a code span, a `.`, `;`, `!`,
+#     `?` or `:` is followed only by an ASCII letter or digit, `/`, `_`, `)`, `]` or `-` (`e.g.`
+#     and `i.e.` excepted), in any locale, and the item holds none of 。 ； ： ． …; no `<!`
+#     either. The cites are joined by ` and ` or ` to `; each is a spike id from a table in an ADR_EVIDENCE_SPIKES file (a row whose
 #     first cell is the id, `| S1a |`), a PR `#N` (N from 1: a PR number cannot be checked offline,
 #     so only its form is read) or `receipt <commit>` (7 to 40 hex digits), which must name a commit
 #     in the git repository the check runs in (`git cat-file -e`; outside a git checkout it fails,
@@ -27,8 +28,9 @@
 #     the owner (YYYY-MM-DD)` with a date that exists, then nothing, `.`, or `; tested by <ROW-N>`
 #     and after that nothing, `.`, ` (<text>)` and an optional `.`, or `, <text>`. The item names
 #     **passed** nowhere (it re-asserts no evidence), reads `accepted at risk` once, holds no `<!`.
-# A negation ("not accepted at risk") fails. An item marked **untested** or **pending** that is not
-# AT RISK fails. Proposed and Superseded ADRs are not judged: drafting one with untested items is
+# A negation ("not accepted at risk" in an item that names "by the owner") fails. An item marked
+# **untested** or **pending** that is not AT RISK fails. Both are read outside code spans, so an
+# item that names the rule ("not accepted at risk", "`**pending**`") can still be CITED. Proposed and Superseded ADRs are not judged: drafting one with untested items is
 # the point of the section. Practice records are not judged either. ADR_EVIDENCE_FROM empty:
 # nothing is held.
 #
@@ -227,6 +229,33 @@ Not really.'
   mke words; adr 0010 Accepted '- A pending tool call is cancelled on timeout: S1a, **passed**.
 - Untested hooks fail open: S2, **passed**.'
   eok "a cited item that says 'pending' or 'untested' without the bold marker"
+  # Round 4's probes: a sentence mark's partner is an ASCII allow-list, the same in every locale,
+  # and the marks ASCII cannot see are refused.
+  wd() {  # wd NAME OCTAL WHAT: a cited item whose assumption holds OCTAL (printf) cites nothing
+    mke "$1"; adr 0010 Accepted "- X is unverified$(printf "$2")Y holds: S1a, **passed**."
+    ebad "$3 in the assumption" "$uncited"
+  }
+  wd ideo '\343\200\202' "an ideographic full stop (U+3002)"
+  wd fw-semi '\357\274\233' "a full-width semicolon (U+FF1B)"
+  wd fw-colon '\357\274\232' "a full-width colon (U+FF1A)"
+  wd fw-stop '\357\274\216' "a full-width full stop (U+FF0E)"
+  wd ellipsis '\342\200\246 ' "an ellipsis (U+2026) and a space"
+  wd zwsp '.\342\200\213' "a '.' and a zero-width space (U+200B)"
+  wd nbsp '.\302\240' "a '.' and a no-break space (U+00A0)"
+  mke follow; adr 0010 Accepted '- Version 1.2 of node.js reads a/b.sh (see x.y) and [ref.]: S1a, **passed**.'
+  eok "an assumption whose marks are followed by a letter, a digit, '/', ')' or ']'"
+  # Round 4's probes: the negation and the bold markers are read outside code spans, and the
+  # negation only beside "by the owner"; the at-risk form's two refusals each have a fixture.
+  mke rule-negated; adr 0010 Accepted '- An item not accepted at risk fails the check: #372, **passed**.'
+  eok "'An item not accepted at risk fails the check: #372, **passed**.' (no 'by the owner')"
+  mke rule-code; adr 0010 Accepted '- The guard blocks a `**pending**` marker: #372, **passed**.'
+  eok "'The guard blocks a \`**pending**\` marker: #372, **passed**.' (the marker in a code span)"
+  mke rule-code-negated; adr 0010 Accepted '- A line `not accepted at risk` written by the owner fails the check: #372, **passed**.'
+  eok "a negation in a code span beside 'by the owner' outside it"
+  mke risk-comment; adr 0010 Accepted '- X: **untested** — accepted at risk by the owner (2026-10-31); tested by OPS-9, <!-- Y: nothing. -->'
+  ebad "an at-risk item with '<!-- … -->' after its row" "Rests on item 1 is untested"
+  mke risk-twice; adr 0010 Accepted '- X: **untested** — accepted at risk by the owner (2026-10-31); tested by OPS-9, and Y: **untested** — accepted at risk by the owner (2026-10-31).'
+  ebad "the at-risk form written twice in one item" "Rests on item 1 is untested"
   # Round 2's probe: a Status naming two states is read by neither.
   mke st-arrow; raw '- **Status**: Proposed → Accepted (the owner, 2026-10-31)'
   ebad "a Status 'Proposed → Accepted'" "names more than one of Proposed, Accepted and Superseded"
@@ -350,10 +379,14 @@ items() {
 # has ITEM ERE: 0 when ITEM matches the extended regular expression.
 has() { printf '%s' "$1" | grep -qE -- "$2"; }
 # The CITED form, the whole item (the header gives it in words). The assumption: no sentence end,
-# no `: ` outside a code span, no `<!` (a punctuation mark's partner is never `<` or a backtick, so
-# neither slips past as one). A cite is a spike id from the tables (letters, digits, letters: safe
-# in an ERE as written), a PR from #1, or a receipt's commit. The detail is a closed list.
-pre='([^.;!?:`<]|[.;!?:][^[:space:]<`]|<[^!]|`[^`]*`|e\.g\.|i\.e\.)*'
+# no `: ` outside a code span, no `<!`. The mark's partner is an allow-list spelled out in ASCII
+# (a range or a class like [:space:] reads by the locale, so a no-break space or a zero-width
+# space after a `.` would pass in one locale and fail in another); `wide` holds the full-width
+# and ellipsis marks the ASCII rule cannot see, refused anywhere in a cited item (its cites and
+# detail are ASCII). A cite is a spike id from the tables (letters, digits, letters: safe in an
+# ERE as written), a PR from #1, or a receipt's commit. The detail is a closed list.
+pre='([^.;!?:`<]|[.;!?:][]ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789/_)-]|<[^!]|`[^`]*`|e\.g\.|i\.e\.)*'
+wide=$(printf '\343\200\202\n\357\274\233\n\357\274\232\n\357\274\216\n\342\200\246')  # 。 ； ： ． …
 cite='#[1-9][0-9]*|receipt [0-9a-f]{7,40}'
 for i in $ids; do cite="$cite|$i"; done
 detail='as recorded (above|below)|(both|all|each|every) (runs?|cases?)'
@@ -362,10 +395,15 @@ cited_form="^$pre:[[:space:]]+($cite)([[:space:]]+(and|to)[[:space:]]+($cite))*,
 # `accepted at risk` and `<!` are refused beside it. The date is read by real_date.
 row='[A-Z][A-Z0-9]*-[0-9]+'
 at_risk_form="^.*:[[:space:]].*\*\*[^*]*([Uu]ntested|[Pp]ending)[^*]*\*\*.* — accepted at risk by the owner \([0-9]{4}-[0-9]{2}-[0-9]{2}\)(\.?|;[[:space:]]+tested by $row(\.?|[[:space:]]+\([^()]*\)\.?|,[[:space:]].*))\$"
+# A negation of the owner's acceptance, read outside code spans and only in an item that names
+# "by the owner": "not accepted at risk" alone is prose about the rule, not an acceptance negated.
 negated="(not|never|n't|no longer)[[:space:]]+(yet[[:space:]]+)?accepted at risk"
 at_risk() {  # at_risk ITEM: 0 when the whole ITEM is the AT RISK form
   has "$1" "$at_risk_form" && ! has "$1" '\*\*passed\*\*|<!' &&
     [ "$(printf '%s' "$1" | grep -o 'accepted at risk' | wc -l)" -eq 1 ]
+}
+cited() {  # cited ITEM: 0 when the whole ITEM is the CITED form, with no full-width or ellipsis mark
+  has "$1" "$cited_form" && ! printf '%s' "$1" | grep -qF -- "$wide"
 }
 # real_date YYYY-MM-DD: 0 when the day exists in its month, leap years counted (awk: portable).
 real_date() {
@@ -417,15 +455,16 @@ for f in $(ls "$dir" 2>/dev/null | grep -E '^[0-9]{4}-.*\.md$'); do
       *) continue ;;
     esac
     k=$((k + 1))
-    word=$(printf '%s' "$it" | grep -oiE '\*\*(untested|pending)\*\*' | head -1 | tr -d '*' | tr 'A-Z' 'a-z')
-    if printf '%s' "$it" | grep -qiE -- "$negated"; then
+    out=$(printf '%s' "$it" | sed -E 's/`[^`]*`//g')  # the item outside its code spans
+    word=$(printf '%s' "$out" | grep -oiE '\*\*(untested|pending)\*\*' | head -1 | tr -d '*' | tr 'A-Z' 'a-z')
+    if printf '%s' "$out" | grep -qi 'by the owner' && printf '%s' "$out" | grep -qiE -- "$negated"; then
       fail "$f, Rests on item $k negates the owner's acceptance at risk: only the owner accepts it, as '— accepted at risk by the owner (YYYY-MM-DD)'"; bad=1
     elif at_risk "$it"; then
       d=$(printf '%s' "$it" | sed -E 's/.* — accepted at risk by the owner \(([0-9-]{10})\).*/\1/')
       real_date "$d" || { fail "$f, Rests on item $k dates its acceptance at risk $d, a date that does not exist"; bad=1; }
     elif [ -n "$word" ]; then
       fail "$f, Rests on item $k is $word (not yet evidence) and not accepted at risk by the owner: the whole item reads '<assumption>: **$word** — accepted at risk by the owner (YYYY-MM-DD)', then nothing or '; tested by <row>'"; bad=1
-    elif has "$it" "$cited_form"; then
+    elif cited "$it"; then
       why=$(receipts "$it")
       [ -z "$why" ] || { fail "$f, Rests on item $k $why: a receipt is the commit a gate receipt names"; bad=1; }
     else
