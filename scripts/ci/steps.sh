@@ -140,7 +140,9 @@ CHECKS_ONCE="archive-change artifacts ci-status gate health ideas living-visuals
 # and ci-status run run-local.sh only in fixtures whose project.conf they write, and conf.sh sets
 # both defaults before it reads one (OPS-170). BATCH_REGENERATE: this repo's rebuilds plugin/; only
 # scripts/ci/batch.sh reads it, and checks/batch.sh runs it in a fixture whose project.conf it writes.
-CONF_NOT_READ="PROJECT_NAME PROJECT_SLUG STATUS_MARK OWNER_NAME INSIGHT_AREAS TEST_GLOBS FORMAT_CMD FORMAT_EXT GATE_PR_CHECKS APPROVAL_DELEGATED GATE_DOCS BATCH_REGENERATE"
+# ADR_EVIDENCE_*: this repo holds its ADRs from 0016 (OPS-200); only checks/adr-evidence.sh reads
+# them, which is not in CHECKS_ONCE, and its fixtures write their own project.conf.
+CONF_NOT_READ="PROJECT_NAME PROJECT_SLUG STATUS_MARK OWNER_NAME INSIGHT_AREAS TEST_GLOBS FORMAT_CMD FORMAT_EXT GATE_PR_CHECKS APPROVAL_DELEGATED GATE_DOCS BATCH_REGENERATE ADR_EVIDENCE_FROM ADR_EVIDENCE_SPIKES ADR_EVIDENCE_KNOWN"
 # The compared keys this repo may set apart from the template's, accepting that every gate then runs
 # CHECKS_ONCE in both sets. check-sets.sh fails any other key that differs (OPS-170).
 CONF_DOUBLE_RUN_OK=""
