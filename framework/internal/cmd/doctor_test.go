@@ -82,6 +82,25 @@ func lineWith(out string, parts ...string) string {
 	return ""
 }
 
+// subjectLine is the output's first line whose subject column is subject, or "". A test that
+// asserts a line is absent asks for it, not lineWith(out, "drift"): the output prints the
+// checkout's path and the test's, and a path may hold the word (#359: a worktree named
+// ...-owned-files matched lineWith(out, "own")).
+func subjectLine(out, subject string) string {
+	for _, l := range strings.Split(out, "\n") {
+		f := strings.Fields(l)
+		if len(f) < 2 || f[1] != subject {
+			continue
+		}
+		for _, label := range levelLabels {
+			if f[0] == label {
+				return l
+			}
+		}
+	}
+	return ""
+}
+
 func needLine(t *testing.T, out string, parts ...string) string {
 	t.Helper()
 	l := lineWith(out, parts...)
@@ -598,7 +617,7 @@ func TestDoctorNoModelIsANoteWithInstall(t *testing.T) {
 	if lineWith(out, "fix: stridal install") != "" {
 		t.Errorf("a fix that would install into the subdirectory was printed:\n%s", out)
 	}
-	if l := lineWith(out, "drift"); l != "" {
+	if l := subjectLine(out, "drift"); l != "" {
 		t.Errorf("a repository with no model has a drift line: %s", l)
 	}
 }
@@ -619,7 +638,7 @@ func TestDoctorOwnOrPluginModelIsNotCheckedForDrift(t *testing.T) {
 		t.Errorf("the note does not say install and update refuse it: %s", l)
 	}
 	needExact(t, out, "fix: stridal diff")
-	if lineWith(out, "drift") != "" {
+	if subjectLine(out, "drift") != "" {
 		t.Errorf("an own model has a drift line:\n%s", out)
 	}
 
@@ -632,7 +651,7 @@ func TestDoctorOwnOrPluginModelIsNotCheckedForDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 	needLine(t, out, "note", "model", "stridal plugin", pluginMarker)
-	if lineWith(out, "drift") != "" || lineWith(out, "own") != "" {
+	if subjectLine(out, "drift") != "" || lineWith(out, "operating model of its own") != "" {
 		t.Errorf("the plugin's marker did not win, or a drift line ran:\n%s", out)
 	}
 }
