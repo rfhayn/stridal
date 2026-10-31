@@ -1,6 +1,6 @@
 # ADR 0022: Live session state comes from a feed in files, or from the panel daemon
 
-- **Status**: Proposed. **The owner decides at Gate C.** Recommended: option B, the feed in files.
+- **Status**: Proposed. **Option B, the feed in files, chosen by the owner 2026-10-31**; acceptance at Gate C (OPS-203), on OPS-199's evidence.
 - **Date**: 2026-10-31
 - **Tags**: panel, terminal-ui, engine, hooks
 - **Source**: the S19 remap (finding 4 and the FEED row); ADR-0017's "no state outside files"
