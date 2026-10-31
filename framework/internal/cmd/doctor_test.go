@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -82,13 +84,81 @@ func lineWith(out string, parts ...string) string {
 	return ""
 }
 
+// subjectLine is the output's first line whose subject column is subject, at one of levels (any
+// level when none is given), or "". A test that asserts a line is absent asks for it, not
+// lineWith(out, "drift"): the output prints the checkout's path and the test's, and a path may
+// hold the word (#359: a worktree named ...-owned-files matched lineWith(out, "own")).
+func subjectLine(out, subject string, levels ...string) string {
+	if len(levels) == 0 {
+		for _, label := range levelLabels {
+			levels = append(levels, label)
+		}
+	}
+	for _, l := range strings.Split(out, "\n") {
+		f := strings.Fields(l)
+		if len(f) >= 2 && f[1] == subject && slices.Contains(levels, f[0]) {
+			return l
+		}
+	}
+	return ""
+}
+
+// findLine is the output's first line holding every part, or "". When the first part is a level
+// label, the first two parts are the line's level and subject COLUMNS (subjectLine), never
+// substrings: the template and tool lines print the checkout's path and the test's, so "warn",
+// "drift" would otherwise find them from a checkout under .../warn-drift/ (#359). needLine and
+// needNoLine both look a line up here, so a present line and an absent one are matched alike.
+// Without a level label, one part with no space and no colon is a bare word a path can hold, so
+// findLine refuses it: needNoLine(t, out, "drift") would pass or fail on the checkout's path.
+// Ask for the column (a level label first), a phrase, or search a bounded text (detailOf).
+func findLine(out string, parts ...string) string {
+	level := false
+	for _, label := range levelLabels {
+		level = level || (len(parts) >= 2 && parts[0] == label)
+	}
+	if !level && len(parts) == 1 && !strings.ContainsAny(parts[0], " :") {
+		panic(fmt.Sprintf("findLine(%q): a bare word with no level label matches the paths the output prints (#359); give the level and subject columns, a phrase, or search a line's detail", parts[0]))
+	}
+	if !level {
+		return lineWith(out, parts...)
+	}
+	for _, l := range strings.Split(out, "\n") {
+		if subjectLine(l, parts[1], parts[0]) != "" && lineWith(l, parts[2:]...) != "" {
+			return l
+		}
+	}
+	return ""
+}
+
+// needLine is the output's first line holding every part (findLine), and fails the test when there
+// is none.
 func needLine(t *testing.T, out string, parts ...string) string {
 	t.Helper()
-	l := lineWith(out, parts...)
+	l := findLine(out, parts...)
 	if l == "" {
 		t.Fatalf("no line holds %q:\n%s", parts, out)
 	}
 	return l
+}
+
+// detailOf is the line l of the output and the lines of its detail that hang under it (print's
+// hang, at textColumn), up to its first fix or install line: the one line's text, which a search
+// for a bare word stays inside.
+func detailOf(out, l string) string {
+	_, after, ok := strings.Cut(out, l+"\n")
+	if !ok {
+		return l
+	}
+	detail := []string{l}
+	pad := strings.Repeat(" ", textColumn)
+	for _, c := range strings.Split(after, "\n") {
+		text, hung := strings.CutPrefix(c, pad)
+		if !hung || text == "" || text[0] == ' ' || strings.HasPrefix(text, "fix: ") || strings.HasPrefix(text, "install: ") {
+			break
+		}
+		detail = append(detail, c)
+	}
+	return strings.Join(detail, "\n")
 }
 
 // needExact fails unless some line of the output, trimmed, is exactly want: a fix is a command to
@@ -130,7 +200,7 @@ func TestDoctorMissingRequiredToolFails(t *testing.T) {
 	if !errors.Is(err, errDoctorFailed) {
 		t.Errorf("doctor returned %v, want errDoctorFailed (exit 1)", err)
 	}
-	if lineWith(out, "FAIL", "git") != "" {
+	if subjectLine(out, "git", "FAIL") != "" {
 		t.Errorf("a present tool failed:\n%s", out)
 	}
 }
@@ -168,7 +238,7 @@ func TestDoctorUnreadableToolRowsIsANote(t *testing.T) {
 	if !strings.Contains(l, "could not be read") {
 		t.Errorf("the note does not say the tools could not be read: %s", l)
 	}
-	if lineWith(out, "ok", "jq") != "" || lineWith(out, "git", "/usr/bin/git") != "" {
+	if subjectLine(out, "jq", "ok") != "" || lineWith(subjectLine(out, "git"), "/usr/bin/git") != "" {
 		t.Errorf("tool lines were printed from a report that is not rows:\n%s", out)
 	}
 }
@@ -210,8 +280,13 @@ func TestDoctorTemplateOfAnotherVersionFails(t *testing.T) {
 	if !strings.Contains(l, "99.0.0") {
 		t.Errorf("the template line does not give the template's version: %s", l)
 	}
+	// Resolve's reason hangs under the template line: the words are looked for there, never in
+	// the whole output, whose paths may hold them.
+	detail := detailOf(out, l)
 	for _, want := range []string{"install the matching release", "STRIDAL_FRAMEWORK", "--template-dir"} {
-		needLine(t, out, want)
+		if !strings.Contains(detail, want) {
+			t.Errorf("the template line's detail does not name %q:\n%s", want, detail)
+		}
 	}
 	needLine(t, out, "note", "tools", "no template")
 	if !errors.Is(err, errDoctorFailed) {
@@ -357,8 +432,16 @@ func ghLine(t *testing.T, stderrLine string) (string, string) {
 		t.Errorf("doctor printed what gh printed:\n%s", out)
 	}
 	// The sign-in line, not the tools line for gh: it comes after the template line.
-	_, after, _ := strings.Cut(out, needLine(t, out, "template"))
-	return out, needLine(t, after, " gh ")
+	tl := subjectLine(out, "template")
+	if tl == "" {
+		t.Fatalf("no template line:\n%s", out)
+	}
+	_, after, _ := strings.Cut(out, tl)
+	gl := subjectLine(after, "gh")
+	if gl == "" {
+		t.Fatalf("no gh line after the template line:\n%s", out)
+	}
+	return out, gl
 }
 
 // [DOCTOR-1-S4] Every non-zero exit of gh auth token warns and names gh auth login, whatever gh
@@ -372,7 +455,7 @@ func TestDoctorGHAnyFailureWarnsWithLogin(t *testing.T) {
 		"",
 	} {
 		out, l := ghLine(t, stderr)
-		if !strings.Contains(l, "warn") {
+		if subjectLine(l, "gh", "warn") == "" {
 			t.Errorf("gh failing with %q is not a warn: %s", stderr, l)
 		}
 		if f := strings.TrimSpace(needLine(t, out, "fix: gh auth login")); f != "fix: gh auth login" {
@@ -449,7 +532,7 @@ func TestDoctorRunsFromRootWithTemplateDir(t *testing.T) {
 		t.Fatalf("stridal doctor --template-dir: %v\n%s%s", err, out.String(), errOut.String())
 	}
 	needLine(t, out.String(), "ok", "sentineltool", "/opt/sentinel")
-	needLine(t, out.String(), "template", dir)
+	needLine(t, out.String(), "ok", "template", dir)
 }
 
 // [DOCTOR-3-S2] In the terminal a user runs doctor in, a failure ends on the count line: through
@@ -552,7 +635,7 @@ func TestDoctorOutsideARepositoryChecksOnlyTheMachine(t *testing.T) {
 	needLine(t, out, "ok", "jq") // a machine line
 	needLine(t, out, "note", "repository", "the project checks did not run")
 	for _, subject := range []string{"model", "drift"} {
-		if l := lineWith(out, subject); l != "" {
+		if l := subjectLine(out, subject); l != "" {
 			t.Errorf("a project line ran outside a repository: %s", l)
 		}
 	}
@@ -598,7 +681,7 @@ func TestDoctorNoModelIsANoteWithInstall(t *testing.T) {
 	if lineWith(out, "fix: stridal install") != "" {
 		t.Errorf("a fix that would install into the subdirectory was printed:\n%s", out)
 	}
-	if l := lineWith(out, "drift"); l != "" {
+	if l := subjectLine(out, "drift"); l != "" {
 		t.Errorf("a repository with no model has a drift line: %s", l)
 	}
 }
@@ -619,7 +702,7 @@ func TestDoctorOwnOrPluginModelIsNotCheckedForDrift(t *testing.T) {
 		t.Errorf("the note does not say install and update refuse it: %s", l)
 	}
 	needExact(t, out, "fix: stridal diff")
-	if lineWith(out, "drift") != "" {
+	if subjectLine(out, "drift") != "" {
 		t.Errorf("an own model has a drift line:\n%s", out)
 	}
 
@@ -632,7 +715,7 @@ func TestDoctorOwnOrPluginModelIsNotCheckedForDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 	needLine(t, out, "note", "model", "stridal plugin", pluginMarker)
-	if lineWith(out, "drift") != "" || lineWith(out, "own") != "" {
+	if subjectLine(out, "drift") != "" || lineWith(out, "operating model of its own") != "" {
 		t.Errorf("the plugin's marker did not win, or a drift line ran:\n%s", out)
 	}
 }
@@ -699,7 +782,7 @@ func TestDoctorDriftWarnsWithTheUpdateThatFixesIt(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out)
 	}
 	needLine(t, out, "ok", "drift", "matches the template")
-	if l := lineWith(out, "warn", "drift"); l != "" {
+	if l := subjectLine(out, "drift", "warn"); l != "" {
 		t.Errorf("the drift warning survived the printed update: %s", l)
 	}
 }
@@ -997,12 +1080,12 @@ func TestDoctorTemplateWarningIsSaidOnce(t *testing.T) {
 	template.OverrideDir = other
 	out, _ := doctor(t, gitPath(t, allTools...))
 	const warning = "using it because --template-dir names it"
+	// Printed once, and that once on the template line, so the drift line does not repeat it. The
+	// count needs no line lookup: the warning is a phrase no path holds, while "drift" is a word the
+	// template line's path may hold (#359).
 	needLine(t, out, "warn", "template", warning)
 	if n := strings.Count(out, warning); n != 1 {
 		t.Errorf("the template's warning is printed %d times, want once (on the template line):\n%s", n, out)
-	}
-	if l := lineWith(out, "drift", warning); l != "" {
-		t.Errorf("the drift line repeats the template's warning: %s", l)
 	}
 }
 
