@@ -1,6 +1,6 @@
 # ADR 0022: Live session state comes from a feed in files, or from the panel daemon
 
-- **Status**: Proposed. **The owner decides at Gate C.** Recommended: option B, the feed in files.
+- **Status**: Proposed. **Option B, the feed in files, chosen by the owner 2026-10-31**; acceptance at Gate C (OPS-203), on OPS-199's evidence.
 - **Date**: 2026-10-31
 - **Tags**: panel, terminal-ui, engine, hooks
 - **Source**: the S19 remap (finding 4 and the FEED row); ADR-0017's "no state outside files"
@@ -41,6 +41,12 @@ The recommendation is **B**:
 - It removes the third registration path and the third version authority.
 - It cancels about 2 sessions of panel work.
 - A dead UI loses nothing, because the feed outlives it.
+
+On 2026-10-31 (S20) the owner chose **B**, the feed in files, as recommended. The status stays
+Proposed (PRAC-0023: a decision is accepted only on the evidence its assumptions name, and neither
+item under *Rests on* is tested yet). It is accepted at OPS-203 once OPS-199 has tested the
+hook-write assumption, and amended there if a spike fails it. Until then PANEL-25 stays on the plan
+unchanged.
 
 ## Consequences
 - **For B:** feed files need rotation and a size cap (an engine action at session close); a reader

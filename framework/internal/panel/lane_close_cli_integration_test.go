@@ -175,6 +175,14 @@ func laneErrOf(t *testing.T, what string, err error) *lanes.LaneError {
 	return le
 }
 
+// notCurrent reports whether err is a close refused for want of a current reading of
+// the lane's claude: the verdict's "(not a current reading)" (state.statusWords), which
+// a later poll lifts. A close it refuses changes nothing, so asking again is safe.
+func notCurrent(err error) bool {
+	var le *lanes.LaneError
+	return errors.As(err, &le) && le.Code == "held" && strings.Contains(le.Msg, "(not a current reading)")
+}
+
 // [LANECLOSE-3-S1] [LANECLOSE-3-S3] A panel started over a socket file a killed panel
 // left serves the close on a socket of its own there: mode 0600, in a directory it made
 // 0700, named in owner.json (and still after a live `panel add` rewrites it). On it,
@@ -460,6 +468,19 @@ func TestLaneCloseThroughTheSocket(t *testing.T) {
 		defer cancel()
 		return install.CloseLane(ctx, sock, project, id, req)
 	}
+	// closeRead is closeLane for a running lane, whose verdict rests on a current
+	// `claude agents` reading (#370). One poll that a loaded machine holds up past
+	// agentsFresh's window leaves the reading approximate until it lands, and the panel
+	// then refuses "claude is idle (not a current reading)" and changes nothing. The
+	// verdicts this test asserts are those of a current reading, so it waits for one:
+	// that refusal is asked again until a current reading decides the close.
+	closeRead := func(id string, req lanes.CloseRequest) (ans install.LaneCloseAnswer, err error) {
+		waitUntil(t, "lane "+id+"'s close decided on a current reading", 30*time.Second, func() bool {
+			ans, err = closeLane(id, req)
+			return !notCurrent(err)
+		})
+		return ans, err
+	}
 	outLine := func(id string) string {
 		return "lane " + id + " (" + project + ") closed by stridal lane close: removed "
 	}
@@ -510,31 +531,65 @@ func TestLaneCloseThroughTheSocket(t *testing.T) {
 
 	// [LANECLOSE-2-S3] [LANECLOSE-2-S1] Auto-close asks rather than closes: the pull
 	// requests leave the open list, merged at the branches' tips.
-	waitFor(t, "both pull requests listed open", func() bool {
-		n := 0
-		for _, pr := range p.state(t).PRs {
-			if pr.HeadRef == "change/bgauto" || pr.HeadRef == "change/unread" {
-				n++
-			}
-		}
-		return n == 2
-	})
-	w.set(func(w *stallWorld) {
-		delete(w.open, "change/bgauto")
-		delete(w.open, "change/unread")
-		w.merged["change/bgauto"] = "21@" + gitRun(t, root, "rev-parse", "refs/heads/change/bgauto")
-		w.merged["change/unread"] = "22@" + gitRun(t, root, "rev-parse", "refs/heads/change/unread")
-	})
+	// Auto-close takes the verdict once, when the pull request leaves the open list, and
+	// asks again only every askRecheck: a reading stale at that moment (#370) words
+	// bgauto's ask "claude is idle (not a current reading)" for minutes. So, as closeRead
+	// does, the test waits for a check made on a current reading: after such an ask the
+	// pull requests are listed open again and merge once more, under new numbers, so
+	// each round's asks are told apart by the number they name.
+	tips := map[string]string{}
+	for _, id := range []string{"bgauto", "unread"} {
+		tips[id] = gitRun(t, root, "rev-parse", "refs/heads/change/"+id)
+	}
 	asks := map[string]string{"bgauto": "Review group 2", "unread": "claude has not been read yet"}
-	waitUntil(t, "auto-close asks about bgauto and unread with their verdicts", 20*time.Second, func() bool {
-		got := 0
-		for _, n := range p.state(t).NeedsYou {
-			if why, ok := asks[n.Terminal]; ok && n.Kind == "merged" && strings.Contains(n.Text, why) {
-				got++
+	deadline := time.Now().Add(testwait.Scale(30 * time.Second))
+	for round := 0; ; round++ {
+		waitFor(t, "both pull requests listed open", func() bool {
+			n := 0
+			for _, pr := range p.state(t).PRs {
+				if pr.HeadRef == "change/bgauto" || pr.HeadRef == "change/unread" {
+					n++
+				}
 			}
+			return n == 2
+		})
+		// Auto-close checks a lane only when it saw the pull request open at one of its
+		// polls and gone at the next (autoclose.go), so the round waits until it has seen
+		// them open: of two more autoclose polls, the second began after the view above
+		// listed them. Without this a reopened pair could come and go between two of its
+		// polls, and the round would wait for a check that never comes.
+		p.polls.more(t, "autoclose", 2)
+		nums := map[string]int{"bgauto": 21 + 2*round, "unread": 22 + 2*round}
+		w.set(func(w *stallWorld) {
+			for id, n := range nums {
+				delete(w.open, "change/"+id)
+				w.merged["change/"+id] = fmt.Sprintf("%d@%s", n, tips[id])
+			}
+		})
+		stale := false
+		waitUntil(t, "auto-close asks about bgauto and unread with their verdicts", 20*time.Second, func() bool {
+			got := 0
+			for _, n := range p.state(t).NeedsYou {
+				why, ok := asks[n.Terminal]
+				if !ok || n.Kind != "merged" || !strings.Contains(n.Text, fmt.Sprintf("#%d merged", nums[n.Terminal])) {
+					continue
+				}
+				if strings.Contains(n.Text, "(not a current reading)") {
+					stale = true
+				} else if strings.Contains(n.Text, why) {
+					got++
+				}
+			}
+			return got == 2 || stale
+		})
+		if !stale {
+			break
 		}
-		return got == 2
-	})
+		if time.Now().After(deadline) {
+			t.Fatalf("[LANECLOSE-2-S3] auto-close's check was on a stale reading every time for %v (%d rounds)", testwait.Scale(30*time.Second), round+1)
+		}
+		w.set(func(w *stallWorld) { w.open["change/bgauto"], w.open["change/unread"] = 11, 12 })
+	}
 	for _, id := range []string{"bgauto", "unread"} {
 		if f := facts(id); f != all {
 			t.Errorf("[LANECLOSE-2-S3] auto-close changed lane %s: %+v", id, f)
@@ -542,7 +597,7 @@ func TestLaneCloseThroughTheSocket(t *testing.T) {
 	}
 
 	// [LANECLOSE-1-S1] The dry run plans the removal and changes nothing.
-	ans, err := closeLane("clean", lanes.CloseRequest{DryRun: true})
+	ans, err := closeRead("clean", lanes.CloseRequest{DryRun: true})
 	if err != nil {
 		t.Fatalf("[LANECLOSE-1-S1] dry run: %v", err)
 	}
@@ -557,7 +612,7 @@ func TestLaneCloseThroughTheSocket(t *testing.T) {
 		t.Fatal("[LANECLOSE-1-S1] the dry run printed a close")
 	}
 	// [LANECLOSE-1-S2] The plan's consent, as the command sends it, closes it all.
-	ans, err = closeLane("clean", lanes.CloseRequest{Worktree: plan.Worktree, Branch: plan.DeleteBranch})
+	ans, err = closeRead("clean", lanes.CloseRequest{Worktree: plan.Worktree, Branch: plan.DeleteBranch})
 	if err != nil {
 		t.Fatalf("[LANECLOSE-1-S2] close: %v", err)
 	}
@@ -573,14 +628,14 @@ func TestLaneCloseThroughTheSocket(t *testing.T) {
 	}
 
 	// [LANECLOSE-1-S3] A dirty worktree stays, with its branch, and Kept says why.
-	ans, err = closeLane("dirty", lanes.CloseRequest{DryRun: true})
+	ans, err = closeRead("dirty", lanes.CloseRequest{DryRun: true})
 	if err != nil {
 		t.Fatalf("[LANECLOSE-1-S3] dry run: %v", err)
 	}
 	if ans.Plan.Worktree {
 		t.Fatalf("[LANECLOSE-1-S3] the plan removes a dirty worktree: %+v", ans.Plan)
 	}
-	ans, err = closeLane("dirty", lanes.CloseRequest{Worktree: ans.Plan.Worktree, Branch: ans.Plan.DeleteBranch})
+	ans, err = closeRead("dirty", lanes.CloseRequest{Worktree: ans.Plan.Worktree, Branch: ans.Plan.DeleteBranch})
 	if err != nil {
 		t.Fatalf("[LANECLOSE-1-S3] close: %v", err)
 	}
@@ -599,7 +654,7 @@ func TestLaneCloseThroughTheSocket(t *testing.T) {
 
 	// [LANECLOSE-2-S1] A busy lane is refused, dry run or not, and keeps running.
 	for _, dry := range []bool{true, false} {
-		_, err := closeLane("busy", lanes.CloseRequest{DryRun: dry, Worktree: true, Branch: true})
+		_, err := closeRead("busy", lanes.CloseRequest{DryRun: dry, Worktree: true, Branch: true})
 		if le := laneErrOf(t, "closing busy", err); le.Status != http.StatusConflict || le.Code != "held" || !strings.Contains(le.Msg, "claude is working") {
 			t.Errorf("[LANECLOSE-2-S1] busy (dry run %v): %+v, want 409 held, claude is working", dry, le)
 		}
@@ -609,7 +664,7 @@ func TestLaneCloseThroughTheSocket(t *testing.T) {
 	}
 
 	// [LANECLOSE-2-S3] Refused naming the subagent; closes once a later Stop lists none.
-	_, err = closeLane("bg", lanes.CloseRequest{Worktree: true, Branch: true})
+	_, err = closeRead("bg", lanes.CloseRequest{Worktree: true, Branch: true})
 	if le := laneErrOf(t, "closing bg", err); le.Status != http.StatusConflict || le.Code != "held" || !strings.Contains(le.Msg, "Review group 2") {
 		t.Errorf("[LANECLOSE-2-S3] bg: %+v, want 409 held naming the subagent", le)
 	}
@@ -624,7 +679,7 @@ func TestLaneCloseThroughTheSocket(t *testing.T) {
 		tv := findTerm(p.state(t), "bg")
 		return tv != nil && tv.CloseHeld == ""
 	})
-	if _, err := closeLane("bg", lanes.CloseRequest{Worktree: true, Branch: true}); err != nil {
+	if _, err := closeRead("bg", lanes.CloseRequest{Worktree: true, Branch: true}); err != nil {
 		t.Fatalf("[LANECLOSE-2-S3] bg after a Stop listing nothing: %v", err)
 	}
 	if f := facts("bg"); f != (laneFacts{}) {
@@ -633,7 +688,7 @@ func TestLaneCloseThroughTheSocket(t *testing.T) {
 
 	// [LANECLOSE-2-S4] Idle on unmerged work: refused and untouched; exited: closed, the
 	// branch kept as not merged.
-	_, err = closeLane("unmerged", lanes.CloseRequest{Worktree: true, Branch: true})
+	_, err = closeRead("unmerged", lanes.CloseRequest{Worktree: true, Branch: true})
 	if le := laneErrOf(t, "closing unmerged", err); le.Status != http.StatusConflict || le.Code != "not-merged" || !strings.Contains(le.Msg, "its branch is not merged") {
 		t.Errorf("[LANECLOSE-2-S4] unmerged: %+v, want 409 not-merged", le)
 	}
@@ -669,8 +724,19 @@ func TestLaneCloseThroughTheSocket(t *testing.T) {
 	defer cancel()
 	errc := make(chan error, 1)
 	go func() {
-		_, err := install.CloseLane(ctx, sock, project, "slow", lanes.CloseRequest{Worktree: true, Branch: true})
-		errc <- err
+		// As closeRead, off the test's goroutine: asked again while the refusal is for
+		// want of a current reading, until the cancel below.
+		for {
+			_, err := install.CloseLane(ctx, sock, project, "slow", lanes.CloseRequest{Worktree: true, Branch: true})
+			if !notCurrent(err) || ctx.Err() != nil {
+				errc <- err
+				return
+			}
+			select {
+			case <-ctx.Done():
+			case <-time.After(20 * time.Millisecond): // testwait.For's poll
+			}
+		}
 	}()
 	waitFor(t, "slow's teardown begins", func() bool {
 		_, err := os.Stat(filepath.Join(markDir, "slow"))
