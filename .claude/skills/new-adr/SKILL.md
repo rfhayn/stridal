@@ -41,12 +41,16 @@ If the line above shows as literal text instead of output, run
 2. Copy `<DIR>/TEMPLATE.md` to `<DIR>/NNNN-<kebab-title>.md` and fill every section. The
    **Enforcement** section names the hook, check or step that keeps it true, or says "none".
 2a. **Draft an ADR's `## Rests on` section** (PRAC-0023): one column-0 `- ` item per assumption
-   the decision needs to be true, in TEMPLATE.md's form and no other:
-   `- <assumption>: <cite>, **passed**.`, the cite right after the colon (a spike id from the
-   table in `ADR_EVIDENCE_SPIKES`, a PR `#N`, or `receipt <commit>`; several joined by ` and ` or
-   ` to `), or `- <assumption>: **untested**; tested by <row>.` Never write a citation you did not
-   open, and never write "accepted at risk by the owner" yourself: only the owner accepts an
-   assumption at risk, as `— accepted at risk by the owner (YYYY-MM-DD)`.
+   the decision needs to be true, wrapped on lines indented two spaces, and the WHOLE item in
+   TEMPLATE.md's form, nothing before or after it: `- <assumption>: <cites>, **passed**.` (the
+   assumption with no sentence end, `e.g.`/`i.e.` aside, and no `: ` outside a code span; the
+   cites right after its colon: spike ids from the table in `ADR_EVIDENCE_SPIKES`, PRs `#N`, or
+   `receipt <commit>` naming a commit in this repository, joined by ` and ` or ` to `; an optional
+   ` (as recorded above)`, ` (as recorded below)` or ` (both runs)` before the `.`), or
+   `- <assumption>: **untested**; tested by <row>.` No quote, fence, table, HTML or nested list
+   in the section. Never write a citation you did not open, and never write "accepted at risk by
+   the owner" yourself: only the owner accepts an assumption at risk, as `<assumption>:
+   **untested** — accepted at risk by the owner (YYYY-MM-DD); tested by <row>.`
 3. Set **Status**: `Accepted` only if the owner has decided it (ADRs and practice records are
    theirs, AGENTS.md *Who decides*); otherwise `Proposed`, and put the decision in front of them.
    An ADR from `ADR_EVIDENCE_FROM` on with an untested item stays `Proposed` unless accepted
