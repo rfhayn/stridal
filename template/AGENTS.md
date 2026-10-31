@@ -91,7 +91,7 @@ rather than hidden. One line per row. Add your project's own controls; keep the 
 | Work that needs the owner at the computer is seen | **`.claude/owner-queue.sh`** via `session-start` and the panel card |
 | The change queue is read ONE way, and a malformed row is an error, not a shorter queue | **`roadmap_queue`** (`lib/conf.sh`) over `.claude/roadmap-queue.sh` or `ROADMAP_PARSER`; **`checks/roadmap.sh`** fails a bypass |
 | A project's history is never reformatted; records since adoption meet the format | `RECORDS_BASELINE`, `CHANGES_LEGACY` (`lib/records.sh`); **`checks/journal.sh`**, **`adr-numbering.sh`**, **`changes.sh`** |
-| An ADR or PRAC number is never taken twice (one space); each is indexed and names its enforcement | **`checks/adr-numbering.sh`**; `new-adr` numbers from `origin/main` and open PRs |
+| No ADR or PRAC number repeats; each is indexed and names its enforcement, an Accepted ADR its evidence | **`checks/adr-numbering.sh`**, **`adr-evidence.sh`**; `new-adr` numbers off `origin/main`, PRs |
 | A skill's context script and every `.claude/` path a skill or agent names exists | **`checks/skills.sh`** |
 | The repo works without stridal: nothing needs the binary or the panel | **`checks/run.sh`** runs the checks with `stridal` off `PATH`; **`checks/no-stridal.sh`** asserts it, and runs the gate, a context script and the status line there |
 | A branch is named by its `BRANCH_*` key, never a literal prefix | **`checks/branch-prefixes.sh`**: the model's files and `panel.json` |
