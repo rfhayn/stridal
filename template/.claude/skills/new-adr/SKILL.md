@@ -40,8 +40,15 @@ If the line above shows as literal text instead of output, run
    from your branch. If it says CANNOT CHECK, run those commands yourself.
 2. Copy `<DIR>/TEMPLATE.md` to `<DIR>/NNNN-<kebab-title>.md` and fill every section. The
    **Enforcement** section names the hook, check or step that keeps it true, or says "none".
+2a. **Draft an ADR's `## Rests on` section** (PRAC-0023): one `- ` item per assumption the
+   decision needs to be true, each with the result it rests on (a spike id from the table in
+   `ADR_EVIDENCE_SPIKES`, a PR `#N`, a receipt) or the word **pending** and the row that will test
+   it. Never write a citation you did not open, and never write "accepted at risk by the owner"
+   yourself: only the owner accepts an assumption at risk.
 3. Set **Status**: `Accepted` only if the owner has decided it (ADRs and practice records are
    theirs, AGENTS.md *Who decides*); otherwise `Proposed`, and put the decision in front of them.
+   An ADR from `ADR_EVIDENCE_FROM` on with a pending item stays `Proposed`: `checks/adr-evidence.sh`
+   fails it Accepted.
 4. Add a row to the index in `<DIR>/README.md`.
 5. **Retag EVERY insights-log row the record or amendment cites**, not only the one that prompted
    it: `Promoted → ADR-NNNN` or `Promoted → PRAC-NNNN` (or `… (<date> amendment)`). Grep for each
@@ -51,7 +58,7 @@ If the line above shows as literal text instead of output, run
    never inside a row's PR, which writes only its fragment (OPS-108).
 6. If it supersedes an older record, set that one's Status to `Superseded by ADR-NNNN` (or
    `PRAC-NNNN`).
-7. Run `sh .claude/checks/run.sh adr-numbering`.
+7. Run `sh .claude/checks/run.sh adr-numbering adr-evidence`.
 
 ## Rules
 - Never renumber a record that is on `main`; supersede it. Renumbering your own unmerged record

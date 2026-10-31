@@ -24,5 +24,14 @@ re-deriving it.
 What keeps this true over time: a hook, a check, a review step, a constraint. If nothing enforces
 it, say so plainly; that is a finding, not a formality.
 
+## Rests on
+Each assumption the decision needs to be true (a platform behaviour, an implementation elsewhere,
+the reason behind an earlier record, an estimate), one `- ` item each, with the result it rests on:
+a spike id from the project's spike table (`ADR_EVIDENCE_SPIKES`), a PR (`#N`) or a receipt. One
+not yet tested says **pending** and names the row that will test it. An ADR is Accepted only when
+no item is pending: each cites its result, or the owner accepts it with the words "accepted at
+risk by the owner" (PRAC-0023; `${CLAUDE_PLUGIN_ROOT}/checks/adr-evidence.sh` holds it from `ADR_EVIDENCE_FROM`).
+- <assumption>: <spike id, #PR or receipt>, **passed** | **pending** (<row>)
+
 ## Related
 - ADR-NNNN, a change in `changes/`, a spec, an insights-log row
