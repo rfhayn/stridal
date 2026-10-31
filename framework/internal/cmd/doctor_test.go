@@ -102,9 +102,26 @@ func subjectLine(out, subject string, levels ...string) string {
 	return ""
 }
 
+// needLine is the output's first line holding every part, and fails the test when there is none.
+// When the first part is a level label, the first two parts are the line's level and subject
+// COLUMNS (subjectLine), never substrings: the template line prints the checkout's path, so
+// "warn", "drift" would otherwise find it from a checkout under .../warn-drift/ (#359).
 func needLine(t *testing.T, out string, parts ...string) string {
 	t.Helper()
 	l := lineWith(out, parts...)
+	level := false
+	for _, label := range levelLabels {
+		level = level || (len(parts) >= 2 && parts[0] == label)
+	}
+	if level {
+		l = ""
+		for _, c := range strings.Split(out, "\n") {
+			if subjectLine(c, parts[1], parts[0]) != "" && lineWith(c, parts[2:]...) != "" {
+				l = c
+				break
+			}
+		}
+	}
 	if l == "" {
 		t.Fatalf("no line holds %q:\n%s", parts, out)
 	}
@@ -377,8 +394,16 @@ func ghLine(t *testing.T, stderrLine string) (string, string) {
 		t.Errorf("doctor printed what gh printed:\n%s", out)
 	}
 	// The sign-in line, not the tools line for gh: it comes after the template line.
-	_, after, _ := strings.Cut(out, needLine(t, out, "template"))
-	return out, needLine(t, after, " gh ")
+	tl := subjectLine(out, "template")
+	if tl == "" {
+		t.Fatalf("no template line:\n%s", out)
+	}
+	_, after, _ := strings.Cut(out, tl)
+	gl := subjectLine(after, "gh")
+	if gl == "" {
+		t.Fatalf("no gh line after the template line:\n%s", out)
+	}
+	return out, gl
 }
 
 // [DOCTOR-1-S4] Every non-zero exit of gh auth token warns and names gh auth login, whatever gh
