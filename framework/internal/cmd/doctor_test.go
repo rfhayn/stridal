@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -107,10 +108,16 @@ func subjectLine(out, subject string, levels ...string) string {
 // substrings: the template and tool lines print the checkout's path and the test's, so "warn",
 // "drift" would otherwise find them from a checkout under .../warn-drift/ (#359). needLine and
 // needNoLine both look a line up here, so a present line and an absent one are matched alike.
+// Without a level label, one part with no space and no colon is a bare word a path can hold, so
+// findLine refuses it: needNoLine(t, out, "drift") would pass or fail on the checkout's path.
+// Ask for the column (a level label first), a phrase, or search a bounded text (detailOf).
 func findLine(out string, parts ...string) string {
 	level := false
 	for _, label := range levelLabels {
 		level = level || (len(parts) >= 2 && parts[0] == label)
+	}
+	if !level && len(parts) == 1 && !strings.ContainsAny(parts[0], " :") {
+		panic(fmt.Sprintf("findLine(%q): a bare word with no level label matches the paths the output prints (#359); give the level and subject columns, a phrase, or search a line's detail", parts[0]))
 	}
 	if !level {
 		return lineWith(out, parts...)
@@ -132,6 +139,26 @@ func needLine(t *testing.T, out string, parts ...string) string {
 		t.Fatalf("no line holds %q:\n%s", parts, out)
 	}
 	return l
+}
+
+// detailOf is the line l of the output and the lines of its detail that hang under it (print's
+// hang, at textColumn), up to its first fix or install line: the one line's text, which a search
+// for a bare word stays inside.
+func detailOf(out, l string) string {
+	_, after, ok := strings.Cut(out, l+"\n")
+	if !ok {
+		return l
+	}
+	detail := []string{l}
+	pad := strings.Repeat(" ", textColumn)
+	for _, c := range strings.Split(after, "\n") {
+		text, hung := strings.CutPrefix(c, pad)
+		if !hung || text == "" || text[0] == ' ' || strings.HasPrefix(text, "fix: ") || strings.HasPrefix(text, "install: ") {
+			break
+		}
+		detail = append(detail, c)
+	}
+	return strings.Join(detail, "\n")
 }
 
 // needExact fails unless some line of the output, trimmed, is exactly want: a fix is a command to
@@ -253,8 +280,13 @@ func TestDoctorTemplateOfAnotherVersionFails(t *testing.T) {
 	if !strings.Contains(l, "99.0.0") {
 		t.Errorf("the template line does not give the template's version: %s", l)
 	}
+	// Resolve's reason hangs under the template line: the words are looked for there, never in
+	// the whole output, whose paths may hold them.
+	detail := detailOf(out, l)
 	for _, want := range []string{"install the matching release", "STRIDAL_FRAMEWORK", "--template-dir"} {
-		needLine(t, out, want)
+		if !strings.Contains(detail, want) {
+			t.Errorf("the template line's detail does not name %q:\n%s", want, detail)
+		}
 	}
 	needLine(t, out, "note", "tools", "no template")
 	if !errors.Is(err, errDoctorFailed) {
@@ -423,7 +455,7 @@ func TestDoctorGHAnyFailureWarnsWithLogin(t *testing.T) {
 		"",
 	} {
 		out, l := ghLine(t, stderr)
-		if !strings.Contains(l, "warn") {
+		if subjectLine(l, "gh", "warn") == "" {
 			t.Errorf("gh failing with %q is not a warn: %s", stderr, l)
 		}
 		if f := strings.TrimSpace(needLine(t, out, "fix: gh auth login")); f != "fix: gh auth login" {
