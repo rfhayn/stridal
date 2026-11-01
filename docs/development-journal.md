@@ -14,6 +14,407 @@ entries with one number on `main`.
 
 <!-- Newest session goes below this line. -->
 
+## Session 20 — 2026-10-31 — Rich — S20: S19's leftovers landed; evidence-gated ADRs
+
+**Totals.** Gate 0 min (a row's gate was CANNOT CHECK, so this is a floor); cost $0 (a row's cost was CANNOT CHECK, so this is a floor).
+
+**Rows folded.** OPS-179 (#376); OPS-194 (#376); OPS-200 (#378); OPS-215 (#376).
+
+**What happened.** S20 landed S19's two leftovers and the evidence-gated ADR check, and put the owner's decisions of the day on record. The owner ran past the quota stop (7-day reading 89% at the start, 95% by the afternoon; reset Wed 2026-11-04 07:00 ET). OPS-179 needed two more review rounds than its cap (the owner raised it 2→3→4) before the path-substring class was held by a guard. OPS-194 found its race twice more than #370 showed: a close, an auto-close ask and a missed poll, each made deterministic and shown failing first by the owner outside the sandbox. OPS-215 and OPS-200 ran as cloud lanes, the first for this repo, and were reviewed and fixed on the Mac. OPS-200 took four rounds of one class, closed only when round 3 turned both of its rules into allow-lists (insight `review/class-recurs-in-one-mechanism`). The batch #376 (OPS-179, OPS-194, OPS-215) and #378 (OPS-200) merged on the owner's gates.
+
+**Decisions.** The owner closed team-queue #173 and #182 as superseded by roadmap v2; made the Raw insight `review/no-aggregate-view` a new row (OPS-215) rather than Not promoted; chose ADR-0022's option B, which stays Proposed until OPS-203 under PRAC-0023; and split OPS-200 out of the batch when it stopped at its cap.
+
+**Surprises.** The sandbox held the main session's commands too, where `excludedCommands` names them: every gate ran in the owner's terminal, worktrees went under `$TMPDIR` because `.claude/worktrees/` refused `.claude/agents/*`, and the pull of #378 half-applied on `.claude/skills/` (the owner finished it with a reset). The local sandbox now allows unix sockets and `*.localhost` (`.claude/settings.local.json`), which fixed the panel test's DNS lookup but not its tmux lanes. Evidence recorded for OPS-199 in the insight `sandbox/main-session-exclusions`. I also gated the batch once before opening its PR and running `batch.sh record`, which would have changed the head; the owner stopped it and the playbook's order was followed on the second run.
+
+**Found and owned.** #374 (three macOS CI flakes outside OPS-194), #375 (checks-double-pass fails `health-lines`' coauthor fixture on Ubuntu, its first run that executed), #377 (OPS-200's at-risk free text, a known limit). dependency-audit's re-run passed.
+
+**Flow.** OK flow 30d to 2026-10-31: cycle 1.8h median, lead 3.3h, 44.1 merges/wk, change-fail 5.5%, approval wait 3.2h, review rounds 2, spend $890.37/wk, 6 in flight (excludes unpriced models: claude-haiku-5-5).
+
+**Cost.** This session ~$43.77 at list price, this machine only: builder (claude-opus-5-5) $17.33, session (claude-opus-5-5) $14.81, reviewer (claude-opus-5-5) $10.29, general-purpose (claude-opus-5-5) $1.21, reviewer-docs (claude-sonnet-5-5) $0.12. The two cloud lanes' cost is not in it (CANNOT CHECK here). The reviewer's $10 caught nine mediums across three rows.
+
+**Team queue.** #173 → REL-1 closed: superseded by roadmap v2 (#371). #182 → REL-1 closed: superseded by roadmap v2 (#371).
+
+**What's next.** S21: OPS-199 (the owner's Mac spikes, with today's sandbox evidence) and OPS-165 (the ruleset) first, then binary drift (OPS-183, OPS-184, OPS-201). Before Gate B the owner cites or accepts at risk ADR-0020 item 3 and ADR-0021 items 1–2, and names `adr-evidence.sh` in PRAC-0023's Enforcement section.
+
+### OPS-179 — the doctor tests stop depending on where the repository is checked out
+
+- **PR**: #376
+- **Session**: S19, started 2026-10-31 05:31 ET
+- **Review**: 4 rounds, peak medium, cap 4 (raised by the owner from 2 to 3, then to 4), converged in round 4; its two lows were fixed after convergence (the gh line's level matched by column, and `findLine` now refuses a bare word, so the class is held by a guard, not a comment)
+- **Gate**: CANNOT CHECK — no full gate passed before this commit (the sandboxed run of 2fd4e44f failed on `ps` and git's cache, not the code); the S20 batch PR's gate on its head, run outside the sandbox, is the receipt
+- **Cost**: CANNOT CHECK — a batch lane shares the orchestrator's session id, so no cost is the row's own
+- **Session start**: CANNOT CHECK — a batch lane runs no session-start marker
+
+#### What happened
+
+The doctor tests picked lines by substring (`lineWith(out, "own")`), and doctor's `template` line prints the checkout's path (a tool line prints the test's `$TMPDIR` path), so a checkout under a path holding the word failed or falsely passed them (#359). A helper, `subjectLine(out, subject, levels...)`, matches a line by its level and subject COLUMNS, and `findLine` applies it whenever a lookup's first part is a level label. `needLine` and `needNoLine` both look a line up through `findLine`, and an absence assert on a bare subject asks `subjectLine`. It was shown failing first: TestDoctorOwnOrPluginModelIsNotCheckedForDrift failed from this lane (`.claude/worktrees/fix-359-doctor-own-path`). From a copy at a path holding own, model, drift, jq and FAIL, origin/main's test failed three doctor tests. The tip round 3 reviewed (cb9fbd68) still failed eight doctor tests from a checkout and `$TMPDIR` holding config, trust, running, build, serves, registry, login, agent, drift and warn; with round 3's findings fixed, every doctor test passes from that path and from a plain one.
+
+#### Decisions
+
+- Close the class, not the line (PRAC-0010): round 1 found the same substring match in four more absence asserts, round 2 in the presence lookups, and round 3 in `needNoLine`, which round 2 had left on substrings. One lookup, `findLine`, now serves both helpers, so a present line and an absent one are matched alike and a new assert inherits it.
+- Lookups by a fixed text holding a colon or spaces (`fix:`, `gh auth login`) stay as substrings: a path holding them is implausible (the reviewer agreed).
+- After round 4 converged, the class got a guard rather than a comment: `findLine` panics on a lookup with no level label whose one part is a bare word (no space, no colon), so a future `needNoLine(t, out, "drift")` fails loudly; it was shown failing first with exactly that call. The two lookups it caught (`STRIDAL_FRAMEWORK`, `--template-dir`) now search the FAIL template line's hung detail (`detailOf`), not the whole output.
+- The drift line's repeat of the template's warning is not looked up by line: the warning is counted once in the output and found on the template line, which already proves the drift line does not hold it.
+
+#### Surprises
+
+#359 was closed by the S18 close PR (#369) while the test still had the bug: a closed issue is not a fix (AGENTS.md rule 1). Round 2, at the cap, found a medium (the presence lookups), so the row left the S19 batch; the owner raised the cap to 3. Round 3 found two mediums (`needNoLine` still matched substrings, and the drift-line warning lookup), and the owner raised the cap to 4. Fixing round 3's findings showed `needNoLine(t, out, "ok panel")` could never match (the columns are padded), so that assert proved nothing; it is now a column lookup.
+
+#### Insights
+
+None.
+
+### OPS-194 — the macOS lane-close flake: the socket test waits for a current reading
+
+- **PR**: #376
+- **Session**: S20, started 2026-10-31 13:28 ET (the lane's start: the marker did not run, no PR)
+- **Review**: 2 rounds, peak medium, cap 2, converged in round 2; its reuse low was fixed after convergence
+- **Gate**: CANNOT CHECK — no full gate passed before this commit (the sandboxed run of 2fd4e44f failed on `ps` and git's cache, not the code); the S20 batch PR's gate on its head, run outside the sandbox, is the receipt
+- **Cost**: CANNOT CHECK — a lane shares the orchestrator's session id
+- **Session start**: CANNOT CHECK — the marker did not run (the lane opened no PR)
+
+#### What happened
+
+#370: `TestLaneCloseThroughTheSocket` failed on macOS CI at b512f3fb (run 41168416861) with
+`[LANECLOSE-1-S2] close: lane clean is not closed: claude is idle (not a current reading)`. No Go
+source holds that text whole: `closeHeld` (`state/closeheld.go`) returns `"claude is " +
+statusWords(status, approx)`, and `statusWords` appends ` (not a current reading)` when the lane's
+`claude agents` reading is approximate. A reading is current while `now - agentsOKAt` stays within
+`2*max(AgentsSlow, next) + slowestRecentPoll()` (`agentsFresh`, `model.go`). `agentsOKAt` is set
+when a poll lands, and `slowestRecentPoll` counts only polls that have landed, so at the test's
+ticks (`AgentsSlow` 250 ms) a single poll held up for about 600 ms on a loaded runner leaves every
+lane's reading approximate until it lands. That happened between `clean`'s dry run and its close.
+The product is right to refuse: a close of a running lane is decided on a current reading (D2), and
+the refusal changes nothing. The race was the test's, so only the test changed.
+
+The test now waits on the reading it needs:
+- `closeRead` asks for the close again while the panel refuses it `held` with `(not a current
+  reading)` (`notCurrent`), until a current reading decides it (testwait, 30 s scaled). Every
+  close of a running lane goes through it (`clean`, `dirty`, `busy`, both `bg` closes, the first
+  `unmerged`). The exited `unmerged` lane's closes do not, since its verdict reads no reading.
+- `slow`'s close, in a goroutine, asks again the same way until the test cancels it.
+- Auto-close (`autoclose.go`) takes the verdict once, when the pull request leaves the open list,
+  and asks again only every `askRecheck` (5 min). A stale reading at that moment words bgauto's ask
+  `claude is idle (not a current reading)`, and the test's 20 s wait for "Review group 2" would
+  time out. The test now merges again under new PR numbers after such an ask (the PRs listed open,
+  then not), so each round's asks are told apart by the number they name, until a round's check is
+  made on a current reading (30 s scaled). Auto-close checks a lane only when one of its polls saw
+  the PR open and the next saw it gone, so each round first waits for two more autoclose polls
+  (`Options.OnPoll`) after the view lists the PRs open. Otherwise a reopened pair could come and go
+  between two of its polls, and the round would wait for a check that never comes (review round 1).
+
+The evidence (the owner ran it outside the sandbox: the panel's tests resolve
+`stridal.localhost`, which the agent sandbox's DNS block refuses). A temporary patch holds every
+`claude agents` poll after `clean`'s dry run until `clean`'s verdict reads stale, then releases it
+a scaled second later:
+- origin/main's test with that patch, `STRIDAL_TEST_SLOW=4`: **FAIL**, exit 1, at
+  `[LANECLOSE-1-S2] close: lane clean is not closed: claude is idle (not a current reading)`, #370's
+  message exactly (line 575 in the patched file, 562 unpatched).
+- The fixed test with the same patch, `STRIDAL_TEST_SLOW=4`: PASS, exit 0.
+- The fixed test, `-count=20`: PASS, exit 0; with `STRIDAL_TEST_SLOW=4`: PASS, exit 0.
+- `go -C framework test -short ./internal/panel/...`: all 11 packages ok, exit 0.
+
+That run covered the closes. The auto-close rounds were added after it; their evidence uses a
+second patch that holds the polls before the merge, until bgauto's verdict reads stale, then
+releases them one second later. A third patch adds the one-tick miss on top of that: at the first
+reopen, the stub holds the open-list answer until auto-close is parked in its `OnPoll`, and frees it
+one second later. That is long after the next PR poll has dropped a pair the old round removed at
+once. The binaries are `panel-before-autoclose-repro.test` (origin/main, expected to time out at
+the asks), `panel-before-autoclose2-repro.test` (commit 4e65a773, expected to time out at round 1's
+asks), `panel-after-autoclose-repro.test`, `panel-after-autoclose2-repro.test`,
+`panel-after-repro.test` and `panel-after.test`, all under `/tmp/claude-501`. The orchestrator
+records their run with the PR. Review round 2's reuse fix landed after that run and is covered by
+the batch gate's full test run: the test counts auto-close's polls with the counter
+`startPanelWith` already wires (`p.polls`), not one of its own.
+
+The three other red macOS runs on main are **not** this row's. 48539ee9 (41160610847):
+`TestPluginChecksPassInScaffoldedProject`, whose `gate` check said "the locking step left no
+locked directory" (exit 141). 598c638a (41158425886): `TestATestBinaryUnderAHookLeavesItsRepositoryAlone`
+and `TestOuterSeesEachChange`, on `.git/objects/maintenance.lock`. fc612cf9 (41140219305): those
+two again, and `TestGateLogsNoSignalItDidNotSend`. They are owned by #374.
+
+#### Decisions
+
+- Test only, no product change: the panel refuses a close without a current reading by design
+  (D2), and the refusal changes nothing, so asking again is safe. The alternative was to stretch
+  the freshness window for tests. That is still a race, only a wider one, and it would slow every
+  poll while hooks flow.
+- The reproduction is a patch, not a permanent step. A step holding the polls up in every run would
+  test stale-reading refusal, which no LANECLOSE scenario names.
+- Auto-close is retried by merging again, not by waiting the 5 min `askRecheck`. The new PR numbers
+  tell each round's asks apart, so a stale ask left from an earlier round is never read as this
+  round's answer.
+- A round waits until auto-close has seen the PRs open (two `OnPoll` counts), rather than giving up
+  after a few seconds and trying again. `OnPoll` exists so that a test counts a source's polls
+  instead of guessing how long they take. A timed give-up would guess, and a check slower than the
+  guess would cost a round.
+
+#### Surprises
+
+- Only one of the four red macOS runs (#370 said 4 of the last 6) was this test. The others are
+  three different flakes.
+- The panel's tests cannot run in the agent sandbox: they dial `stridal.localhost`, and the sandbox
+  blocks the lookup (`no such host`, or `operation not permitted` with Go's own resolver).
+
+#### Insights
+
+1 row(s), moved to the insights log.
+
+### OPS-200 — an Accepted ADR rests on cited evidence
+
+- **PR**: #378
+- **Session**: S20, started 2026-10-31 13:36 ET
+- **Review**: 4 rounds, peak medium, cap 4 (raised by the owner from 2 to 3, then to 4), converged in round 4; three of its four lows fixed after convergence, one a known limit (round 1: four medium, two low; round 2: two medium, four low; round 3: two medium, two low; each fixed; the lane ran in the cloud, its review on the owner's Mac)
+- **Gate**: CANNOT CHECK — no full gate passed before this commit; the PR's gate on its head is the receipt
+- **Cost**: CANNOT CHECK — a cloud lane; usage-report.sh reads the Mac's sessions, not this one
+- **Session start**: CANNOT CHECK — a cloud lane, no session-start marker
+
+#### What happened
+
+A new check, `template/.claude/checks/adr-evidence.sh`, holds PRAC-0023's practices 1 and 2: an
+Accepted ADR numbered `ADR_EVIDENCE_FROM` or later has a `## Rests on` section whose every item
+cites a spike id (a first-cell id in an `ADR_EVIDENCE_SPIKES` table), a PR `#N` or a receipt, or
+reads `— accepted at risk by the owner (YYYY-MM-DD)`; none is pending, and none is untested without the owner's
+acceptance. Proposed and Superseded ADRs are not judged, so ADR-0022's untested items pass. Its
+self-test failed first on an Accepted ADR with no section and on one with a pending item (exit 1
+each), and passed on a cited one and an accepted-at-risk one; with its section guard or its
+pending branch deleted, the self-test fails by name. `new-adr` step 2a drafts the section, and
+`docs/adr/TEMPLATE.md` (both copies) carries it. This repo sets `ADR_EVIDENCE_FROM="0016"` and
+`ADR_EVIDENCE_SPIKES="docs/plans/s19-spikes.md"`.
+
+
+**Review round 1** (on the Mac, 2026-10-31: four medium, two low), all fixed at the source:
+- The item test was a deny-list: any `#N` or the word "receipt" passed, so "no receipt yet",
+  "TBD, see #400" and "S1a would show it, not run yet" passed. It is now an allow-list of two
+  shapes, and nothing else passes: CITED (**passed** with a spike id, a PR `#N`, or
+  `receipt <commit>`) or AT RISK (`— accepted at risk by the owner (YYYY-MM-DD)`, the form
+  ADR-0016 to ADR-0020 use). An item that negates the acceptance ("not accepted at risk") fails.
+- A held ADR whose Status the parser could not read (`**Accepted**`, `accepted`, no `- `) was
+  skipped. Status is now read in each of those forms, and a held ADR with no Status line, or one
+  that is not Proposed, Accepted or Superseded, fails (closed).
+- The waiver had no addressee. `ADR_EVIDENCE_KNOWN` stays (the check passes today), its KNOWN line
+  says WAIVED and names `docs/owner-queue.md`, and the owner queue has the item of 2026-10-31
+  "OPS-200 found ADR-0020 Rests on item 3 and ADR-0021 items 1–2 cite no evidence", due before
+  Gate B, which `.claude/project.conf` names beside the entry.
+- AGENTS.md's ADR-numbering row has "(one space)" and "open PRs" back, and the commits line its
+  `(`PANEL-19:`)` example; the row was reworded to fit the 16000-byte ceiling (15999).
+- The template, `new-adr` and the ADR TEMPLATE say **untested**, as PRAC-0023 and ADR-0022 do;
+  the check treats **untested** and **pending** alike, as not yet evidence. PRAC-0023 is the
+  owner's record, so its Enforcement line ("Nothing. You." until OPS-200) is an owner-queue item
+  of 2026-10-31, not an edit here.
+Each probe that passed wrongly is a self-test case: run against 301704ad's check body, fourteen of
+them pass where they must fail (twenty self-test lines fail in all, the rest on the new
+wording); a mutation of each new branch
+(the **passed** requirement, the deny-list back, the at-risk substring, an unknown or missing
+Status skipped, the pending word, the waiver wording) fails the self-test by name.
+
+**Review round 2** (on the Mac, 2026-10-31: two medium, four low; the owner raised the cap to 3).
+Round 1's allow-list still matched **passed** and a citation as tokens anywhere in an item, and
+the item parser still failed open; round 2 closed that class by reading the template's FORM:
+- An item is CITED only as `<assumption>: <cite>, **passed**` followed by `.`, ` (` or its end,
+  the cites (a spike id from the tables, `#N`, `receipt <commit>`) right after the colon and joined
+  by ` and ` or ` to `. So "has not **passed** yet; see #400", "S1a, never **passed**",
+  "**passed**? No, it failed in #400", "**passed** (https://example.com/doc#3)", "see `#1`",
+  "same as item #2, **passed** there", "no receipt for defaced runs" and "S1a-like" cite nothing.
+  ADR-0016 to ADR-0019 pass as written; ADR-0020 and ADR-0021 stay KNOWN at 1 and 2.
+- The item parser fails closed: a `* `, `+ `, numbered or indented `- ` line in a Rests on section,
+  or a column-0 paragraph after a blank line once the items begin, fails by its line number
+  instead of joining the item above. Trailing blanks and CRs are dropped before joining, so a
+  wrapped at-risk line with a trailing space reads as written.
+- The at-risk date is a real date (`2026-99-99` and `0000-00-00` fail); only the bold
+  **untested** and **pending** mark an item, so "A pending tool call is cancelled…: S1a,
+  **passed**." passes; a Status naming two of Proposed, Accepted and Superseded
+  ("Proposed → Accepted") fails.
+- TEMPLATE.md (both), `new-adr` step 2a and the template `project.conf` give the exact form; step 3
+  says an untested item stays Proposed unless accepted at risk by the owner.
+Each review probe is a self-test case. Run against 3bee594f's check body, 22 of the 25 new
+self-test lines fail; the other three (a CRLF file pending and cited, a cited item marking a case
+**untested**) were already right there. Eleven mutations each fail the self-test by name: the
+colon anchor, the trailing anchor, a range end of any text, the round-2 token match, the list-line
+rule, the paragraph rule, the loop ignoring an unreadable line, any-digit dates, bare words for
+**untested**, the two-Status rule and the trailing-blank strip.
+
+**Review round 3** (on the Mac, 2026-10-31: two medium, two low; the owner raised the cap to 4 as
+the last round). Rounds 1 and 2 each found a form matched somewhere INSIDE an item, and a parser
+that listed the line shapes it refused; round 3 flips both to allow-lists, so a new shape fails
+without a new rule:
+- An item passes only as a WHOLE, anchored at both ends. CITED is
+  `<assumption>: <cites>, **passed**`, then nothing, `.`, or ` (<detail>)` and `.`: the assumption
+  holds no sentence end (`e.g.` and `i.e.` aside), no `: ` outside a code span and no `<!`, and
+  the detail is a closed list (`as recorded above`/`below`, `both runs` and its kin). So
+  "X: unverified. Y: S1a, **passed**.", "Y: unverified; X: …", "X: unverified, Y: …",
+  "… **passed**. Not really.", "… It did not pass on Linux.", "… (but Y is unverified).",
+  "… <!-- Y: unverified -->" and an indented sentence after a cited item cite nothing. AT RISK is
+  the whole shape ADR-0016 to ADR-0020 write: `<assumption>: …**untested**… — accepted at risk by
+  the owner (YYYY-MM-DD)`, then nothing, `.`, or `; tested by <ROW-N>` and nothing, ` (<note>).` or
+  `, <clause>`; it names **passed** nowhere and the acceptance once.
+- The Rests on section reads only: a column-0 `- ` item, a continuation indented two spaces (or a
+  tab) that is no list marker, quote, fence, table, HTML or heading, a blank line, and column-0
+  prose before the first item. Every other line fails by its number: a `>` quote before or after
+  the items, a `|` row, a `<` line, a column-0 line after an item (directly under it or after a
+  blank), and a fence, whose block is never read as items.
+- The at-risk date exists for its month, leap years counted (awk, no `date`): `2099-02-31` and
+  `2027-02-29` fail, `2028-02-29` passes. `#0` is not a PR, and `receipt <hex>` must name a commit
+  (`git cat-file -e <hex>^{commit}`) in the repository the check runs in, or fail naming why
+  (`deadbee`, the hex word `acceded`, a run outside a git checkout); a PR number is not checkable
+  offline, which the header says.
+- TEMPLATE.md (both), `new-adr` step 2a and the template `project.conf` state the whole-item grammar
+  and the allowed line shapes; an ADR filled from TEMPLATE.md passes.
+Each probe is a self-test case. Run against 48b8a95a's check body, 28 self-test lines fail: 25 of
+the 29 new cases (the other four, `e.g.`/`i.e.`, a `: ` in a code span, 2028-02-29 and the
+at-risk shapes the ADRs write, must pass and do) and three reworded ones. ADR-0016 to ADR-0019
+pass as written; ADR-0020 and ADR-0021 stay KNOWN at 1 and 2. Ten mutations each fail the
+self-test by name: the `^` anchor, the `$` anchor, `>` lines re-allowed, fences re-allowed, the
+date-exists rule, receipt resolution, an open detail, **passed** in an at-risk item, `: ` in the
+assumption, and a column-0 line joined to the item above.
+
+**Review round 4** (on the Mac, 2026-10-31, on bc0c9746: converged, four low). Three are fixed
+after convergence; the fourth is a known limit:
+- The character after a `.`, `;`, `!`, `?` or `:` in a CITED assumption was "anything but a
+  space, `<` or a backtick", and `[:space:]` reads by the locale: `X is unverified.` and a no-break
+  space passed under `LC_ALL=C` and failed under `en_US.UTF-8`. The partner is now an allow-list
+  spelled out in ASCII (a letter, a digit, `/`, `_`, `)`, `]` or `-`), and a cited item holding
+  the full-width or ellipsis marks ASCII cannot see (。 ； ： ． …) cites nothing. So a zero-width
+  or no-break space after a `.` cites nothing in both locales.
+- The negation and the bold **untested**/**pending** marker were read across code spans, and the
+  negation in any item: "An item not accepted at risk fails the check: #372, **passed**." and
+  "The guard blocks a `` `**pending**` `` marker: #372, **passed**." failed. Both are now read
+  outside code spans, and the negation only in an item that names "by the owner".
+- Two refusals of the at-risk form had no fixture: `<!` after the row, and the form written twice
+  in one item. Each has an ebad case now ("is untested").
+Each probe is a self-test case. Run against bc0c9746's check body, 10 self-test lines fail under
+`LC_ALL=C` and 9 under `en_US.UTF-8` (the no-break space was refused there already, which was the
+finding): the seven marks, the rule named in prose, the marker in a code span and a negation in a
+code span. The two at-risk fixtures pass there, as they must; their mutations prove them. Seven
+mutations each fail the self-test by name: `|<!` dropped (1 line), `-eq 1` as `-ge 1` (1), the old
+partner class back (2), the full-width refusal dropped (5), the "by the owner" guard dropped (1),
+the marker read across code spans (1), and the negation read across code spans (1). ADR-0016 to
+ADR-0019 pass as written in both locales; ADR-0020 and ADR-0021 stay KNOWN at 1 and 2; ADR-0022
+(Status "Proposed. **Option B, … chosen by the owner 2026-10-31**; acceptance at Gate C …", from
+the S20 batch merged in) reads Proposed and is not judged.
+
+#### Known limits
+
+- The at-risk form keeps two free regions: the text before its bold marker and the `, <clause>`
+  after `tested by <ROW-N>` (review round 4, low). ADR-0016, ADR-0017, ADR-0019 and ADR-0020 write
+  sentences there, so closing them would fail the Accepted ADRs as written. The trust anchor is
+  the literal dated owner phrase, `— accepted at risk by the owner (YYYY-MM-DD)`, which the check
+  cannot attribute to the owner whatever the text around it says, so free text there opens no new
+  route; the direct negation is refused. Owned by #377.
+
+#### Decisions
+
+- 2026-10-31, round 2: the CITED form is anchored on both sides, not only by
+  `<cites>, **passed**`. Before the cites, a colon (the template's `<assumption>: <result>`): the
+  bare position still passed "same as item #2, **passed**." After **passed**, `.`, ` (` or the
+  item's end: otherwise "S1a, **passed**? No, it failed." passed. Every cited item in ADR-0016 to
+  ADR-0020 already has that shape, so the cost is none today; a writer who puts the cite before
+  the colon gets the check's message with the form to write.
+- 2026-10-31, round 2: an indented list line fails as well as a column-0 `* `, `+ ` or numbered
+  one. A nested `- ` under a cited item was otherwise joined into it and passed with it; no
+  continuation line in ADR-0016 to ADR-0021 starts with a list marker. The alternative, reading
+  nested items as items, would invent a grammar the template does not prescribe.
+- 2026-10-31, round 3: both rules are allow-lists, not another guard. An item is matched whole
+  (`^…$`) and the section reads only four line shapes; anything else fails. The alternative, a
+  fourth round of refusals (sentence ends, comments, quotes, fences each named), is the class
+  three rounds kept finding: a shape nobody listed passed. The cost: a writer's free text after
+  **passed** fails, so a detail that does not point at the result goes in the assumption or a
+  separate item.
+- 2026-10-31, round 3: a trailing parenthetical after **passed** is a closed list
+  (`as recorded above`, `as recorded below`; both, all, each or every, then run(s) or case(s)),
+  not prose minus the words "unverified", "untested" and "not". The closed list is the narrower
+  rule; ADR-0020 item 1 "(as recorded above)" is the only real one and passes. A refused-word list
+  would pass "(Linux skipped)".
+- 2026-10-31, round 3: the assumption before the colon may hold no `: ` outside a code span,
+  beyond the asked sentence-end rule: "X: unverified, Y: S1a, **passed**." otherwise passed with a
+  comma where the probes used `.` and `;`. ADR-0018's `onFailure: "block"` is inside a code span.
+- 2026-10-31, round 3: the at-risk form requires a colon and a bold phrase holding untested or
+  pending before the acceptance (every real at-risk item has both; ADR-0020's is
+  **The parser is untested**), and its prefix is free text, because ADR-0016's item 4 has three
+  sentences before it. What follows the date is `; tested by <ROW-N>` and nothing, a
+  parenthetical or a `, ` clause (ADR-0017, ADR-0019 run on for sentences after that clause).
+- 2026-10-31, round 3: an unresolvable receipt and an impossible date fail with their own
+  message and are not waivable by ADR_EVIDENCE_KNOWN, which waives only "cites nothing".
+- 2026-10-31, round 4: the partner of a sentence mark is the letters and digits written out
+  (`ABC…xyz0123456789`), not `[A-Za-z0-9]` or `[[:alnum:]]`, because a range and a class read by
+  the locale too. The full-width and ellipsis marks are refused anywhere in a cited item, not only
+  after a sentence end: the cites and the detail are ASCII, so anywhere in the item is the
+  assumption, and `grep -F` reads them alike in both locales. The alternative, the marks inside the
+  ERE's bracket, matches bytes under `LC_ALL=C` and characters under UTF-8, the finding again. The
+  cost: `etc.: S1a` and `X... Y` no longer cite; neither appears in ADR-0016 to ADR-0021.
+- 2026-10-31, round 4: the at-risk form's own bold-marker test still reads the whole item, code
+  spans included. Only the negation and the untested/pending branch were asked to move outside
+  code spans; an at-risk item still needs the owner's dated phrase, so a marker in a code span
+  there opens no route.
+
+- A new check rather than a branch of `adr-numbering.sh`: run.sh registers it by its file, and its
+  fixtures stay apart from the numbering ones. The AGENTS.md row for ADR numbering names it (both
+  files: the check ships, keyed off by default in a project, `ADR_EVIDENCE_FROM=""`, so an adopting
+  project's Accepted ADRs do not fail on update). The root file sits at 15999 bytes, one under its
+  16000-byte ceiling: the row was compacted (round 1 restored the example the first draft dropped).
+- ADR-0020 (item 3, "re-checked per version") and ADR-0021 (items 1 and 2: "the S19
+  classification" and "S19 built the doc", where S19 is a session, not a spike) cite no spike, PR
+  or receipt. The ADRs were not edited: `ADR_EVIDENCE_KNOWN="0020:1 0021:2"` in this repo's
+  `.claude/project.conf` waives them, prints each as KNOWN (waived, not passed) on every run, and
+  fails a count that rises or falls. The owner-queue item of 2026-10-31 ("OPS-200 found ADR-0020
+  Rests on item 3 and ADR-0021 items 1–2 cite no evidence") is their addressee: the owner cites
+  each or accepts it at risk before Gate B, then empties the entry. ADR-0021's item 2 says
+  **passed** but names no spike, PR or receipt, so the allow-list counts it uncited too.
+
+#### Surprises
+
+The row's wording (a spike id, a PR or a receipt) is narrower than PRAC-0023 practice 1, which also
+counts a measurement or a doc page that was opened; that gap is why ADR-0021's first item fails.
+
+#### Insights
+
+None.
+
+### OPS-215 — the aggregate-review row and S20's owner decisions on record
+
+- **PR**: #376
+- **Session**: S20, started 2026-10-31 12:55 ET
+- **Review**: 1 round, peak low, cap 2, converged in round 1; its two lows were fixed in the batch
+- **Gate**: CANNOT CHECK — no full gate passed before this commit (the sandboxed run of 2fd4e44f failed on `ps` and git's cache, not the code); the S20 batch PR's gate on its head, run outside the sandbox, is the receipt
+- **Cost**: CANNOT CHECK — the cloud lane has no `usage-report.sh` reading for this row; filled at the close
+- **Session start**: CANNOT CHECK — the cloud lane ran no session-start marker
+
+#### What happened
+
+Records only, no code. The row adds OPS-215 to Phase 5's "Judgment gates and typed context", after
+OPS-198: an aggregate review that reads the cost and review-round records and the line counts by
+language and bucket every few sessions at close, and flags a trend against the ADRs that no single
+diff shows. It exists because of S19's case: 31.5k lines of shell, about 5.5k doing a program's job,
+never drew a finding, because every review judged one diff against ADR-0006. It depends on OPS-210,
+so its role ships with an eval suite. It also records the owner's S20 decisions on the insight and
+on ADR-0022.
+
+The row was written by a cloud lane, from `origin/main`, on `ops/ops-215-aggregate-review`. The
+owner's Mac reviews, gates and merges it.
+
+#### Decisions
+
+- **A new row, not Not promoted** (the owner, S20, 2026-10-31): the insight
+  `review/no-aggregate-view` names a real gap no existing row, ADR or PRAC owns, so it becomes
+  OPS-215 and the insight reads `Deferred → owned by OPS-215`. Risk low: it adds an agent that
+  reports, and blocks nothing.
+- **ADR-0022: option B, the feed in files** (the owner, S20, 2026-10-31), as recommended. It stays
+  **Proposed**: under PRAC-0023 a decision is accepted only on the evidence its assumptions name,
+  and both items under its *Rests on* are untested (the hook-write one by OPS-199, the polling one
+  by OPS-204, the panel feed row). It is accepted at OPS-203 once OPS-199 has tested the hook-write assumption, and
+  amended there if a spike fails it. Until then PANEL-25 is unchanged on the plan, and the ADR
+  index's status is left as it is.
+
+#### Surprises
+
+The fragment's **PR** and **Session** fields admit no "not yet": `.claude/lib/fragments.sh` wants
+`#N` and the marker's time, and a cloud lane that opens no PR and runs no marker has neither. Both
+carry a marked placeholder for the owner's Mac to replace.
+
+#### Insights
+
+None.
+
 ## Session 19 — 2026-10-31 — Rich — re-architecture on record; hooks fail closed
 
 **Totals.** Gate 0 min (a row's gate was CANNOT CHECK, so this is a floor); cost $0 (a row's cost was CANNOT CHECK, so this is a floor).
