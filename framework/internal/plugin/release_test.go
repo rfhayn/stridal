@@ -182,15 +182,14 @@ func TestReleaseWorkflowKeepsTheWriteTokenAwayFromTheBuild(t *testing.T) {
 	build, reproduce, draft := job("build", "reproduce"), job("reproduce", "draft"), job("draft", "")
 	// Only what is listed: an allowlist, so a scope nobody thought of cannot pass.
 	_, jobs, _ := strings.Cut(src, "\njobs:\n")
-	names := regexp.MustCompile(`(?m)^  ([^\s#:]+):\s*$`).FindAllStringSubmatch(jobs, -1)
-	if len(names) != 3 {
+	if names := jobKeys(jobs); len(names) != 3 {
 		t.Errorf("release.yml has %d jobs, want build, reproduce and draft alone: %q", len(names), names)
 	}
 	head, _, _ := strings.Cut(src, "\njobs:")
-	if got := permissionLines(head, ""); len(got) != 1 || got[0] != "contents: read" {
+	if got := permissionLines(head); len(got) != 1 || got[0] != "contents: read" {
 		t.Errorf("the workflow's permissions are %q, want exactly contents: read", got)
 	}
-	if got := permissionLines(draft, "    "); len(got) != 1 || got[0] != "contents: write" {
+	if got := permissionLines(draft); len(got) != 1 || got[0] != "contents: write" {
 		t.Errorf("the draft job's permissions are %q, want exactly contents: write", got)
 	}
 	for name, body := range map[string]string{"build": build, "reproduce": reproduce} {
@@ -243,6 +242,37 @@ func TestEveryWorkflowsActionsArePinned(t *testing.T) {
 	}
 }
 
+func TestJobKeysAndPermissionLinesReadWhatTheyClaim(t *testing.T) {
+	base := "  build:\n    runs-on: x\n  draft:\n    runs-on: x\n"
+	for _, c := range []struct {
+		name, jobs string
+		want       int
+	}{
+		{"block jobs", base, 2},
+		{"a commented job is no job", base + "  # extra:\n  #   runs-on: x\n", 2},
+		{"a flow-form job is a job", base + "  extra: {runs-on: x}\n", 3},
+		{"a quoted key is a job", base + "  \"extra\":\n    runs-on: x\n", 3},
+	} {
+		if got := jobKeys(c.jobs); len(got) != c.want {
+			t.Errorf("%s: %q, want %d jobs", c.name, got, c.want)
+		}
+	}
+	for _, c := range []struct {
+		name, text string
+		want       []string
+	}{
+		{"one block", "    permissions:\n      contents: write\n    steps: []\n", []string{"contents: write"}},
+		{"an inline value", "permissions: write-all\n", []string{"write-all"}},
+		{"flow form", "    permissions: {contents: write}\n", []string{"{contents: write}"}},
+		{"two blocks", "    permissions:\n      contents: write\n    steps:\n      permissions:\n        id-token: write\n", []string{"contents: write", "id-token: write"}},
+		{"none", "    steps: []\n", nil},
+	} {
+		if got := permissionLines(c.text); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
 func TestUnpinnedActionsReadsEveryFormOfUses(t *testing.T) {
 	const sha = "3d3c42e5aac5ba805825da76410c181273ba90b1"
 	cases := []struct {
@@ -266,6 +296,7 @@ func TestUnpinnedActionsReadsEveryFormOfUses(t *testing.T) {
 		{"flow form", "- {uses: actions/checkout@v7, with: {fetch-depth: 0}}", 1, 1},
 		{"flow form, pinned", "- {uses: actions/checkout@" + sha + "} # v7", 1, 0},
 		{"an image on a tag", "- uses: docker://alpine:3", 1, 1},
+		{"two uses on one line, the second on a tag", "- [{uses: actions/a@" + sha + "}, {uses: actions/b@v1}] # v7", 2, 1},
 	}
 	for _, c := range cases {
 		refs, bad := unpinnedActions(c.line + "\n")
@@ -312,7 +343,8 @@ func TestActionFilesIteratesWhatGitHubRuns(t *testing.T) {
 	}
 }
 
-// actionFiles lists the files whose uses GitHub runs.
+// actionFiles lists the files whose uses GitHub runs. A local action outside .github/actions is not
+// followed from the uses that names it; this repository has none.
 func actionFiles(root string) ([]string, error) {
 	isYAML := func(p string) bool { return strings.HasSuffix(p, ".yml") || strings.HasSuffix(p, ".yaml") }
 	var files []string
@@ -349,6 +381,10 @@ var (
 // commit (or an image's digest) with the version in a comment on the same line. A local action
 // lives in the commit that runs it, so it needs no pin. A line that only mentions uses in a comment
 // is not a use.
+//
+// A line reader cannot read YAML fully: it misses a value on the line after its key, and it counts
+// `uses:` inside a `run:` body, which fails closed. No YAML library is added for that: the module has
+// none, and this test holds this repository's own workflows, which it reads correctly today.
 func unpinnedActions(text string) (refs int, bad []string) {
 	for _, line := range strings.Split(text, "\n") {
 		if strings.HasPrefix(strings.TrimSpace(line), "#") {
@@ -358,41 +394,44 @@ func unpinnedActions(text string) (refs int, bad []string) {
 		if i := strings.Index(line, " #"); i >= 0 {
 			code, comment = line[:i], line[i:]
 		}
-		m := usesKey.FindStringSubmatch(code)
-		if m == nil {
-			continue
-		}
-		refs++
-		ref := m[1]
-		switch {
-		case strings.HasPrefix(ref, "./"):
-		case (pinnedUse.MatchString(ref) || pinnedDock.MatchString(ref)) && versionTag.MatchString(comment):
-		default:
-			bad = append(bad, strings.TrimSpace(line))
+		for _, m := range usesKey.FindAllStringSubmatch(code, -1) {
+			refs++
+			ref := m[1]
+			switch {
+			case strings.HasPrefix(ref, "./"):
+			case (pinnedUse.MatchString(ref) || pinnedDock.MatchString(ref)) && versionTag.MatchString(comment):
+			default:
+				bad = append(bad, strings.TrimSpace(line))
+			}
 		}
 	}
 	return refs, bad
 }
 
-// permissionLines is the permissions block in text, whose key sits at indent, as its trimmed lines;
-// an inline value (write-all) comes back as itself.
-func permissionLines(text, indent string) []string {
+// jobKeys is the keys of a workflow's jobs block, at two spaces, in any form a job can take.
+func jobKeys(jobs string) []string {
+	return regexp.MustCompile(`(?m)^  [^\s#:]+:`).FindAllString(jobs, -1)
+}
+
+// permissionLines is every permissions block in text, at any indent, as trimmed lines in order; an
+// inline value (write-all, or a flow map) comes back as itself.
+func permissionLines(text string) []string {
 	var got []string
-	in := false
+	block := -1 // the indent of the permissions key we are inside, or -1
 	for _, line := range strings.Split(text, "\n") {
-		if !in {
-			if v, ok := strings.CutPrefix(line, indent+"permissions:"); ok {
-				in = true
-				if v = strings.TrimSpace(v); v != "" {
-					got = append(got, v)
-				}
-			}
+		trimmed := strings.TrimSpace(line)
+		indent := len(line) - len(strings.TrimLeft(line, " "))
+		if block >= 0 && trimmed != "" && indent > block {
+			got = append(got, trimmed)
 			continue
 		}
-		if strings.TrimSpace(line) == "" || !strings.HasPrefix(line, indent+" ") {
-			break
+		block = -1
+		if v, ok := strings.CutPrefix(trimmed, "permissions:"); ok {
+			block = indent
+			if v = strings.TrimSpace(v); v != "" {
+				got = append(got, v)
+			}
 		}
-		got = append(got, strings.TrimSpace(line))
 	}
 	return got
 }
