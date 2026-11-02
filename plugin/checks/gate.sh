@@ -25,11 +25,13 @@ LIB="$ROOT/$RUN_DIR/lib/steps.sh"
 
 d=$(scratch)
 mkdir -p "$d/bin"
-# A gitleaks stub: finds a "secret" only while FAIL_SECRET exists in the tree it scans.
+# A gitleaks stub: finds a "secret" only while FAIL_SECRET exists in the tree it scans. With
+# GITLEAKS_SEEN set, `gitleaks dir` also lists the files it was given there, one per line.
 cat > "$d/bin/gitleaks" <<'EOF'
 #!/bin/sh
 case "$*" in *--help*) exit 0 ;; esac
 for a in "$@"; do last=$a; done
+[ "$1" = dir ] && [ -n "${GITLEAKS_SEEN:-}" ] && (cd "$last" && find . ! -type d) > "$GITLEAKS_SEEN"
 [ -n "$(find "$last" -name FAIL_SECRET 2>/dev/null)" ] && { echo "leaks found: 1"; exit 1; }
 exit 0
 EOF
@@ -75,6 +77,64 @@ EOF
   printf 'secret\n' > "$L/FAIL_SECRET"; git -C "$L" add FAIL_SECRET && git -C "$L" commit -qm "a leak"
   own; rc=$?
   expect_rc 1 "$rc" "...and a secret fails it at the secrets step"
+  git -C "$L" rm -q FAIL_SECRET && git -C "$L" commit -qm "no leak" || fail "setup: git rm FAIL_SECRET failed"
+  # The scan copy holds every tracked file (#383), whatever the tar. A tar that cannot make it
+  # leaves the copy short, its error goes to /dev/null, and gitleaks passes over what is not
+  # there: the step fails instead.
+  mkdir -p "$d/tarbin"; realtar=$(command -v tar)
+  ownwith() {  # ownwith TAR-STUB-BODY: run the own runner with a tar stub first on PATH
+    printf '#!/bin/sh\n%s\n' "$1" > "$d/tarbin/tar"; chmod +x "$d/tarbin/tar"
+    (cd "$L" && PATH="$d/tarbin:$d/bin:$np" CI= sh infra/mine.sh) >"$d/own.out" 2>&1
+  }
+  ownwith 'exit 1'; rc=$?
+  expect_rc 1 "$rc" "...and a tar that cannot copy the tracked files fails it, not a scan of nothing"
+  grep -q '^==> FAIL: secrets' "$d/own.out" && grep -q 'secrets: FAIL — the scan copy holds 0 of [0-9]* tracked files' "$d/own.out" \
+    && ok "...at the secrets step, naming the short copy" || fail "short copy: $(grep -e '^==>' -e 'secrets:' "$d/own.out" | tr '\n' ' ')"
+  # Without a list of tracked files the copy and its tally are both empty, and "0 of 0" would
+  # pass: a directory whose .git names a worktree that was removed fails the step instead.
+  git -C "$L" worktree add -q --detach "$d/gone" && rm -rf "$(git -C "$L" rev-parse --absolute-git-dir)/worktrees/gone" \
+    || fail "setup: making a worktree whose git directory is gone failed"
+  (cd "$d/gone" && PATH="$d/bin:$np" CI= sh -c '. "$1"; model_step_secrets' sh "$L/infra/lib/steps.sh") >"$d/own.out" 2>&1; rc=$?
+  expect_rc 1 "$rc" "...and the secrets step fails where git ls-files cannot list the tracked files"
+  grep -q '^==> FAIL: secrets' "$d/own.out" && grep -q 'secrets: FAIL — git ls-files failed' "$d/own.out" \
+    && ok "...naming git ls-files" || fail "no file list: $(grep -e '^==>' -e 'secrets:' "$d/own.out" | tr '\n' ' ')"
+  # A dirty tree (a --quick run) with a tracked file deleted: the copy is not short of it.
+  printf 'x\n' > "$L/kept"; git -C "$L" add kept && git -C "$L" commit -qm kept || fail "setup: committing kept failed"
+  rm "$L/kept"
+  own; rc=$?
+  expect_rc 0 "$rc" "...and a tracked file deleted in a dirty tree is not counted as missing from the copy"
+  git -C "$L" checkout -q -- kept
+  # tar reads its file names as arguments: `-C` and `--null` as options, and bsdtar `@foo` as an
+  # archive to include. Each is copied as a file.
+  for n in -C @foo --null; do printf 'x\n' > "$L/$n"; done
+  git -C "$L" add -- ./-C ./@foo ./--null && git -C "$L" commit -qm "names tar could read as options" || fail "setup: committing -C @foo --null failed"
+  (cd "$L" && GITLEAKS_SEEN="$d/seen" PATH="$d/bin:$np" CI= sh infra/mine.sh) >"$d/own.out" 2>&1; rc=$?
+  expect_rc 0 "$rc" "...and tracked files named -C, @foo and --null are copied, not read as options"
+  lacks=""; for n in -C @foo --null; do grep -qxF "./$n" "$d/seen" 2>/dev/null || lacks="$lacks $n"; done
+  [ -z "$lacks" ] && ok "...each one in the tree gitleaks scans" || fail "...the scan copy lacks$lacks: $(grep -e '^==>' -e 'secrets:' "$d/own.out" | tr '\n' ' ')"
+  # A full copy is not short: a dangling symlink, a symlink to a directory and a gitlink (an
+  # unpopulated submodule's empty directory) each count once in the worktree and in the copy.
+  mkdir -p "$L/linked" "$L/g" && printf 'x\n' > "$L/linked/f" && ln -s nowhere "$L/dangling" && ln -s linked "$L/dirlink" \
+    && git -C "$L" add linked dangling dirlink \
+    && git -C "$L" update-index --add --cacheinfo "160000,$(git -C "$L" rev-parse HEAD),g" \
+    && git -C "$L" commit -qm "links and a gitlink" || fail "setup: committing the links and the gitlink failed"
+  own; rc=$?
+  expect_rc 0 "$rc" "...and a full copy holding a dangling symlink, a symlink to a directory and a gitlink passes"
+  # One pass over 6000 tracked files covers the rest. Past one xargs batch (BSD: 5000 args; GNU:
+  # about 128 KiB, so the names are long) a single tar pair once read several archives and stopped
+  # at the first one's end; and BusyBox tar (Alpine, gitleaks' own image) has no --null. Through a
+  # tar that rejects --null, a secret last in `git ls-files` order, in the last batch, is found.
+  mkdir -p "$L/bulk" "$L/zz"; i=0
+  while [ "$i" -lt 6000 ]; do i=$((i + 1)); : > "$L/bulk/a-tracked-file-with-a-long-name-$i"; done
+  printf 'secret\n' > "$L/zz/FAIL_SECRET"
+  git -C "$L" add bulk zz && git -C "$L" commit -qm "6000 files, then a leak" || fail "setup: committing 6000 files failed"
+  [ "$(git -C "$L" ls-files | grep FAIL_SECRET)" = zz/FAIL_SECRET ] || fail "setup: zz/FAIL_SECRET is not the one tracked FAIL_SECRET: $(git -C "$L" ls-files | grep FAIL_SECRET | tr '\n' ' ')"
+  [ "$(git -C "$L" ls-files | tail -1)" = zz/FAIL_SECRET ] || fail "setup: the planted leak is not last in git ls-files order"
+  ownwith "case \" \$* \" in *\" --null \"*) echo 'tar: unrecognized option: null' >&2; exit 1 ;; esac; exec \"$realtar\" \"\$@\""
+  rc=$?
+  expect_rc 1 "$rc" "...and through a tar without --null, a secret past the first xargs batch of 6000 tracked files fails it"
+  grep -q '^==> FAIL: secrets' "$d/own.out" && grep -q 'leaks found' "$d/own.out" \
+    && ok "...at the secrets step, on the finding" || fail "6000 files: $(grep -e '^==>' -e 'secrets:' -e leaks "$d/own.out" | tr '\n' ' ')"
 fi
 
 # ── The lease conformance kit (P1.12): shipped as stridal tests it ────────────────────
@@ -661,6 +721,29 @@ else fail "the locking step left no locked directory: the case did not exercise 
 fi
 chmod -R u+w "$d/tmp" "$R/locked" 2>/dev/null; rm -rf "$d/tmp" "$R/locked"
 grep -q '^exit pid=[0-9]* code=0 ' "$STATE" && ok "a cleanup that fails still leaves the run's exit line" || fail "failing cleanup: state $(tr '\n' '|' < "$STATE" 2>/dev/null); $(grep '^==>' "$d/out" | tr '\n' ' ')"
+
+# The clean room survives a tar that stops reading at the archive's end marker (#374): bsdtar
+# (macOS) exits there, and git archive's last write, the record's zero padding, then dies of
+# SIGPIPE, which pipefail made the whole run's exit 141 before any step ran. A stand-in git writes
+# more padding than a pipe holds, so a reader that stops early always breaks the pipe; the run must
+# drain the stream past tar. (GNU tar reads to the end, so on Linux this passes either way.)
+# The run's TMPDIR is the scratch's, as above: should LOCK_CLEANUP survive, its locked room lands
+# there, never in the caller's TMPDIR.
+git -C "$R" rm -q LOCK_CLEANUP && git -C "$R" commit -qm "no locking step" \
+  || fail "the padded-archive case could not drop LOCK_CLEANUP: it would run the locking step too"
+real_git=$(command -v git); mkdir -p "$d/padgit" "$d/tmp"
+cat > "$d/padgit/git" <<EOF
+#!/bin/sh
+[ "\$1" = archive ] || exec "$real_git" "\$@"
+"$real_git" "\$@" || exit \$?
+dd if=/dev/zero bs=1024 count=256 2>/dev/null
+EOF
+chmod +x "$d/padgit/git"; rm -f "$STATE"
+(cd "$R" && PATH="$d/padgit:$d/bin:$np" CI= STRIDAL_LANE=check TMPDIR="$d/tmp" bash "$RUN_REL") > "$d/out" 2>&1; rc=$?
+chmod -R u+w "$d/tmp" 2>/dev/null; rm -rf "$d/tmp"
+[ "$rc" = 0 ] && grep -q '^==> clean room: ' "$d/out" \
+  && ok "a clean room whose archive runs on past tar's end marker still gates (the run drains the stream: git archive never dies of SIGPIPE)" \
+  || fail "a padded archive stopped the gate (exit $rc, want 0): state $(tr '\n' '|' < "$STATE" 2>/dev/null); $(grep '^==>' "$d/out" | tr '\n' ' ')"
 
 # Every place that tells an agent to run the gate says how to follow one the tool backgrounds. Read
 # from the model's own copy: the project's, or the plugin's (STRIDAL_FW).
