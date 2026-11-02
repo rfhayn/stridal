@@ -24,11 +24,13 @@ LIB="$ROOT/$RUN_DIR/lib/steps.sh"
 
 d=$(scratch)
 mkdir -p "$d/bin"
-# A gitleaks stub: finds a "secret" only while FAIL_SECRET exists in the tree it scans.
+# A gitleaks stub: finds a "secret" only while FAIL_SECRET exists in the tree it scans. With
+# GITLEAKS_SEEN set, `gitleaks dir` also lists the files it was given there, one per line.
 cat > "$d/bin/gitleaks" <<'EOF'
 #!/bin/sh
 case "$*" in *--help*) exit 0 ;; esac
 for a in "$@"; do last=$a; done
+[ "$1" = dir ] && [ -n "${GITLEAKS_SEEN:-}" ] && (cd "$last" && find . ! -type d) > "$GITLEAKS_SEEN"
 [ -n "$(find "$last" -name FAIL_SECRET 2>/dev/null)" ] && { echo "leaks found: 1"; exit 1; }
 exit 0
 EOF
@@ -88,21 +90,35 @@ EOF
   expect_rc 1 "$rc" "...and a secret past the first xargs batch of 6000 tracked files fails it too"
   grep -q '^==> FAIL: secrets' "$d/own.out" && grep -q 'leaks found' "$d/own.out" \
     && ok "...at the secrets step, on the finding" || fail "6000 files: $(grep -e '^==>' -e 'secrets:' -e leaks "$d/own.out" | tr '\n' ' ')"
-  # A tar that cannot make the copy (BusyBox tar has no --null, and its error goes to /dev/null)
-  # leaves the copy short, and gitleaks passes over what is not there: the step fails instead.
+  git -C "$L" rm -q zz/FAIL_SECRET && git -C "$L" commit -qm "no leak" || fail "setup: git rm zz/FAIL_SECRET failed"
+  # Any tar makes the copy: BusyBox tar (Alpine, gitleaks' own image) has no --null, so the step
+  # uses none. A tar that cannot make it leaves the copy short, its error goes to /dev/null, and
+  # gitleaks passes over what is not there: the step fails instead.
   mkdir -p "$d/tarbin"; realtar=$(command -v tar)
-  printf '#!/bin/sh\ncase " $* " in *" --null "*) echo "tar: unrecognized option: null" >&2; exit 1 ;; esac\nexec "%s" "$@"\n' "$realtar" > "$d/tarbin/tar"
-  chmod +x "$d/tarbin/tar"
-  (cd "$L" && PATH="$d/tarbin:$d/bin:$np" CI= sh infra/mine.sh) >"$d/own.out" 2>&1; rc=$?
+  ownwith() {  # ownwith TAR-STUB-BODY: run the own runner with a tar stub first on PATH
+    printf '#!/bin/sh\n%s\n' "$1" > "$d/tarbin/tar"; chmod +x "$d/tarbin/tar"
+    (cd "$L" && PATH="$d/tarbin:$d/bin:$np" CI= sh infra/mine.sh) >"$d/own.out" 2>&1
+  }
+  ownwith "case \" \$* \" in *\" --null \"*) echo 'tar: unrecognized option: null' >&2; exit 1 ;; esac; exec \"$realtar\" \"\$@\""
+  rc=$?
+  expect_rc 0 "$rc" "...and a tar without --null still copies all 6000 tracked files and passes"
+  ownwith 'exit 1'; rc=$?
   expect_rc 1 "$rc" "...and a tar that cannot copy the tracked files fails it, not a scan of nothing"
   grep -q '^==> FAIL: secrets' "$d/own.out" && grep -q 'secrets: FAIL — the scan copy holds 0 of [0-9]* tracked files' "$d/own.out" \
     && ok "...at the secrets step, naming the short copy" || fail "short copy: $(grep -e '^==>' -e 'secrets:' "$d/own.out" | tr '\n' ' ')"
   # A dirty tree (a --quick run) with a tracked file deleted: the copy is not short of it.
-  git -C "$L" rm -q zz/FAIL_SECRET && git -C "$L" commit -qm "no leak"
   rm "$L/bulk/a-tracked-file-with-a-long-name-1"
   own; rc=$?
   expect_rc 0 "$rc" "...and a tracked file deleted in a dirty tree is not counted as missing from the copy"
   git -C "$L" checkout -q -- bulk
+  # tar reads its file names as arguments: `-C` and `--null` as options, and bsdtar `@foo` as an
+  # archive to include. Each is copied as a file.
+  for n in -C @foo --null; do printf 'x\n' > "$L/$n"; done
+  git -C "$L" add -- ./-C ./@foo ./--null && git -C "$L" commit -qm "names tar could read as options" || fail "setup: committing -C @foo --null failed"
+  (cd "$L" && GITLEAKS_SEEN="$d/seen" PATH="$d/bin:$np" CI= sh infra/mine.sh) >"$d/own.out" 2>&1; rc=$?
+  expect_rc 0 "$rc" "...and tracked files named -C, @foo and --null are copied, not read as options"
+  lacks=""; for n in -C @foo --null; do grep -qxF "./$n" "$d/seen" 2>/dev/null || lacks="$lacks $n"; done
+  [ -z "$lacks" ] && ok "...each one in the tree gitleaks scans" || fail "...the scan copy lacks$lacks: $(grep -e '^==>' -e 'secrets:' "$d/own.out" | tr '\n' ' ')"
 fi
 
 # ── The lease conformance kit (P1.12): shipped as stridal tests it ────────────────────

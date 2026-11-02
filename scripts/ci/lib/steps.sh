@@ -58,11 +58,14 @@ model_secret_scan() {
   _ss_src=. _ss_tmp=""
   if [ -d .git ] || [ -f .git ]; then
     _ss_tmp=$(mktemp -d "${TMPDIR:-/tmp}/secrets.XXXXXX")
-    # One archive from the whole list: through xargs, a list past one batch made several, and
-    # `tar -x` stops at the first one's end, so the later files went unscanned (#383).
-    git ls-files -z | tar --null -T - -cf - 2>/dev/null | tar -xf - -C "$_ss_tmp" 2>/dev/null
-    # The copy must hold every tracked path the worktree has: a tar that rejects a flag (BusyBox
-    # tar has no --null) or a list cut short leaves files out, its error is silenced above, and
+    # One complete tar pair per xargs batch (#383): a single pair fed several batches' archives
+    # stopped at the first one's end, and --null -T - is not in BusyBox tar. Each name goes in as
+    # ./name, so tar never reads one as an option (-C, --null) or as an archive to include (@foo),
+    # prefixed in a stage of its own: rebuilding "$@" a name at a time is quadratic in the batch.
+    git ls-files -z | xargs -0 sh -c 'for p; do printf "./%s\0" "$p"; done' sh |
+      xargs -0 sh -c 'd=$1; shift; tar -cf - "$@" | tar -xf - -C "$d"' sh "$_ss_tmp" 2>/dev/null
+    # The copy must hold every tracked path the worktree has: a tar that fails (an option it
+    # lacks, a name it misreads) or a list cut short leaves files out, its error is silenced, and
     # gitleaks passes over what is not there. Path by path, so each side counts a gitlink (a
     # directory) and a symlink (to a directory, or dangling) once, and a file deleted in a dirty
     # tree is not wanted. xargs batching is harmless here: each path's tally stands alone.
