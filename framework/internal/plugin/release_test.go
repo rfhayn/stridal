@@ -4,7 +4,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -93,7 +95,7 @@ func TestReleaseReproduces(t *testing.T) {
 	}
 	first, e := releaseRepo(t)
 	out := t.TempDir()
-	if s, code := run(t, first, e, "", "sh", "scripts/build-release.sh", "--out", out, "linux/amd64"); code != 0 {
+	if s, code := run(t, first, e, "", "sh", "scripts/build-release.sh", "--out", out); code != 0 {
 		t.Fatal(s)
 	}
 	// The rebuild runs from another directory, as a second runner's would: -trimpath is what makes
@@ -104,20 +106,31 @@ func TestReleaseReproduces(t *testing.T) {
 	}
 	sums := filepath.Join(out, "engines.sha256")
 	if s, code := run(t, dir, e, "", "sh", "scripts/check-release-repro.sh", sums, "linux/amd64"); code != 0 {
-		t.Fatalf("an honest rebuild does not reproduce: %s", s)
+		t.Fatalf("an honest rebuild of one target does not reproduce: %s", s)
+	}
+	// All targets, as release.yml's reproduce job runs it: both ways, so the comparison is shown
+	// passing on what matches and failing on what does not.
+	if s, code := run(t, dir, e, "", "sh", "scripts/check-release-repro.sh", sums); code != 0 {
+		t.Fatalf("an honest full rebuild does not reproduce: %s", s)
 	}
 	good, err := os.ReadFile(sums)
 	if err != nil {
 		t.Fatal(err)
 	}
+	lines := strings.Split(strings.TrimSpace(string(good)), "\n")
+	if len(lines) != 4 {
+		t.Fatalf("%d engines, want the four release targets:\n%s", len(lines), good)
+	}
+	for i, l := range lines {
+		lines[i] = "0000" + l[4:]
+	}
 	tampered := filepath.Join(t.TempDir(), "engines.sha256")
-	if err := os.WriteFile(tampered, []byte("0000"+string(good)[4:]), 0o644); err != nil {
+	if err := os.WriteFile(tampered, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if s, code := run(t, dir, e, "", "sh", "scripts/check-release-repro.sh", tampered, "linux/amd64"); code == 0 {
 		t.Errorf("a tampered sum passed: %s", s)
 	}
-	// All targets asked: a missing or extra line fails too.
 	if s, code := run(t, dir, e, "", "sh", "scripts/check-release-repro.sh", tampered); code == 0 {
 		t.Errorf("a tampered file passed a full rebuild: %s", s)
 	}
@@ -167,9 +180,18 @@ func TestReleaseWorkflowKeepsTheWriteTokenAwayFromTheBuild(t *testing.T) {
 		return rest
 	}
 	build, reproduce, draft := job("build", "reproduce"), job("reproduce", "draft"), job("draft", "")
-	anyWrite := regexp.MustCompile(`(?m)(^\s*[a-z-]+:\s*write\s*(#.*)?$|write-all)`)
-	if head, _, _ := strings.Cut(src, "\njobs:"); !strings.Contains(head, "contents: read") || anyWrite.MatchString(head) {
-		t.Error("the workflow's default token is not read-only")
+	// Only what is listed: an allowlist, so a scope nobody thought of cannot pass.
+	_, jobs, _ := strings.Cut(src, "\njobs:\n")
+	names := regexp.MustCompile(`(?m)^  ([^\s#:]+):\s*$`).FindAllStringSubmatch(jobs, -1)
+	if len(names) != 3 {
+		t.Errorf("release.yml has %d jobs, want build, reproduce and draft alone: %q", len(names), names)
+	}
+	head, _, _ := strings.Cut(src, "\njobs:")
+	if got := permissionLines(head, ""); len(got) != 1 || got[0] != "contents: read" {
+		t.Errorf("the workflow's permissions are %q, want exactly contents: read", got)
+	}
+	if got := permissionLines(draft, "    "); len(got) != 1 || got[0] != "contents: write" {
+		t.Errorf("the draft job's permissions are %q, want exactly contents: write", got)
 	}
 	for name, body := range map[string]string{"build": build, "reproduce": reproduce} {
 		for _, want := range []string{"persist-credentials: false", "cache: false"} {
@@ -177,8 +199,8 @@ func TestReleaseWorkflowKeepsTheWriteTokenAwayFromTheBuild(t *testing.T) {
 				t.Errorf("job %s lacks %s", name, want)
 			}
 		}
-		if anyWrite.MatchString(body) {
-			t.Errorf("job %s can write", name)
+		if regexp.MustCompile(`(?m)^\s*["']?permissions["']?\s*:`).MatchString(body) {
+			t.Errorf("job %s has a permissions key: it takes the workflow's read-only token alone", name)
 		}
 	}
 	if !strings.Contains(build, "scripts/check-release-tag.sh") || strings.Index(build, "check-release-tag") > strings.Index(build, "build-release") {
@@ -200,26 +222,177 @@ func TestReleaseWorkflowKeepsTheWriteTokenAwayFromTheBuild(t *testing.T) {
 // checks/supply-chain.sh, which ships in the template: it would hold adopters' workflows to this repo's
 // choice.
 func TestEveryWorkflowsActionsArePinned(t *testing.T) {
-	files, err := filepath.Glob(filepath.Join(repoRoot(t), ".github", "workflows", "*.yml"))
+	files, err := actionFiles(repoRoot(t))
 	if err != nil || len(files) == 0 {
 		t.Fatalf("no workflows: %v", err)
 	}
-	uses := regexp.MustCompile(`(?m)^\s*(?:-\s*)?uses:\s*(.+)$`)
-	pinned := regexp.MustCompile(`^[^@\s]+@[0-9a-f]{40}\s+#\s*v\S+$`)
 	seen := 0
 	for _, f := range files {
 		data, err := os.ReadFile(f)
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, m := range uses.FindAllStringSubmatch(string(data), -1) {
-			seen++
-			if !pinned.MatchString(strings.TrimSpace(m[1])) {
-				t.Errorf("%s: %q is not pinned to a commit with its version beside it", filepath.Base(f), m[1])
-			}
+		refs, bad := unpinnedActions(string(data))
+		seen += refs
+		for _, b := range bad {
+			t.Errorf("%s: %q is not pinned to a commit with its version beside it", filepath.Base(f), b)
 		}
 	}
 	if seen == 0 {
 		t.Fatal("no action found: this test learned nothing")
 	}
+}
+
+func TestUnpinnedActionsReadsEveryFormOfUses(t *testing.T) {
+	const sha = "3d3c42e5aac5ba805825da76410c181273ba90b1"
+	cases := []struct {
+		name, line string
+		refs, bad  int
+	}{
+		{"pinned", "- uses: actions/checkout@" + sha + " # v7.0.1", 1, 0},
+		{"pinned, a key of its own line", "uses: actions/checkout@" + sha + " # v7", 1, 0},
+		{"pinned, a quoted value", `- uses: "actions/checkout@` + sha + `" # v7`, 1, 0},
+		{"a local action needs no pin", "- uses: ./.github/actions/x", 1, 0},
+		{"a digest-pinned image", "- uses: docker://alpine@sha256:" + strings.Repeat("a", 64) + " # v3", 1, 0},
+		{"a comment is not a use", "# uses: actions/checkout@v7", 0, 0},
+		{"a word ending in uses is not a use", "refuses: actions/checkout@v7", 0, 0},
+		{"a tag", "- uses: actions/checkout@v7", 1, 1},
+		{"a branch", "uses: actions/checkout@main", 1, 1},
+		{"no version beside the pin", "- uses: actions/checkout@" + sha, 1, 1},
+		{"a short commit", "- uses: actions/checkout@3d3c42e # v7", 1, 1},
+		{"no ref at all", "- uses: actions/checkout", 1, 1},
+		{"a quoted key", `- "uses": actions/checkout@v7`, 1, 1},
+		{"a single-quoted key and value", `- 'uses': 'actions/checkout@v7'`, 1, 1},
+		{"flow form", "- {uses: actions/checkout@v7, with: {fetch-depth: 0}}", 1, 1},
+		{"flow form, pinned", "- {uses: actions/checkout@" + sha + "} # v7", 1, 0},
+		{"an image on a tag", "- uses: docker://alpine:3", 1, 1},
+	}
+	for _, c := range cases {
+		refs, bad := unpinnedActions(c.line + "\n")
+		if refs != c.refs || len(bad) != c.bad {
+			t.Errorf("%s: %d uses and %d unpinned (%q), want %d and %d", c.name, refs, len(bad), bad, c.refs, c.bad)
+		}
+	}
+}
+
+// What GitHub runs: a workflow in either extension, directly under .github/workflows, and a composite
+// action anywhere under .github/actions.
+func TestActionFilesIteratesWhatGitHubRuns(t *testing.T) {
+	root := t.TempDir()
+	want := []string{
+		".github/actions/deep/er/action.yaml",
+		".github/actions/x/action.yml",
+		".github/workflows/a.yml",
+		".github/workflows/b.yaml",
+	}
+	for _, p := range append([]string{".github/workflows/README.md", ".github/workflows/sub/not-run.yml", ".github/actions/x/README.md"}, want...) {
+		full := filepath.Join(root, p)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files, err := actionFiles(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, f := range files {
+		rel, err := filepath.Rel(root, f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, filepath.ToSlash(rel))
+	}
+	sort.Strings(got)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("files %q, want %q", got, want)
+	}
+}
+
+// actionFiles lists the files whose uses GitHub runs.
+func actionFiles(root string) ([]string, error) {
+	isYAML := func(p string) bool { return strings.HasSuffix(p, ".yml") || strings.HasSuffix(p, ".yaml") }
+	var files []string
+	entries, err := os.ReadDir(filepath.Join(root, ".github", "workflows"))
+	if err != nil {
+		return nil, err
+	}
+	for _, e := range entries {
+		if !e.IsDir() && isYAML(e.Name()) {
+			files = append(files, filepath.Join(root, ".github", "workflows", e.Name()))
+		}
+	}
+	actions := filepath.Join(root, ".github", "actions")
+	if _, err := os.Stat(actions); os.IsNotExist(err) {
+		return files, nil
+	}
+	err = filepath.WalkDir(actions, func(p string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && isYAML(p) {
+			files = append(files, p)
+		}
+		return err
+	})
+	return files, err
+}
+
+var (
+	usesKey    = regexp.MustCompile(`(?:^|[\s{,])["']?uses["']?\s*:\s*["']?([^\s"',}]+)`)
+	pinnedUse  = regexp.MustCompile(`^[^@\s]+/[^@\s]+@[0-9a-f]{40}$`)
+	pinnedDock = regexp.MustCompile(`^docker://[^@\s]+@sha256:[0-9a-f]{64}$`)
+	versionTag = regexp.MustCompile(`#\s*v\S+`)
+)
+
+// unpinnedActions reads text line by line: how many uses it holds, and the ones not pinned to a full
+// commit (or an image's digest) with the version in a comment on the same line. A local action
+// lives in the commit that runs it, so it needs no pin. A line that only mentions uses in a comment
+// is not a use.
+func unpinnedActions(text string) (refs int, bad []string) {
+	for _, line := range strings.Split(text, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		code, comment := line, ""
+		if i := strings.Index(line, " #"); i >= 0 {
+			code, comment = line[:i], line[i:]
+		}
+		m := usesKey.FindStringSubmatch(code)
+		if m == nil {
+			continue
+		}
+		refs++
+		ref := m[1]
+		switch {
+		case strings.HasPrefix(ref, "./"):
+		case (pinnedUse.MatchString(ref) || pinnedDock.MatchString(ref)) && versionTag.MatchString(comment):
+		default:
+			bad = append(bad, strings.TrimSpace(line))
+		}
+	}
+	return refs, bad
+}
+
+// permissionLines is the permissions block in text, whose key sits at indent, as its trimmed lines;
+// an inline value (write-all) comes back as itself.
+func permissionLines(text, indent string) []string {
+	var got []string
+	in := false
+	for _, line := range strings.Split(text, "\n") {
+		if !in {
+			if v, ok := strings.CutPrefix(line, indent+"permissions:"); ok {
+				in = true
+				if v = strings.TrimSpace(v); v != "" {
+					got = append(got, v)
+				}
+			}
+			continue
+		}
+		if strings.TrimSpace(line) == "" || !strings.HasPrefix(line, indent+" ") {
+			break
+		}
+		got = append(got, strings.TrimSpace(line))
+	}
+	return got
 }
