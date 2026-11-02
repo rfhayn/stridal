@@ -114,8 +114,9 @@ and unit tests.
   **passed**.
 - A headless run reaches plugin tools only with an allow rule, and the per-server wildcard works:
   S2a and S2b, **passed**.
-- A panel lane reaches them too: **untested** — accepted at risk by the owner (2026-10-31); tested
-  by OPS-199.
+- A run launched with a panel lane's `ENABLE_CLAUDEAI_MCP_SERVERS=false` reaches them: S5e,
+  **passed**.
+- An agent's `tools:` line filters MCP tools, by each tool's name: S5g, **passed**.
 - Go ports converge in fewer review rounds than shell did: **untested**, and the evidence so far
   says no (OPS-109 11 rounds, PANEL-57 13, both Go) — accepted at risk by the owner (2026-10-31);
   tested by OPS-187, the first port, which is the measurement. A port past 5 rounds triggers a

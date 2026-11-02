@@ -84,8 +84,8 @@ measured what it actually does:
 - The transcript holds each verdict in a parseable form: S3b and S3c showed the text. **The
   parser is untested** — accepted at risk by the owner (2026-10-31); tested by OPS-197, which
   builds it.
-- Agent hooks remain available in the Claude Code version OPS-107 records: **re-checked per
-  version**.
+- An agent hook on PreToolUse still blocks only its call on Claude Code 2.1.316 (OPS-107 re-checks
+  it per version): S5i, **passed**.
 
 ## Related
 - ADR-0016 (the kinds), ADR-0017 (the engine), ADR-0018 (fail closed for controls). Rule 13.
