@@ -57,8 +57,36 @@ model_secret_scan() {
   fi
   _ss_src=. _ss_tmp=""
   if [ -d .git ] || [ -f .git ]; then
-    _ss_tmp=$(mktemp -d "${TMPDIR:-/tmp}/secrets.XXXXXX")
-    git ls-files -z | xargs -0 tar -cf - 2>/dev/null | tar -xf - -C "$_ss_tmp" 2>/dev/null
+    _ss_list=$(mktemp "${TMPDIR:-/tmp}/secrets-list.XXXXXX") \
+      || { echo "secrets: FAIL — cannot make a temporary file in ${TMPDIR:-/tmp}"; return 1; }
+    _ss_tmp=$(mktemp -d "${TMPDIR:-/tmp}/secrets.XXXXXX") \
+      || { echo "secrets: FAIL — cannot make a temporary directory in ${TMPDIR:-/tmp}"; rm -f "$_ss_list"; return 1; }
+    # The list is written once, and the copy and its tally below both read it: were each to ask
+    # git, a git that cannot list (a worktree whose git directory is gone) would leave both empty,
+    # and an empty copy of nothing would pass.
+    git ls-files -z > "$_ss_list" \
+      || { echo "secrets: FAIL — git ls-files failed, so there is no list of tracked files to scan"; rm -rf "$_ss_list" "$_ss_tmp"; return 1; }
+    # One complete tar pair per xargs batch (#383): a single pair fed several batches' archives
+    # stopped at the first one's end, and --null -T - is not in BusyBox tar. Each name goes in as
+    # ./name, so tar never reads one as an option (-C, --null) or as an archive to include (@foo),
+    # prefixed in a stage of its own: rebuilding "$@" a name at a time is quadratic in the batch.
+    xargs -0 sh -c 'for p; do printf "./%s\0" "$p"; done' sh < "$_ss_list" |
+      xargs -0 sh -c 'd=$1; shift; tar -cf - "$@" | tar -xf - -C "$d"' sh "$_ss_tmp" 2>/dev/null
+    # The copy must hold every tracked path the worktree has: a tar that fails (an option it
+    # lacks, a name it misreads) or a list cut short leaves files out, its error is silenced, and
+    # gitleaks passes over what is not there. Path by path, so each side counts a gitlink (a
+    # directory) and a symlink (to a directory, or dangling) once, and a file deleted in a dirty
+    # tree is not wanted. xargs batching is harmless here: each path's tally stands alone.
+    _ss_tally=$(xargs -0 sh -c 'c=$1; shift; for p; do
+      { [ -e "$p" ] || [ -h "$p" ]; } || continue; printf w
+      { [ -e "$c/$p" ] || [ -h "$c/$p" ]; } && printf c; done' sh "$_ss_tmp" < "$_ss_list")
+    rm -f "$_ss_list"
+    _ss_want=$(( $(printf %s "$_ss_tally" | tr -dc w | wc -c) ))
+    _ss_have=$(( $(printf %s "$_ss_tally" | tr -dc c | wc -c) ))
+    if [ "$_ss_have" -lt "$_ss_want" ]; then
+      echo "secrets: FAIL — the scan copy holds $_ss_have of $_ss_want tracked files"
+      rm -rf "$_ss_tmp"; return 1
+    fi
     _ss_src=$_ss_tmp
   fi
   _ss_rc=0

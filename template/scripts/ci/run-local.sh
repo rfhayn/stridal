@@ -187,7 +187,10 @@ workdir=$ROOT
 if [ "${GATE_CLEAN_ROOM:-none}" = archive ] && [ "$DIRTY" -eq 0 ]; then
   workdir=$(mktemp -d "${TMPDIR:-/tmp}/gate.XXXXXX")
   cleanup() { rm -rf "$workdir"; }   # run by gate_end, the EXIT trap
-  git archive "$TESTED_SHA" | tar -x -C "$workdir"
+  # Drained past tar (#374): bsdtar (macOS) stops reading at the end marker, and git archive's last
+  # write (the record's zero padding) would then die of SIGPIPE, which pipefail makes the run's
+  # exit 141 before any step. A failing git or tar still fails the run.
+  git archive "$TESTED_SHA" | { tar -x -C "$workdir" && cat >/dev/null; }
   echo "==> clean room: $(printf %.9s "$TESTED_SHA") from git archive, in $workdir"
 fi
 
