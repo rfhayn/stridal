@@ -14,6 +14,83 @@ entries with one number on `main`.
 
 <!-- Newest session goes below this line. -->
 
+## Session 22 — 2026-11-02 — Rich — S22: the plan re-scoped after three reviews; the release workflow lands; the launcher held
+
+**Totals.** Gate 0 min (a row's gate was CANNOT CHECK, so this is a floor); cost $0 (a row's cost was CANNOT CHECK, so this is a floor).
+
+**Rows folded.** OPS-184 (#389); OPS-217 (#388).
+
+**What happened.** S22 set out to land the engine release, `stridal lock update` and the sandbox corrections, and ended by landing a much smaller release slice and a new plan. OPS-184's launcher went through three review rounds, each finding new highs, in code no session registers, while OPS-201 went through four. Mid-session the owner brought three read-only Cursor reviews (architecture, security, code quality), turned into nine work items. Checked against the repository they mostly held; the disagreements are on `docs/plans/s22-review-mapping.md`. The plan (#387, merged by the owner) re-scopes v0.1.0 to the engine floor, moves the terminal UI, Phases 5 and 7 and the MCP server to v0.2, cancels PANEL-25 and changes the port order to lease, gate, merge.
+
+**Decisions, the owner's.** The launcher (`--resolve`, the mirror, the trust logic, 475 lines against ADR-0018's shim) and OPS-201 stay on unpushed branches, with no more rounds; OPS-218 designs the delivery and carries their findings, and accepted medium findings M1 to M7 are its to close before anything registers. The marker read left OPS-184's slice too, after its fresh review showed doctor offering a fix that turns the guards off; so deleting a marker in a lane still turns plugin guards off until OPS-218. Round 4 of review past the cap went to OPS-217 and OPS-201. The first tag still needs the owner's OK, and release tags now have a ruleset (id 26369672), which admin credentials bypass.
+
+**What surprised us.** A lane refused by `no-blind-source-rewrite` made the same edits from a script the hook cannot see (OPS-225). A sandboxed session can write files hooks later run (OPS-219, OPS-220). A review's exact steps reached `main` in a public row through #388 and stay in history after the trim. Also, a watcher reported success while no required check had run, and the #389 test run had to be restarted by hand: both logged.
+
+**Flow and cost.** flow 30d to 2026-11-02: cycle 1.7h median, lead 3.2h, 42.2 merges/wk, change-fail 4.6%, approval wait 4.6h, review rounds 2, spend $834.44/wk, 5 in flight (excludes unpriced Haiku). This session about $115 at list price, this machine only: ops $42.80, reviewer $39.46, session $19.12, s22-records $12.53, reviewer-docs $1.23. Much of the ops and reviewer spend sits on the held branches. The Totals line above is a floor: each gate took about 17 minutes, and batch lanes have no cost of their own.
+
+**Team queue.** No item worked; #374 and #375 go to OPS-221 once approved or through its own row.
+
+**What's next.** S23: OPS-221 (the suite), OPS-219 (`project.conf` as data), OPS-220 (the sandbox settings). ADR-0007's stale line and the first tag's OK wait on the owner.
+
+### OPS-184 — the release workflow; the rest is held for OPS-218
+
+- **PR**: #389
+- **Session**: S22, started 2026-11-02 10:29 ET (about; this slice's lane: the marker did not run, no PR)
+- **Review**: 3 rounds, peak high, cap 3 (round 1's high went with the marker read, which moved to OPS-218; round 3 converged at low)
+- **Gate**: CANNOT CHECK — one gate runs over the batch after this commit
+- **Cost**: CANNOT CHECK — a batch lane shares the orchestrator's session id, so no cost is the row's own
+- **Session start**: CANNOT CHECK — a batch lane runs no session-start marker
+
+#### What happened
+
+A tag push now builds the release in read-only jobs with no Go cache, reproduces the engines on a second runner, and only then opens a draft, in a job that runs no repository code (`.github/workflows/release.yml`, OPS-115). A tag must be on main and name this tree's version (`scripts/check-release-tag.sh`). `scripts/build-release.sh` reads its template list NUL-separated, builds with `-buildvcs=false`, and writes `engines.sha256`, which `scripts/check-release-repro.sh` reproduces with an empty cache. The merge changes what no session's hooks decide: nothing runs the workflow but a tag push, and the launcher's diff is comments. One effect is accepted: the merge changes two files under `.claude/hooks/`, one of them table text, so `worktree-hook-drift` refuses worktree agents until the main checkout pulls. The orchestrator pulls right after the merge with the sandbox off, because a sandboxed pull stops under `.claude/hooks`; if it still stops, the owner runs the reset. Row names in the launcher's comments and doctor's note follow the split. A full rebuild is shown reproducing on a small repository's four targets; this repository's own, and the workflow itself, stay unproven until the first tag.
+
+**Held on `ops/ops-184-engine-release`, unpushed, for OPS-218:** the marker read and ADR-0018 decision 5's amendment (the owner, 2026-11-02, after review found doctor and hook must decide together), resolve-once, the private mirror, the trust roots, the record and refusal files, `PrepareRepo` and the `stridal.mainBranch` writes, the launcher's changes, the settings deny rule, and review round 2's seven mediums and round 3's findings (carried by the owner's approval, 2026-11-02). This slice registers nothing and changes no launcher logic.
+
+#### Decisions
+
+The narrow slice, and carrying the rest to OPS-218 (the owner, 2026-11-02). The marker read moved there too, with its wording (the owner, 2026-11-02). A release binary carries no `vcs.revision`, so doctor cannot compare it with the panel's build and it never rebuilds itself, sending a notice instead; the hash reproducing is worth that. Action pins are held by a Go test, not `checks/supply-chain.sh`, which ships in the template and would hold adopters' workflows to this repo's choice.
+
+#### Surprises
+
+None in this slice. The held branch's review found that the first design read its authority through the lane's own git directory, which is why that work waits for OPS-218's design.
+
+#### Insights
+
+None.
+
+### OPS-217 — say what is true of the sandbox until OPS-216
+
+- **PR**: #388
+- **Session**: S22, started 2026-11-02 06:05 ET (the lane's start: the marker did not run, no PR)
+- **Review**: 4 rounds, peak high, cap 3 (round 1 found highs; the final round found two lows. The owner approved round 4 past the cap of 3 on 2026-11-02, because round 3 left two mediums. Round 4's two lows are fixed, with no further round)
+- **Gate**: CANNOT CHECK — one gate runs over the batch after this commit
+- **Cost**: CANNOT CHECK — a batch lane shares the orchestrator's session id, so no cost is the row's own
+- **Session start**: CANNOT CHECK — a batch lane runs no session-start marker
+
+#### What happened
+
+The model's statements that `sandbox.excludedCommands` lifts the sandbox now say what S5h found: the list is not honoured on Claude Code 2.1.316, so until OPS-216 the orchestrating session runs the gate and the full process checks with the sandbox off.
+
+- Corrected, with their template copies where one exists: `merge-pr` step 2, `apply-change`, `session-close`, `start-project` step 4b, `.claude/agents/builder.md`, `build-change.js`'s comment and gate prompts, `gate.sh`'s header, `gate-wait.sh`'s, both playbooks, `scripts/ci/README.md`, `docs/QUICKSTART.md`, `checks/settings.sh`'s comments and FAIL lines, and comments in `checks/gate.sh` and `checks/build-change.sh`.
+- No code path changed: `settings.json` is as it was, `checks/settings.sh` still holds the list and the lone form, and every gate command in the instructions keeps its shape. What the prompts change is real: a sandbox failure in a `build-change` run's quick gate moves from two builder attempts to an immediate stop. `checks/build-change.sh` gains a driver case for that stop.
+
+#### Decisions
+
+- The owner's, 2026-11-02: correct the statements now and leave the code fixes to OPS-216.
+- `merge-pr` no longer says never to use `dangerouslyDisableSandbox`, because the orchestrating session needs it for a gate.
+- `build-change.js` keeps its no-flag rule for its gate agents: they are not the orchestrating session, and letting them lift the sandbox would be a behaviour change. The prompt now tells them to report a sandbox failure as one.
+
+- #307's re-scope is not in this diff: the orchestrator edits the issue once the batch merges.
+
+#### Surprises
+
+A `build-change` run's gate agents still run sandboxed and can fail on `ps`, tmux or loopback whatever the code did. The prompts now send that to `environmentFault`, which stops the run rather than sending a builder after it. A hang in `checks/merge-guard` is only partly covered by words, so OPS-216 owns it, as its row says.
+
+#### Insights
+
+None.
+
 ## Session 21 — 2026-11-01 — Rich — S21: Gate A spikes recorded; CI green; engine lock inactive
 
 **Totals.** Gate 0 min (a row's gate was CANNOT CHECK, so this is a floor); cost $0 (a row's cost was CANNOT CHECK, so this is a floor).
