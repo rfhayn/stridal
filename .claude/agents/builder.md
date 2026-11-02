@@ -55,11 +55,14 @@ it, or code predating the change) is deleted only by returning `design-issue` th
 how many findings it has.
 
 **Context discipline.** Every line you read is re-read as cache on each later turn, so:
-- Gate with the agent-facing wrapper (`GATE` in `.claude/project.conf`), never the full runner
+- When you gate, use the agent-facing wrapper (`GATE` in `.claude/project.conf`), never the full runner
   directly: it prints the failures and a tail, and names the full log to `grep`. If the tool moves
   the gate to the background, call `scripts/ci/gate-wait.sh` in the foreground (timeout 600000):
   exit 3 means call it again; any other exit is the answer (0 PASS, 1 FAIL; 4 or 2: no result, run
   the gate again).
+  Until Stridal's OPS-216 you run sandboxed, where a process check can fail on `ps`, git's caches,
+  tmux or loopback whatever the code did (`merge-pr` step 2): run the checks your files touch and
+  report such a failure as the sandbox's, not as your code's.
 - Send any command output that can exceed ~100 lines to a file; read only its failure lines and a
   `tail`.
 - Read a file over ~300 lines by range: `grep -n` for the symbol, then `offset`/`limit` around it.

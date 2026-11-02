@@ -65,8 +65,8 @@ started from the panel's **New lane** (or by hand), on one branch:
     the sandbox: a rebase, a merge, or `STRIDAL_FRAMEWORK=$PWD framework/stridal update` with
     the binary built from the lane's checkout (the owner's shell sets that variable to the MAIN
     checkout, and it outranks the binary's own checkout in the template search). That was seen to
-    work on 2026-10-28, though these commands match the `git *` and `stridal *` entries below;
-    what those entries do is #307's.
+    work on 2026-10-28. No entry in `sandbox.excludedCommands` lifted it: S5h found the list not
+    honoured, probing `git *` (`docs/plans/s19-spikes.md`).
   - **A lane that is its own session** cannot: ST-15's launcher will have the opening session sync
     it. Until that exists, the owner syncs such a lane by hand, as before for a panel lane (the
     panel is uninstalled here and removed in PANEL-64).
@@ -83,17 +83,24 @@ started from the panel's **New lane** (or by hand), on one branch:
     binary from the lane's root as `STRIDAL_FRAMEWORK=$PWD stridal update`: without the
     prefix it would copy the main checkout's template, not the lane's. That reads the lane's
     template only as data to copy, and runs no lane code.
-  - **What does run outside the sandbox:** a command matching `sandbox.excludedCommands` in
-    `.claude/settings.json`, and any command run with an approved sandbox bypass. The gate is one,
-    since its process checks need `ps`, tmux and loopback, so a lane's gate runs the lane's own
-    checks and tests. The controls are review before the gate and the approval itself (#307).
-    An entry matches only the script run alone, so a subagent lane, whose Bash starts in the main
-    checkout, runs `scripts/ci/gate.sh -C <worktree>` (and `scripts/ci/gate-wait.sh -C <worktree>`),
-    never `cd <worktree> && …` or a pipe: those run sandboxed and fail (`checks/settings.sh`, OPS-161).
-    Seen 2026-10-28: a `git` command matching the `git *` entry was still refused `.git/config`,
-    and that day's unsandboxed runs (gates, checks, worktree adds) each went through an approved
-    `dangerouslyDisableSandbox`, mostly granted by auto mode's classifier, so what the entries do
-    on their own is unverified (#307).
+  - **What does run outside the sandbox:** only a command run with an approved
+    `dangerouslyDisableSandbox`. `sandbox.excludedCommands` in `.claude/settings.json` is not
+    honoured on Claude Code 2.1.316 (S5h, `docs/plans/s19-spikes.md`: all four shapes tried, in the
+    main session and in a subagent). The gate is such a command, since its process checks need
+    `ps`, tmux and loopback, so a lane's gate runs the lane's own checks and tests. What holds that
+    today is the approval of the bypass (#307). Review before the gate is intended but unenforced:
+    `merge-pr` gates at step 2 and reviews at step 3, and `build-change` reviews after its quick
+    gate.
+  - **Who runs a gate, until OPS-216.** The orchestrating session runs every full gate, docs gate
+    and `--quick` pre-PR pass, and the whole-set process checks, with the sandbox off, naming the
+    lane's worktree: `scripts/ci/gate.sh -C <worktree>` (and `scripts/ci/gate-wait.sh -C <worktree>`),
+    the form `checks/settings.sh` holds (OPS-161). `--quick` is no exception: it runs the same
+    process checks. A subagent lane runs only the checks its files touch, then hands back its
+    worktree and head. A lane that is its own session has no orchestrator, so it runs its gates
+    itself with an approved bypass. **The exception is a `build-change` run**: its gate agents run
+    sandboxed. A step that fails on a sandbox refusal stops the run as an environment fault at the
+    quick gate; at the full gate it stops at `receipt`, quoting the line. The next move is in the
+    stops table.
 - **One full gate at a time.** All lanes share one gate lease (`scripts/ci/run-local.sh`), so a
   lane's full gate may queue behind another's; the panel shows who holds it. A `--quick` run takes
   no lease and never queues.
@@ -121,8 +128,8 @@ started from the panel's **New lane** (or by hand), on one branch:
 
 When several reviewed lanes are ready, they can land as one batch with one gate instead of one gate
 each (PRAC-0013 in this repo; adopt it as a practice of your own if it fits). Before its PR, every
-lane runs the **pre-PR pass**, the quick gate over its worktree, `scripts/ci/gate.sh -C <worktree>
---quick`, so the batch gate is not the first run of a repo-wide check. Review stays per lane PR.
+lane gets the **pre-PR pass**, the quick gate over its worktree, run by the orchestrating session
+with the sandbox off until OPS-216: `scripts/ci/gate.sh -C <worktree> --quick`, so the batch gate is not the first run of a repo-wide check. Review stays per lane PR.
 Then, on an integration branch in its own worktree, cut from `origin/<main>`:
 
 1. `scripts/ci/batch.sh merge <first row id> <lane branch>…` merges the lanes `--no-ff` in the order given (a row
@@ -283,7 +290,8 @@ is an earlier group lifts the group boundary for exactly that fix.
 |---|---|---|
 | preflight | wrong branch, dirty tree, in the main checkout, nothing to build | fix the named precondition, re-run (a mid-group stop: `{"resume": <n>}`) |
 | design-issue | building would change a decided design or a spec | decide; the proposal or design is updated; re-run |
-| blocked / environment fault | a service down, a credential missing | fix the environment, re-run with `resume` |
+| blocked / environment fault | a service down, a credential missing (a sandbox refusal: the next row) | fix the environment, re-run with `resume` |
+| environment fault or `receipt` stop on a sandbox refusal | a gate agent runs sandboxed until Stridal's OPS-216 | re-run that gate from the orchestrating session with the sandbox off: `scripts/ci/gate.sh -C <worktree>` with its quick flags (`GATE_QUICK_FLAGS`, `--quick` by default) for a group's, without them for `receipt`. Either way `resume` cannot pass it until Stridal's OPS-216, so finish by hand with `/apply-change`. **A group's gate:** its work is on disk and uncommitted. Red: it was the code, so the builder fixes it (that skill's step 3). Green: it was the sandbox, so continue that group from step 4; the clean-tree precondition is for a fresh group, and each later group runs the skill's loop from step 1. **`receipt`:** every group is committed, and any full-gate tick was reverted. Red: fix it, commit, gate again. Green: if a task asks for a full gate, tick it and commit, then gate that head, since a commit voids the receipt; otherwise the receipt stands. Then go on from `/verify-change` in the skill's *Then* |
 | gate still red | two fix attempts failed | read the failure; fix or split the group |
 | severity rose | fixes introduced worse defects than they removed | read the rounds; usually the group is too big: split it |
 | not converged | three rounds without a clean one | rule on the builder's disputes, or split the group |
@@ -474,7 +482,7 @@ Haiku for the reviewer or the planner: economy mode never drops them either.
 | `focus-staleness.sh` | every prompt | nudges when the status-line focus is stale |
 | `format.sh` | every Write/Edit | runs the project's formatter, when configured |
 | `run-local.sh` | every gate | takes the gate lease; runs the scenario trace and the secret scan (gitleaks) before your steps; writes the receipt only for a complete, clean run |
-| `settings.json` | every tool call | denies reads of `.env` files and keys and a few commands (force-push, `tmux kill-server`); runs Bash in the sandbox with a network allowlist. Loosen per machine in `.claude/settings.local.json` (`sandbox.excludedCommands`, `sandbox.network.allowedDomains`) |
+| `settings.json` | every tool call | denies reads of `.env` files and keys and a few commands (force-push, `tmux kill-server`); runs Bash in the sandbox with a network allowlist. Add a host per machine in `.claude/settings.local.json` (`sandbox.network.allowedDomains`); `sandbox.excludedCommands` is not honoured on Claude Code 2.1.316 (S5h) |
 | `.claude/checks/run.sh` | every gate (a step) | the process checks: hook tables, the roadmap parser, ADR numbering, model roles, the budget |
 
 AGENTS.md's *What executes each rule* table is the full list, including the honest last row: what
