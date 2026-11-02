@@ -1,0 +1,73 @@
+# A tag push builds the release and opens a DRAFT GitHub release (OPS-115, OPS-184). Publishing the
+# draft stays the owner's decision. Three jobs, so nothing that compiles holds a write token: the
+# build and the reproduction are read-only and run on separate runners with no Go cache to poison,
+# and only the last job, which runs no repository code, can write.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: framework/go.mod
+          cache: false
+      - name: The tag is on main and names this version
+        run: sh scripts/check-release-tag.sh "$GITHUB_REF_NAME"
+      - name: Build the four targets
+        run: sh scripts/build-release.sh --out "$RUNNER_TEMP/dist"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: ${{ runner.temp }}/dist
+          if-no-files-found: error
+
+  reproduce:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: framework/go.mod
+          cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: ${{ runner.temp }}/dist
+      - name: Rebuild on this runner, and reproduce the engines' sha256s
+        run: sh scripts/check-release-repro.sh "$RUNNER_TEMP/dist/engines.sha256"
+
+  draft:
+    needs: [build, reproduce]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist
+      - name: Open a draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "$TAG" --generate-notes \
+            dist/stridal-*.tar.gz dist/checksums.txt dist/engines.sha256

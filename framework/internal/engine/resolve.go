@@ -59,7 +59,7 @@ func FixOf(err error) string {
 // trust roots are the git common dir (refs/remotes/origin/*, origin's HEAD, remote.origin.*,
 // MainBranchKey, packed-refs), the plugin root, and two working-tree files read on every call:
 // the worktree's .git pointer file and the model marker (HasMarker). A lane that can write any
-// of those can choose its pin, or none; OPS-184 verifies them at resolve-once against an
+// of those can choose its pin, or none; OPS-218 verifies them at resolve-once against an
 // authority lanes cannot write, before the launcher is switched on.
 func MainRef(ctx context.Context, projectDir string) (string, error) {
 	if out, err := gitOut(ctx, projectDir, "symbolic-ref", "-q", "refs/remotes/origin/HEAD"); err == nil {

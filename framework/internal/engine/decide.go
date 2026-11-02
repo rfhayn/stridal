@@ -114,8 +114,8 @@ func HasMarker(projectDir string) bool {
 func PlatformDir() string { return runtime.GOOS + "-" + runtime.GOARCH }
 
 // EnginePath is where the plugin's engine for this platform lives, or the fixture's
-// STRIDAL_ENGINE when HOME is a fixture HOME. Where a release puts its engines is OPS-184's,
-// once OPS-199 has found where they can live; until then this is plugin/engine/<goos>-<goarch>.
+// STRIDAL_ENGINE when HOME is a fixture HOME. Under ADR-0018 3(b) a release's engines live
+// in the plugin's data directory, which is OPS-218's; until then this is plugin/engine/<goos>-<goarch>.
 func EnginePath(e Env) string {
 	if e.EngineOverride != "" && IsFixtureHome(e.Home, e.TempDir) {
 		return e.EngineOverride

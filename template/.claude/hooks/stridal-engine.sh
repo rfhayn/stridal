@@ -22,11 +22,10 @@
 # plugin's hooks.json, and a `stridal install` project's settings.json, until OPS-145), so both
 # read the one lock.
 #
-# Not yet registered: no release carries an engine until OPS-184, and a marked repository with
-# no engine refuses every guarded call, so OPS-184 switches both paths to it. STRIDAL_ENGINE
-# names an engine only under a check's fixture HOME (decision 6). Known limits are OPS-184's
-# (docs/journal.d/OPS-183.md): hash then exec by path, and the trust roots below, which a lane
-# can write.
+# Not yet registered: no engine reaches a machine until OPS-218, and a marked repository with
+# no engine refuses every guarded call, so OPS-224 switches both paths to it. STRIDAL_ENGINE
+# names an engine only under a check's fixture HOME (decision 6). Known limits are OPS-218's:
+# hash then exec by path, and the trust roots below, which a lane can write.
 set -f
 
 proj=${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}
@@ -83,8 +82,7 @@ good_branch() {
 # verified_engine: resolve main's pin and verify this platform's engine against it. On success,
 # $engine is the verified path and $release the pinned release; on failure, $why and $fix say
 # why. It reads no payload and refuses nothing itself, so it is the one seam a SessionStart hook
-# can call once per session to cache the verified path (resolve once, ADR-0018 decision 3: OPS-184,
-# once OPS-199's spike decides the mechanism).
+# can call once per session to cache the verified path (resolve once, ADR-0018 decision 3: OPS-218).
 unverified() { why=$1 fix=$2; }
 verified_engine() {
   # Which branch is main: origin's HEAD (set by clone; git remote set-head origin --auto sets it
@@ -95,7 +93,7 @@ verified_engine() {
   # HEAD, remote.origin.*, stridal.mainBranch, packed-refs), the plugin root, and two
   # working-tree files read on every call: the worktree's .git pointer file, which says which
   # repository git reads, and the model marker, whose absence makes this stand aside. A lane that
-  # can write any of those can choose its pin, or none. OPS-184 verifies them at resolve-once
+  # can write any of those can choose its pin, or none. OPS-218 verifies them at resolve-once
   # against an authority lanes cannot write, before the launcher is switched on.
   if head=$(git -C "$proj" symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null); then
     main=${head#refs/remotes/origin/}

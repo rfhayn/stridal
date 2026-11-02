@@ -24,14 +24,14 @@ const (
 // launchedCmd matches a control registered through the launcher in a project's settings.json.
 var launchedCmd = regexp.MustCompile(`^sh "\$CLAUDE_PROJECT_DIR"/\.claude/hooks/` + regexp.QuoteMeta(LauncherHook) + ` ([A-Za-z0-9_.-]+\.sh)$`)
 
-// LaunchControls is the generator OPS-184 runs once the first release carries an engine: it
+// LaunchControls is the generator OPS-224 runs once the first lock is on main: it
 // rewrites a settings.json so every control runs through the launcher, which verifies the
 // engine against main's lock first. The plugin build then carries the same form into hooks.json
 // (pluginHooks reads the launcher form), so both registration paths read the one lock.
 //
 // A control is an entry registered with "onFailure": "block", the property OPS-214's registration
 // check holds every guard to; every other entry (a nudge, a formatter, a hook that fails open on
-// purpose) is left as it is. It is idempotent. Until OPS-184 nothing calls it outside its tests:
+// purpose) is left as it is. It is idempotent. Until OPS-224 nothing calls it outside its tests:
 // a marked repository with no engine refuses every guarded call, so the committed registrations
 // stay as they are (OPS-183 ships inactive).
 func LaunchControls(settings []byte) ([]byte, error) {
