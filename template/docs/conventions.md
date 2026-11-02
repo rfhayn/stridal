@@ -80,6 +80,10 @@ memory is per machine: what another person needs goes in the repo. Fragments nev
 file per row); the close's shared files are resolved as `session-close` describes (the journal
 renumbers, the insights log keeps both rows, ADRs take the next number).
 
+**A public record states a finding's class, never its steps.** On a public repository, a row, a
+fragment, a PR body or a journal entry names the class of an unfixed finding; the steps stay in a
+local file. Nothing checks this: it is **Nothing. You.**, and text once merged stays in history.
+
 ## Testing (yours)
 
 What a test must prove in this project, what runs against real services, and what a reviewer

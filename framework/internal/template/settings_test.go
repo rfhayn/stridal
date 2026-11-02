@@ -5,7 +5,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -95,6 +97,114 @@ func TestMergeSettingsRetiresDeny(t *testing.T) {
 	}
 	if !removed {
 		t.Errorf("no remove with a reason reported for the gh deny: %+v", changes)
+	}
+}
+
+// OPS-220: an installed project loses the five exclusions the template dropped, each reported with
+// its reason, and keeps an exclusion of its own and the gate's. A merge keeps every entry it does
+// not know, so without retiredEntries these would stay forever.
+func TestMergeSettingsRetiresToolExclusions(t *testing.T) {
+	tmpl := templateSettings(t)
+	have := []byte(`{"sandbox":{"excludedCommands":["git *","gh *","tmux *","stridal *","docker *","make *","scripts/ci/gate.sh *"]}}`)
+	merged, changes, err := MergeSettings(have, tmpl, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m struct {
+		Sandbox struct {
+			ExcludedCommands []string `json:"excludedCommands"`
+		} `json:"sandbox"`
+	}
+	if err := json.Unmarshal(merged, &m); err != nil {
+		t.Fatal(err)
+	}
+	for _, gone := range []string{"git *", "gh *", "tmux *", "stridal *", "docker *"} {
+		if slices.Contains(m.Sandbox.ExcludedCommands, gone) {
+			t.Errorf("merged settings keep %q: %v", gone, m.Sandbox.ExcludedCommands)
+		}
+		reported := false
+		for _, c := range changes {
+			if c.Action == "remove" && c.Path == "sandbox.excludedCommands" && c.Have == `"`+gone+`"` && strings.Contains(c.Note, "OPS-220") {
+				reported = true
+			}
+		}
+		if !reported {
+			t.Errorf("no remove with a reason reported for %q: %+v", gone, changes)
+		}
+	}
+	for _, kept := range []string{"make *", "scripts/ci/gate.sh *"} {
+		if !slices.Contains(m.Sandbox.ExcludedCommands, kept) {
+			t.Errorf("merged settings lost %q: %v", kept, m.Sandbox.ExcludedCommands)
+		}
+	}
+}
+
+// OPS-220: three things name what the template retired, and only this ties them. retiredEntries is
+// `stridal update`'s list, scaffold.sh's RETIRED block the plugin's, and TOOL_EXCLUSION_RE what
+// checks/settings.sh fails. An entry added to one alone would leave a project that one road cleans and
+// the other leaves failing the check.
+func TestRetiredEntriesAgreeOnEveryRoad(t *testing.T) {
+	root := repoRoot(t)
+	raw, err := os.ReadFile(filepath.Join(root, "framework", "internal", "plugin", "assets", "scaffold.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`(?s)<<'RETIRED'\n(.*?)\nRETIRED\n`).FindSubmatch(raw)
+	if m == nil {
+		t.Fatal("scaffold.sh has no RETIRED block")
+	}
+	var shell map[string]map[string]string
+	if err := json.Unmarshal(m[1], &shell); err != nil {
+		t.Fatalf("scaffold.sh's RETIRED block: %v", err)
+	}
+	want := map[string]map[string]string{}
+	for path, entries := range retiredEntries {
+		want[path] = map[string]string{}
+		for compact, why := range entries {
+			var entry string
+			if err := json.Unmarshal([]byte(compact), &entry); err != nil {
+				t.Fatalf("retiredEntries[%s]: %s is not a JSON string: %v", path, compact, err)
+			}
+			want[path][entry] = why
+		}
+	}
+	if !reflect.DeepEqual(shell, want) {
+		t.Errorf("scaffold.sh's RETIRED block and retiredEntries have parted:\nshell %v\ngo    %v", shell, want)
+	}
+
+	check, err := os.ReadFile(filepath.Join(root, "template", ".claude", "checks", "settings.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	re := regexp.MustCompile(`(?m)^TOOL_EXCLUSION_RE='\^\(\[\^ \]\*/\)\?\(([^)]*)\)`).FindSubmatch(check)
+	if re == nil {
+		t.Fatal("checks/settings.sh has no TOOL_EXCLUSION_RE in the form this reads")
+	}
+	names := strings.Split(string(re[1]), "|")
+	var retired []string
+	for entry := range want["sandbox.excludedCommands"] {
+		retired = append(retired, strings.TrimSuffix(entry, " *"))
+	}
+	slices.Sort(names)
+	slices.Sort(retired)
+	if !slices.Equal(names, retired) {
+		t.Errorf("TOOL_EXCLUSION_RE names %v, and retiredEntries retires %v", names, retired)
+	}
+}
+
+// OPS-220: the value shipped stays true until OPS-216, since nothing else can run a gate before then
+// (S5h). A project may set it either way, so checks/settings.sh does not hold this; only the template's.
+func TestShippedSettingsKeepTheGatesWayOut(t *testing.T) {
+	var s struct {
+		Sandbox struct {
+			AllowUnsandboxedCommands *bool `json:"allowUnsandboxedCommands"`
+		} `json:"sandbox"`
+	}
+	if err := json.Unmarshal(templateSettings(t), &s); err != nil {
+		t.Fatal(err)
+	}
+	if s.Sandbox.AllowUnsandboxedCommands == nil || !*s.Sandbox.AllowUnsandboxedCommands {
+		t.Errorf("template settings.json: allowUnsandboxedCommands = %v, want true until OPS-216", s.Sandbox.AllowUnsandboxedCommands)
 	}
 }
 

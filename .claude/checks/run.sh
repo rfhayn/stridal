@@ -308,6 +308,8 @@ done
 [ -z "$skipped" ] || echo "checks: left to another run by CHECKS_SKIP:$skipped"
 if [ -n "$failed" ]; then
   echo "checks: FAILED:$failed (of $count run, in $ROOT)"
+  # A check that passes by name and fails only here points the reader the wrong way (lib.sh's bare_env).
+  [ -z "$whole" ] || [ -z "${CHECKS_BARE:-}" ] || { _db=$(git config --get init.defaultBranch 2>/dev/null); echo "checks: if one passes by name: git's default branch here is ${_db:-not set}, so a fixture must name its branch (git init -b main, git clone -b main, or git symbolic-ref HEAD refs/heads/main)"; }
   exit 1
 fi
 # "without stridal" only when this whole-set run is in the environment by its real state, never

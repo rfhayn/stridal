@@ -103,8 +103,8 @@ module. So does every screen this PRD describes. ST-20 switches them on in full 
   as unknown and is counted so, never as zero.
 - No new process check joins lite's check set (OPS-92a's list) unless the owner adds it; the renderer's
   `ideas:queue` check is the candidate.
-- How much of a shaped row's process lite runs follows the owner's separate answers on review in lite (R50, PRD
-  Q2) and scenario checks in lite (R52, PRD Q5), due before OPS-92a (decision 8).
+- How much of a shaped row's process lite runs follows the owner's answers of 2026-11-02 (decision 8): one review
+  pass per PR, and a scenario a change adds or modifies needs a citing test.
 - Everything stays sh and jq, as the ideas module is (ADR-0006): no Node, no binary.
 
 ### 6. Its views (PROD-5, PANEL-63)
@@ -140,6 +140,9 @@ module. So does every screen this PRD describes. ST-20 switches them on in full 
    neither stay byte-identical, so committed files keep passing `--check`.
 7. **ST-20's four modules are on by default in full, and offered in lite** as a one-line opt-in. Lite keeps the
    idea record, `/ideate`, `/shape` and the roll-up as repository files.
-8. **R50 and R52 stay separate** (owner queue, before OPS-92a); this PRD follows them.
+8. **R50 and R52, answered 2026-11-02; this PRD follows them.** R50, review in lite: one review pass per PR, only a
+   high blocks, no convergence rounds. R52, scenario checks in lite: yes, a scenario a change adds or modifies
+   needs a citing test (OPS-92c keeps rule 10 blocking). The questions' original text was no longer in the repo; the
+   owner answered them as restated in that session.
 9. **The owner always approves a PRD**; `APPROVAL_DELEGATED` never covers one. Row proposals under it can be
    delegated as today.

@@ -46,7 +46,19 @@ var retiredEntries = map[string]map[string]string{
 	"permissions.deny": {
 		`"Read(~/.config/gh/**)"`: "retired by the template (OPS-75): a sandboxed script's gh must read hosts.yml to find its keyring account",
 	},
+	"sandbox.excludedCommands": {
+		`"git *"`:     retiredExclusion,
+		`"gh *"`:      retiredExclusion,
+		`"tmux *"`:    retiredExclusion,
+		`"stridal *"`: retiredExclusion,
+		`"docker *"`:  retiredExclusion,
+	},
 }
+
+// retiredExclusion says why a merge drops these: left in an installed project, each keeps promising
+// a lift the list does not give, and a Claude Code that honoured the list again would run git
+// outside the sandbox, free to write the plugin's data directory (OPS-220).
+const retiredExclusion = "retired by the template (OPS-220): sandbox.excludedCommands is not honoured on Claude Code 2.1.316 (spike S5h), and where it is honoured this entry would run the command outside the sandbox"
 
 // hookScriptRe finds the model's hook script a registration runs, whatever form the command
 // takes (the old cwd-relative `sh .claude/hooks/x.sh` or the `"$CLAUDE_PROJECT_DIR"` one).

@@ -1,6 +1,6 @@
 # ADR 0022: Live session state comes from a feed in files, or from the panel daemon
 
-- **Status**: Proposed. **Option B, the feed in files, chosen by the owner 2026-10-31**; acceptance at Gate C (OPS-203), on OPS-199's evidence.
+- **Status**: Accepted (the owner, 2026-11-02): option B, the feed in files, display-only (see the acceptance below).
 - **Date**: 2026-10-31
 - **Tags**: panel, terminal-ui, engine, hooks
 - **Source**: the S19 remap (finding 4 and the FEED row); ADR-0017's "no state outside files"
@@ -58,10 +58,13 @@ unchanged.
 - **One registration path:** OPS-185's registration check, which, once FEED lands, also fails on a
   `curl` hook in `~/.claude/settings.json` written by stridal.
 - **The feed's schema and rotation:** engine tests (FEED row).
+- **The feed is display-only:** nothing yet, since no code reads a feed: **Nothing. You.** until
+  OPS-204, whose row carries the rule.
 
 ## Rests on
 - A hook can append under the git common dir outside the sandbox: S5b, **passed**.
-- Polling a feed file is fast enough for the terminal UI: **untested**. Measured in the FEED row.
+- A sandboxed Bash can write `<common dir>/stridal/` in a real checkout, so the feed can be forged and stays display-only: S23a, **passed**.
+- Polling a feed file is fast enough for the terminal UI: **untested** — accepted at risk by the owner (2026-11-02); tested by OPS-204.
 
 ## Amendment — 2026-11-02: PANEL-25 is cancelled now
 - **Source**: the three reviews of 2026-11-02 (`docs/plans/s22-review-mapping.md`); the owner's decision.
@@ -73,6 +76,19 @@ a new row. The status stays Proposed until OPS-203.
 
 **Enforcement** (in addition to the above): `checks/changes.sh` fails a directory whose row is
 cancelled.
+
+## Acceptance — 2026-11-02: option B, and the feed is display-only
+- **Source**: the owner, 2026-11-02 (OPS-203); S23a in `docs/plans/s19-spikes.md`.
+
+The owner accepts option B, on the test OPS-203 asked for and with the conditions it led to:
+- **The feed is display-only.** S23a shows a sandboxed Bash can write under the common dir, so an
+  agent can forge the feed. No guard, gate or merge decision may read it. ST-17's watcher may
+  report from it, and may decide nothing that a control would rely on.
+- **Polling speed is accepted at risk**, measured by OPS-204's 250 ms ceiling.
+
+This replaces "To be taken by the owner at Gate C" above, and both statements above that the status
+stays Proposed, which are kept as history. If OPS-204's measurement fails, the question reopens with
+a new row.
 
 ## Related
 - ADR-0003 (one panel for many repositories), ADR-0005 (never kill a tmux server), ADR-0017,

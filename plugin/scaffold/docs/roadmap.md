@@ -81,6 +81,11 @@ environment). Every reader goes through `roadmap_queue` in `${CLAUDE_PLUGIN_ROOT
 `stridal-model roadmap-queue.sh` hands every call to it, so the skills, the panel and the checks all
 follow the one key. `checks/roadmap.sh` fails a script that reads the queue any other way.
 
+`## Session plan` stays a reserved heading: `${CLAUDE_PLUGIN_ROOT}/roadmap-plan.sh` reads that section, as the
+table above, whatever parser reads the queue, so `checks/roadmap.sh` fails a row planned twice
+there. A section of that name in your own shape is not read: running the check by name says so,
+and the panel's **Up next** fails on it. Name it something else unless it follows that table.
+
 The contract a parser meets:
 
 | Mode | Prints | Exit |

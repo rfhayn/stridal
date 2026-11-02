@@ -2,7 +2,8 @@
 
 `session-start` runs every `*.sh` in this directory and prints each one's output under its name.
 The directory is the list (nothing to register): add a script and it runs next session; delete it
-and it stops. After these come the enabled modules' `health/*.sh` and the project's own
+and it stops. After these come the model's two lines (the table below), the enabled modules'
+`health/*.sh` and the project's own
 `.claude/local/health/*.sh` (which `stridal update` never touches), all through
 `.claude/extensions.sh health`. Each runs under the interpreter its `#!` line names
 (`#!/usr/bin/env bash` runs under bash, never forced through `sh`, which is dash on Ubuntu); a file
@@ -16,8 +17,8 @@ needs a named addressee*, `docs/principles.md`).
 ## The contract
 
 - Print one line per subject, starting with its verdict: `OK`, `FAILED`, `STALE`, `STUCK` (queued
-  or running for more than a day), `RUNNING`, `NEVER RAN`, `HIGH` (a level at its threshold), or
-  `CANNOT CHECK — <why>`. Anything that
+  or running for more than a day), `RUNNING`, `NEVER RAN`, `HIGH` (a level at its threshold),
+  `NOT PROVEN` (what it tests was not there to test), or `CANNOT CHECK — <why>`. Anything that
   is not `OK` is repeated in the session summary.
 - **Name the subject**: the commit, the date, the run a verdict covers. A green result for a
   two-week-old run is consumed as coverage.
@@ -44,3 +45,12 @@ needs a named addressee*, `docs/principles.md`).
 The two GitHub ones and `coauthor-trailers.sh` are thin callers: their logic is `.claude/lib/health.sh`, which `stridal
 update` keeps current while this directory stays yours. Delete the two GitHub ones if you do not use Actions. Project-specific health (a dependency audit, a
 migration ledger, a backup's age) goes here as its own script.
+
+Two more lines are the model's, not files here: `.claude/extensions.sh` runs them itself from
+`.claude/lib/health.sh`, because a new file here would miss an updated project and every plugin
+update, and these answer for the machine and the sandbox rather than the project:
+
+| Line | Reports |
+|---|---|
+| `gh-token-file` | Whether gh's `hosts.yml` holds a token in plain text: `FAILED` with its path and a line count, never the token; `OK` with no file or no token; `CANNOT CHECK` when the file cannot be read. |
+| `sandbox-writes` | Where a write was refused, tried each session start: `OK` naming each path refused, `FAILED` naming a path that took a write after the home directory refused one, `NOT PROVEN` when the home directory took one or nothing was refused. A path not there is named as not there, never judged. |

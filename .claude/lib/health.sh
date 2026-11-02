@@ -9,6 +9,8 @@
 #   health_crons FILE              the workflow's cron expressions, `; `-joined, as written
 #   health_push_main               the push-main health line (one line per push workflow)
 #   health_scheduled [--list]      the scheduled-workflows health line (one line per workflow)
+#   health_gh_token                the gh-token-file health line: a plain-text token in gh's hosts.yml
+#   health_sandbox_writes          the sandbox-writes health line: what this session's sandbox refused
 #   health_coauthor LINE           the coauthor-trailers health line: a Co-authored-by trailer on
 #                                  origin/<main> while attribution is off (local git, no gh)
 #
@@ -291,6 +293,128 @@ health_scheduled() {
     echo "FAILED $_hs_n: TRIGGER — last scheduled run ${_hs_concl:-unknown} ($_hs_when${_hs_age:+, ${_hs_age}d ago}${_hs_crons:+, cron $_hs_crons}) — NOBODY IS NOTIFIED OF THIS. $_hs_url$_hs_clean$_hs_why"
   done
   rm -rf "$_hs_tmp"
+}
+
+# health_gh_token: is a token in plain text in gh's hosts.yml? Sandboxed `gh` must read that file to
+# find its keyring account (OPS-75), so nothing denies it to a sandboxed command, and a token there is
+# readable by any agent; with a keyring the file holds none. So the file's content is what is checked,
+# on the machine at hand, each session (OPS-220). It finds the file as gh does (GH_CONFIG_DIR, then
+# XDG_CONFIG_HOME/gh, then ~/.config/gh). NEVER prints a line of the file, only its path and a count.
+# A key named token with a value counts, as does a token's own shape under any key, a comment included:
+# on disk it is readable all the same. cat's stdout goes nowhere, so what is captured is its message
+# alone: that tells what could not be read from what is not there, as `[ -e ]` cannot under a read deny.
+# Under the checks (CONTEXT_OFFLINE=1) only a file named by GH_CONFIG_DIR is read: a check that runs the
+# health lines never reads this machine's credential file.
+health_gh_token() {
+  if [ "${CONTEXT_OFFLINE:-}" = 1 ] && [ -z "${GH_CONFIG_DIR:-}" ]; then
+    echo "CANNOT CHECK — offline: under the checks this machine's hosts.yml is not read"
+    return 0
+  fi
+  _gt_dir=${GH_CONFIG_DIR:-${XDG_CONFIG_HOME:+$XDG_CONFIG_HOME/gh}}
+  _gt_file="${_gt_dir:-$HOME/.config/gh}/hosts.yml"
+  if ! _gt_err=$(LC_ALL=C cat -- "$_gt_file" 2>&1 >/dev/null); then
+    case $_gt_err in
+      *'No such file'*) echo "OK no $_gt_file on this machine, so no token in it" ;;
+      *) echo "CANNOT CHECK — could not read $_gt_file ($_gt_err); a plain-text gh token there is UNKNOWN, not absent" ;;
+    esac
+    return 0
+  fi
+  if ! _gt_n=$(LC_ALL=C awk -v q="'" '
+    BEGIN { key = "(^|[ \t\"" q "])(oauth_)?token[\"" q "]?[ \t]*:[ \t]*([^ \t\"" q "#]|\"[^\"]|" q "[^" q "])" }
+    { l = tolower($0) }
+    l ~ /(ghp|gho|ghu|ghs|ghr)_[a-z0-9]/ || l ~ /github_pat_/ { n++; next }
+    l !~ /^[ \t]*#/ && l ~ key { n++ }
+    END { print n + 0; print NR + 0 }' "$_gt_file" 2>/dev/null); then
+    echo "CANNOT CHECK — could not scan $_gt_file; a plain-text gh token there is UNKNOWN, not absent"
+    return 0
+  fi
+  _gt_lines=$(printf '%s\n' "$_gt_n" | sed -n 2p); _gt_n=$(printf '%s\n' "$_gt_n" | sed -n 1p)
+  if [ "$_gt_n" -gt 0 ]; then
+    echo "FAILED $_gt_file holds a plain-text token on $_gt_n of $_gt_lines line(s) (not shown), readable by any agent: move it to a keyring (with one running: gh auth login)"
+  else
+    echo "OK no token in $_gt_file ($_gt_lines line(s) read)"
+  fi
+  return 0
+}
+
+# health_sandbox_writes: what a sandboxed session cannot write, tried each session start (OPS-220).
+# Settings can say the sandbox is on; only a real sandboxed command can say what that holds, and it
+# matters because a file a sandboxed session could write and an unsandboxed process later runs is a way
+# out. It runs from the session's context, which a sandboxed Bash runs. It says what it observed, not why:
+# a home that takes a write reads NOT PROVEN (no sandbox here, a sandbox that allows the home directory,
+# and a fixture HOME look the same, and the line says it cannot tell); a read-only home with no sandbox
+# reads as refused; any other path that takes a write after the home refused one reads FAILED.
+# A write counts as refused only on the sandbox's own error. A directory takes a new file, removed at
+# once; an existing file is opened to append nothing, so its bytes and time stay; a path not there is
+# reported as not there, a verdict on nothing. No path here holds a credential, and none is read. The
+# first probe, of the home directory, decides: if it takes a write, nothing else is touched. A path under
+# the temporary directory is not tried, since the sandbox allows that directory on purpose.
+health_sandbox_refused() { printf '%s' "$1" | grep -qiE 'operation not permitted|read-only file system'; }
+health_probe_write() {  # PATH: prints wrote, refused or other: WHY
+  if [ -d "$1" ]; then
+    _pw_f="$1/.stridal-sandbox-probe.$$"
+    if _pw_e=$( (: > "$_pw_f") 2>&1 ); then rm -f "$_pw_f"; echo wrote; return 0; fi
+  elif [ -e "$1" ]; then
+    if _pw_e=$( (: >> "$1") 2>&1 ); then echo wrote; return 0; fi
+  else
+    echo "other: $1 is not there"; return 0
+  fi
+  if health_sandbox_refused "$_pw_e"; then echo refused; else echo "other: $_pw_e"; fi
+}
+health_sandbox_try() {  # LABEL PATH: adds to the refused, untried or absent list, or prints the path's verdict
+  _st_tmp=${TMPDIR:-/tmp}; _st_tmp=${_st_tmp%/}; _st_phys=$(cd "$_st_tmp" 2>/dev/null && pwd -P)
+  case $2 in
+    "$_st_tmp"/* | "${_st_phys:-$_st_tmp}"/*)
+      _sw_untried="$_sw_untried${_sw_untried:+, }$1"; return 0 ;;
+  esac
+  [ -e "$2" ] || { _sw_absent="$_sw_absent${_sw_absent:+, }$1"; return 0; }
+  _st_r=$(health_probe_write "$2")
+  case $_st_r in
+    refused) _sw_refused="$_sw_refused${_sw_refused:+, }$1 ($2)" ;;
+    wrote) echo "FAILED a write went through at $1 ($2), though the home directory refused one" ;;
+    *) echo "CANNOT CHECK — $1 ($2): $_st_r" ;;
+  esac
+}
+health_sandbox_writes() {
+  _sw_r=$(health_probe_write "$HOME")
+  case $_sw_r in
+    refused) ;;
+    wrote) echo "NOT PROVEN $HOME took a write: no sandbox is on here, it allows the home directory, or HOME is a fixture, and this cannot tell which, so what a session cannot write was not tested"; return 0 ;;
+    *) echo "NOT PROVEN $HOME answered neither a write nor a refusal ($_sw_r): what a session cannot write was not tested"; return 0 ;;
+  esac
+  _sw_refused=""; _sw_untried=""; _sw_absent=""
+  _sw_cfg=${CLAUDE_CONFIG_DIR:-$HOME/.claude}
+  _sw_plug=${CLAUDE_CODE_PLUGIN_CACHE_DIR:-$_sw_cfg/plugins}
+  health_sandbox_try "the home directory" "$HOME"
+  health_sandbox_try "Claude's user settings" "$_sw_cfg/settings.json"
+  health_sandbox_try "Claude's user hooks" "$_sw_cfg/hooks"
+  health_sandbox_try "a plugin's data directory" "$_sw_plug/data"
+  health_sandbox_try "the plugin cache" "$_sw_plug/cache"
+  _sw_main=$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
+  if [ -n "$_sw_main" ]; then
+    health_sandbox_try "git's config" "$_sw_main/config"
+    health_sandbox_try "git's hooks" "$_sw_main/hooks"
+    # A lane's own copies are reported below; the main checkout's are never a lane's to write.
+    case $_sw_main in */.git)
+      health_sandbox_try "the main checkout's settings" "${_sw_main%/.git}/.claude/settings.json"
+      health_sandbox_try "the main checkout's hooks" "${_sw_main%/.git}/.claude/hooks"
+      ;;
+    esac
+  fi
+  # A report, not a claim: until Stridal's OPS-145 lanes sync through `stridal update`, so a lane that is
+  # an agent of the main session keeps its own .claude/hooks open. Spelt through _sw_own: a plugin's
+  # project has none, and this is the project's directory, not the plugin's.
+  _sw_own=$ROOT
+  _sw_note=""
+  if [ -d "$_sw_own/.claude/hooks" ]; then
+    _sw_h=$(health_probe_write "$_sw_own/.claude/hooks")
+    _sw_note="; this checkout's own hooks: $_sw_h"
+    [ "$_sw_h" != wrote ] || _sw_note="$_sw_note (open until Stridal's OPS-145)"
+  fi
+  [ -z "$_sw_untried" ] || _sw_note="$_sw_note; not tried, under the temporary directory the sandbox allows: $_sw_untried"
+  [ -z "$_sw_absent" ] || _sw_note="$_sw_note; not there: $_sw_absent"
+  if [ -n "$_sw_refused" ]; then echo "OK a write was refused at: $_sw_refused$_sw_note"
+  else echo "NOT PROVEN nothing was refused, so what a session cannot write was not tested$_sw_note"; fi
 }
 
 # health_coauthor LINE: no commit on origin/<main> after a baseline carries a Co-authored-by

@@ -39,6 +39,23 @@ if bare sh -c 'command -v stridal' >/dev/null 2>&1; then
 fi
 ok "stridal is absent from PATH, and HOME has no panel"
 
+# Git's default branch here is one no fixture uses (lib.sh's bare_env), which is all that makes a
+# fixture relying on a repo's default HEAD fail on a machine whose git says main: a clone of a bare
+# origin that names no HEAD checks out nothing, on a branch neither main nor master.
+bare git init -q --bare "$d/dh.git"
+bare git init -q "$d/dh-w"
+echo x > "$d/dh-w/f"
+bare git -C "$d/dh-w" add f
+bare git -C "$d/dh-w" -c user.name=check -c user.email=check@example.com -c commit.gpgsign=false commit -qm init
+bare git -C "$d/dh-w" push -q "$d/dh.git" HEAD:refs/heads/main
+bare git clone -q "$d/dh.git" "$d/dh-c" 2>/dev/null
+_dh=$(bare git -C "$d/dh-c" symbolic-ref --short HEAD 2>/dev/null)
+case $_dh in
+  '') fail "the default-branch fixture built no clone, so git's default branch in this environment is unchecked" ;;
+  main | master) fail "git's default branch in this environment is \"$_dh\": a fixture relying on it goes unseen on a machine whose git says the same (lib.sh's bare_env; a GIT_CONFIG_GLOBAL from the caller overrides it)" ;;
+  *) if [ -e "$d/dh-c/f" ]; then fail "a clone of a bare origin that names no HEAD checked out its files on \"$_dh\": the default-branch fixture learned nothing"; else ok "a clone of a bare origin that names no HEAD checks out nothing, on \"$_dh\", so a fixture relying on it fails here"; fi ;;
+esac
+
 # asks FILE: the lines where something errored for want of stridal, or asked for it or the panel.
 ASKS='stridal: (command )?not found|command not found: stridal|stridal: No such file|stridal[^a-z].*(is required|not installed|is missing|needed)|install stridal|(please )?start the panel|panel (is )?required|start (it|the panel)? ?with:? .?stridal|run .?stridal panel'
 asks() { grep -iE "$ASKS" "$1" | head -3; }

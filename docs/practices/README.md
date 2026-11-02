@@ -50,3 +50,4 @@ older records as written). Never renumber a record on `main`; supersede it.
 | [0014](0014-converge-review-by-deleting-mechanism.md) | Converge review by deleting mechanism, not adding it | Accepted |
 | [0015](0015-a-classifier-stop-is-a-park-signal.md) | A classifier stop is a park signal, by a rule agreed before the retry | Accepted |
 | [0023](0023-evidence-before-acceptance.md) | A decision is accepted only on the evidence its assumptions name | Accepted |
+| [0024](0024-a-finding-goes-with-the-row-that-makes-it-live.md) | A finding that cannot fire yet goes with the row that makes it live | Proposed |

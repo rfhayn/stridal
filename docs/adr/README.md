@@ -63,4 +63,4 @@ that merges second takes the next free number.
 | [0019](0019-parity-first-ports.md) | A control is ported parity-first, and the shell version goes only with a parity receipt | Accepted |
 | [0020](0020-judgment-gates.md) | Judgment gates: a model checks at an event, beside a control and never instead of one | Accepted |
 | [0021](0021-the-roadmap-is-data.md) | The roadmap is data that the engine owns; the markdown and the owner's doc are views of it | Accepted |
-| [0022](0022-panel-daemon-or-feed.md) | Live session state comes from a feed in files, or from the panel daemon | Proposed |
+| [0022](0022-panel-daemon-or-feed.md) | Live session state comes from a feed in files, or from the panel daemon | Accepted |
