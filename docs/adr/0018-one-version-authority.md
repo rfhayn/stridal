@@ -135,8 +135,8 @@ Built by OPS-183, OPS-184 and OPS-218, each shown failing first:
 - **A release check:** rebuilding a tagged release reproduces its sha256s.
 - **The per-call budget:** a dispatcher latency test with a 10 ms ceiling, built in OPS-185. S4
   measured the launcher plus the engine at 3.87 ms median, against 3.64 ms for a bare `sh -c`.
-  OPS-184's resolved path measured more; the owner accepted that on 2026-11-02 until the port out
-  of shell (see the amendment below), and OPS-218 re-measures it.
+  A reading of OPS-184's resolved path measured more; the owner accepted that on 2026-11-02 until
+  OPS-218 re-measures it, when the ceiling comes back to the owner (see the amendment below).
 - **Every control hook carries `onFailure: "block"`:** the OPS-185 registration check, with S1's
   cases as its fixtures (a missing, a hung and an exit-2 engine).
 
@@ -169,8 +169,8 @@ branch grew it to about 470 lines of trust logic, so OPS-218's design moves that
 **The per-call budget.** The owner accepted about 11 ms of launcher overhead against the 10 ms
 ceiling and S4's 3.87 ms. The figures are a reading, not a final number: 14.68 ms median, 21.61 ms
 p95, 11.28 ms over a bare control, over 40 runs outside the sandbox (`TestLauncherLatency`). The
-acceptance holds until the port out of shell. OPS-218 re-measures it on an idle machine, and a
-number still over the ceiling goes to the owner.
+acceptance holds until OPS-218 re-measures it on an idle machine, when the ceiling comes back to
+the owner (the owner, 2026-11-02).
 
 ## Related
 - ADR-0016, ADR-0017, ADR-0019. Amends ADR-0007 and ADR-0011. OPS-165 (server-side check).
