@@ -140,7 +140,7 @@ panel per machine*).
   You.** No check refuses a change to `framework/internal/panel/web` (ADR-0011, *Enforcement*).
 - **The criterion for removing it** (decision 1): as soon as possible. PANEL-64 is proposed once PANEL-61 and PANEL-62
   have merged and between them cover lane start, close, merge readiness, the gate lease, alerts and needs-you; no
-  separate trial session gates it. The session plan puts it in S26–S28, right after PANEL-62. PANEL-64 then removes the web page, the vendored xterm and their
+  separate trial session gates it. The session plan puts it in S47–S48 (the plan of 2026-11-02), right after PANEL-62. PANEL-64 then removes the web page, the vendored xterm and their
   tests, and cuts `docs/panel.md` to the engine and the terminal UI.
 
 ## Out of scope
@@ -154,7 +154,7 @@ panel per machine*).
 
 1. **Removal: as soon as possible.** PANEL-64 is proposed once PANEL-61 and PANEL-62 have merged and between them
    cover lane start, close, merge readiness, the gate lease, alerts and needs-you. No separate trial session gates it.
-   The session plan moves it from S29 into S26–S28, right after PANEL-62.
+   The session plan puts it in S47–S48 (the plan of 2026-11-02), right after PANEL-62.
 2. **The raise fires after 10 seconds without a keypress.** Waiting until nothing else runs is an option, off by
    default. The raise only moves the selection; it never opens or attaches anything.
 3. **`a` attaches to the lane's tmux session in place of the UI,** by default: it works in any terminal and over SSH.
@@ -165,5 +165,5 @@ panel per machine*).
    back to dark; `NO_COLOR` still reads.
 6. **Context by part goes into PANEL-50,** the same transcript reading as its top contributors. **A subagent's
    model, tokens, cost and last words get a new engine row, PANEL-66,** ahead of PANEL-61's detail screen, slotted in
-   S26–S28; its proposal first checks whether the transcripts carry per-subagent tokens and cost. Neither blocks the
+   S46 (the plan of 2026-11-02); its proposal first checks whether the transcripts carry per-subagent tokens and cost. Neither blocks the
    Sessions screen.

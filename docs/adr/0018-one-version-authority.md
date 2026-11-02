@@ -53,11 +53,12 @@ authorities**:
      cached one works offline.
    - A pin that differs from the installed plugin is a mismatch (decision 5), and its fix line names
      the plugin update.
-   - A SessionStart hook verifies that binary against the lock and writes its path to
-     `CLAUDE_ENV_FILE`. Hooks run outside the Bash sandbox (Claude Code's sandboxing docs), so the
+   - A SessionStart hook verifies that binary against the lock and records its path. OPS-218 settles
+     where: `CLAUDE_ENV_FILE` reaches the session's Bash (S5d, S5j), and no spike shows it reaching a
+     hook. Hooks run outside the Bash sandbox (Claude Code's sandboxing docs), so the
      hook can write a build or cache directory where one is needed (the framework repo, decision 4).
      That directory goes under `CLAUDE_PLUGIN_DATA`, which survives plugin updates, unlike
-     `CLAUDE_PLUGIN_ROOT`. OPS-184 confirms this on the Mac and records it.
+     `CLAUDE_PLUGIN_ROOT`. S5a confirmed this on the Mac, and OPS-218 builds on it.
    - Each tool call's dispatcher reads only that path: no hashing and no `git` per call.
    - A lock that changes mid-session (a `git pull` of main) is re-resolved at the next SessionStart
      or by `stridal doctor`. Until then the session runs the version it verified.
@@ -72,7 +73,9 @@ authorities**:
 5. **Stand aside, or fail closed with a recovery allowlist.**
    - **A repository with no model marker** (`.claude/stridal-plugin` or `.claude/stridal-template`):
      the dispatcher stands aside (exit 0, payload unread), as `if-project.sh` does today. An enabled
-     plugin's hooks fire in every repo the user opens, and unrelated repos must not break.
+     plugin's hooks fire in every repo the user opens, and unrelated repos must not break. The owner
+     chose on 2026-11-02 that a marker on main's tree also counts; the wording lands with S22's
+     batch 2 (OPS-184).
    - **Every control hook entry carries `"onFailure": "block"`** and a stated timeout. Claude Code
      blocks only on exit 2 by default: a missing engine (exit 126 or 127) and a hung engine (a
      timeout) both let the call through (S1a, S1c). With `onFailure: "block"`, both block (S1d,
@@ -132,8 +135,8 @@ Built by OPS-183, OPS-184 and OPS-218, each shown failing first:
 - **A release check:** rebuilding a tagged release reproduces its sha256s.
 - **The per-call budget:** a dispatcher latency test with a 10 ms ceiling, built in OPS-185. S4
   measured the launcher plus the engine at 3.87 ms median, against 3.64 ms for a bare `sh -c`.
-  OPS-184's resolved path measured more; the owner accepted that on 2026-11-02 until the port out
-  of shell (see the amendment below), and OPS-185 re-measures it.
+  A reading of OPS-184's resolved path measured more; the owner accepted that on 2026-11-02 until
+  OPS-218 re-measures it, when the ceiling comes back to the owner (see the amendment below).
 - **Every control hook carries `onFailure: "block"`:** the OPS-185 registration check, with S1's
   cases as its fixtures (a missing, a hung and an exit-2 engine).
 
@@ -142,7 +145,7 @@ These are the assumptions; each is accepted only on the cited result (PRAC-0023)
 - A failed or hung hook blocks only with `onFailure: "block"`: S1a to S1e, **passed**.
 - Latency: S4, **passed**.
 - The launcher's resolved path within the 10 ms ceiling: **pending** — accepted at risk by the owner
-  (2026-11-02); tested by OPS-185 (about 11 ms over a bare control in OPS-184).
+  (2026-11-02); tested by OPS-218 (a reading of about 11 ms over a bare control on OPS-184's branch).
 - Hooks can write `CLAUDE_PLUGIN_DATA` and a `GOCACHE` outside the sandbox: S5a, **passed**.
 - A SessionStart command hook's `CLAUDE_ENV_FILE` reaches the session's Bash, headless and
   interactive, as decision 3's engine path needs: S5d and S5j, **passed**.
@@ -155,15 +158,19 @@ These are the assumptions; each is accepted only on the cited result (PRAC-0023)
 **Decision 3: option (b).** The owner chose (b): the engine is fetched at SessionStart into
 `CLAUDE_PLUGIN_DATA/engine/<sha256>/`. That replaces leaving the place open as the owner's choice.
 
-**The row split.** The owner split OPS-184 the same day: it builds resolve-once, the release
-workflow and the trust roots, inactive. OPS-218 packages and fetches the engines, builds the
-`enabledPlugins` setting and the canary, and switches both registration paths to the launcher.
+**The row split.** The owner split the work the same day: OPS-184 lands the release workflow and
+the marker read. OPS-218 builds resolve-once and the trust roots, packages and fetches the engines,
+and builds the `enabledPlugins` setting and the canary. OPS-224 switches both registration paths to
+the launcher.
+
+**Decision 7 stands.** The launcher stays a verify-and-exec shim (the owner, 2026-11-02). OPS-184's
+branch grew it to about 470 lines of trust logic, so OPS-218's design moves that logic out.
 
 **The per-call budget.** The owner accepted about 11 ms of launcher overhead against the 10 ms
-ceiling and S4's 3.87 ms: 14.68 ms median, 21.61 ms p95, 11.28 ms over a bare control, over 40 runs
-outside the sandbox (`TestLauncherLatency`). The acceptance holds until the port out of shell
-(OPS-185 onward). OPS-185's latency test re-measures it, and a number still over the ceiling goes
-to the owner.
+ceiling and S4's 3.87 ms. The figures are a reading, not a final number: 14.68 ms median, 21.61 ms
+p95, 11.28 ms over a bare control, over 40 runs outside the sandbox (`TestLauncherLatency`). The
+acceptance holds until OPS-218 re-measures it on an idle machine, when the ceiling comes back to
+the owner (the owner, 2026-11-02).
 
 ## Related
 - ADR-0016, ADR-0017, ADR-0019. Amends ADR-0007 and ADR-0011. OPS-165 (server-side check).

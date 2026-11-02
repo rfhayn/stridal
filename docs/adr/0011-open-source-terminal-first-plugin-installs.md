@@ -92,6 +92,20 @@ Decisions 1, 2, 4, 6 and 7 stand. Decisions 3 and 5 change, and so does a line o
 dispatcher and the release that carries the engine) and OPS-145 (plugin-only install). Until they
 merge, **Nothing. You.**
 
+## Amendment — 2026-11-02: v0.1.0's scope is the floor
+- **Source**: the three reviews of 2026-11-02 (`docs/plans/s22-review-mapping.md`); the owner's decision.
+
+The owner cut v0.1.0 to the floor: a binary the plugin's release carries, a plugin-only install, one
+lease, `stridal gate`, `stridal merge`, the docs and the sandbox. Phases 3 to 7 of `docs/roadmap.md`,
+the terminal UI among them, move to a v0.2 milestone.
+- **Decision 2.** The terminal stays the local face, from v0.2. v0.1.0 documents lanes through
+  `stridal lane` and git worktrees, and leaves the browser panel frozen and undocumented.
+- **Decision 4.** The product module, on by default, moves to v0.2.
+- **Attestation.** OPS-213 lands in v0.1.0.
+
+**Enforcement** (in addition to the above): Gate H in `docs/roadmap.md`, passed by the owner, and
+OPS-223's check that the browser panel stays frozen. Until OPS-223 merges, **Nothing. You.**
+
 ## Related
 - ADR-0003 (one panel for many repositories: still true of the engine and its terminal UI)
 - ADR-0004 (superseded when OPS-145 merges)
