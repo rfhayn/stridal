@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -48,7 +49,8 @@ func releaseRepo(t *testing.T) (dir string, e []string) {
 	return dir, e
 }
 
-// Names a newline-separated list misreads, and flags tar would obey.
+// A newline and a backslash are what a newline-separated list misreads; the rest hold the ordinary
+// and flag-like names beside them.
 var oddTemplateNames = []string{"plain", "-dash", "new\nline", "sp ace", "back\\slash", "-C", ".x/--null"}
 
 // Under whichever tar this machine has, in short runs too: CI's Ubuntu is what runs GNU tar, and
@@ -89,9 +91,15 @@ func TestReleaseReproduces(t *testing.T) {
 	if testing.Short() {
 		t.Skip("builds a release with an empty cache")
 	}
-	dir, e := releaseRepo(t)
+	first, e := releaseRepo(t)
 	out := t.TempDir()
-	if s, code := run(t, dir, e, "", "sh", "scripts/build-release.sh", "--out", out, "linux/amd64"); code != 0 {
+	if s, code := run(t, first, e, "", "sh", "scripts/build-release.sh", "--out", out, "linux/amd64"); code != 0 {
+		t.Fatal(s)
+	}
+	// The rebuild runs from another directory, as a second runner's would: -trimpath is what makes
+	// that the same binary.
+	dir := filepath.Join(t.TempDir(), "elsewhere")
+	if s, code := run(t, filepath.Dir(dir), e, "", "git", "clone", "-q", first, dir); code != 0 {
 		t.Fatal(s)
 	}
 	sums := filepath.Join(out, "engines.sha256")
@@ -159,7 +167,8 @@ func TestReleaseWorkflowKeepsTheWriteTokenAwayFromTheBuild(t *testing.T) {
 		return rest
 	}
 	build, reproduce, draft := job("build", "reproduce"), job("reproduce", "draft"), job("draft", "")
-	if head, _, _ := strings.Cut(src, "\njobs:"); !strings.Contains(head, "contents: read") || strings.Contains(head, "contents: write") {
+	anyWrite := regexp.MustCompile(`(?m)(^\s*[a-z-]+:\s*write\s*(#.*)?$|write-all)`)
+	if head, _, _ := strings.Cut(src, "\njobs:"); !strings.Contains(head, "contents: read") || anyWrite.MatchString(head) {
 		t.Error("the workflow's default token is not read-only")
 	}
 	for name, body := range map[string]string{"build": build, "reproduce": reproduce} {
@@ -168,7 +177,7 @@ func TestReleaseWorkflowKeepsTheWriteTokenAwayFromTheBuild(t *testing.T) {
 				t.Errorf("job %s lacks %s", name, want)
 			}
 		}
-		if strings.Contains(body, "contents: write") {
+		if anyWrite.MatchString(body) {
 			t.Errorf("job %s can write", name)
 		}
 	}
@@ -183,5 +192,34 @@ func TestReleaseWorkflowKeepsTheWriteTokenAwayFromTheBuild(t *testing.T) {
 	}
 	if strings.Contains(draft, "actions/checkout") || strings.Contains(draft, "scripts/") {
 		t.Error("the job that can write runs repository code")
+	}
+}
+
+// Every workflow's actions are pinned to a full commit, each with its version beside it: a tag can
+// move, and the release job's token is one of what a moved tag would reach. A Go test and not
+// checks/supply-chain.sh, which ships in the template: it would hold adopters' workflows to this repo's
+// choice.
+func TestEveryWorkflowsActionsArePinned(t *testing.T) {
+	files, err := filepath.Glob(filepath.Join(repoRoot(t), ".github", "workflows", "*.yml"))
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no workflows: %v", err)
+	}
+	uses := regexp.MustCompile(`(?m)^\s*(?:-\s*)?uses:\s*(.+)$`)
+	pinned := regexp.MustCompile(`^[^@\s]+@[0-9a-f]{40}\s+#\s*v\S+$`)
+	seen := 0
+	for _, f := range files {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range uses.FindAllStringSubmatch(string(data), -1) {
+			seen++
+			if !pinned.MatchString(strings.TrimSpace(m[1])) {
+				t.Errorf("%s: %q is not pinned to a commit with its version beside it", filepath.Base(f), m[1])
+			}
+		}
+	}
+	if seen == 0 {
+		t.Fatal("no action found: this test learned nothing")
 	}
 }

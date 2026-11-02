@@ -4,8 +4,8 @@
 #
 # WHY. An installed plugin's hooks fire in every repository the user opens, and these hooks
 # enforce one project's rules (no auto-merge, no scripted rewrites of tracked source). They apply
-# where /stridal:init set the model up, marked by .claude/stridal-plugin here or on main (ADR-0018
-# decision 5's proposed amendment), and nowhere else. A repository where `stridal install` put the model (.claude/stridal-template) registers
+# where /stridal:init set the model up, marked by .claude/stridal-plugin, and nowhere else.
+# A repository where `stridal install` put the model (.claude/stridal-template) registers
 # its own copies of the same hooks in its settings.json; running the plugin's too would judge
 # every call twice, so the plugin stands aside there.
 #
@@ -16,23 +16,8 @@
 # (if-project.sh stridal-engine.sh <control>.sh).
 hook=${1:?usage: if-project.sh <hook>.sh [args]}
 shift
-case $0 in
-  /*) dir=${0%/*} ;;
-  *) dir=$(cd "$(dirname "$0")" && pwd) ;;
-esac
+dir=$(cd "$(dirname "$0")" && pwd)
 proj=${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}
-# With no marker here, read main's tree, in ONE git process and none where there is no .git: this
-# fires about ten times per Bash call in every repository a user-scope plugin sees. It reads origin's
-# HEAD and a branch named main, as local refs show them, and nothing else, so a repository with no
-# origin whose main has another name is known by its worktree's marker alone. It never fetches an
-# object and never takes a replacement for one. A session below a repository's top stands aside.
-if [ ! -f "$proj/.claude/stridal-plugin" ]; then
-  [ -e "$proj/.git" ] || exit 0
-  case $(printf '%s\n' refs/remotes/origin/HEAD:.claude/stridal-plugin refs/heads/main:.claude/stridal-plugin |
-    GIT_NO_LAZY_FETCH=1 GIT_NO_REPLACE_OBJECTS=1 git -C "$proj" cat-file --batch-check 2>/dev/null) in
-    *" blob "*) ;;
-    *) exit 0 ;;
-  esac
-fi
+[ -f "$proj/.claude/stridal-plugin" ] || exit 0
 [ -f "$proj/.claude/stridal-template" ] && exit 0
 exec sh "$dir/$hook" "$@"

@@ -74,8 +74,8 @@ authorities**:
    - **A repository with no model marker** (`.claude/stridal-plugin` or `.claude/stridal-template`):
      the dispatcher stands aside (exit 0, payload unread), as `if-project.sh` does today. An enabled
      plugin's hooks fire in every repo the user opens, and unrelated repos must not break. The owner
-     chose on 2026-11-02 that a marker on main's tree also counts; the wording lands with S22's
-     batch 2 (OPS-184).
+     chose on 2026-11-02 that a marker on main's tree also counts; the wording lands with OPS-218,
+     with the marker read.
    - **Every control hook entry carries `"onFailure": "block"`** and a stated timeout. Claude Code
      blocks only on exit 2 by default: a missing engine (exit 126 or 127) and a hung engine (a
      timeout) both let the call through (S1a, S1c). With `onFailure: "block"`, both block (S1d,
@@ -96,19 +96,6 @@ authorities**:
    - **This fail-closed rule covers controls and the dispatcher.** A judgment gate fails open
      (ADR-0020), because its subject is different. The control beside it is the floor, and this rule
      holds that floor.
-   - **Proposed amendment, 2026-11-02, for the owner to read, not accepted (OPS-184; option B, the
-     owner's choice that day).** A repository counts as marked if a model marker is in the worktree
-     or in the tree of main as local refs show it: origin's HEAD, else a branch named `main`.
-     - **On the plugin's path, today** (`if-project.sh`), deleting the marker alone in a lane changes
-       nothing, and a branch with no `.claude` of a marked repository is guarded.
-     - **Until OPS-218**, local refs and working-tree files are what a lane can write: deleting the
-       marker and moving those refs, or adding `.claude/stridal-template`, still stands aside.
-     - **A session rooted below a repository's top** (no `.git` there) stands aside, as before.
-     - **The exception:** a repository with no origin's HEAD and no branch named `main` is known by
-       its worktree's marker alone, because the plugin's read stays at one git process; `stridal
-       doctor` also reads `stridal.mainBranch`.
-     - **The launcher is unregistered and unchanged:** it still reads the worktree's marker alone.
-     - **The opt-out** is removing the marker on main, by a reviewed PR.
 6. **A fenced test override.** `STRIDAL_ENGINE=<path>` exists for fixtures. The engine ignores it
    unless HOME is a check's fixture HOME, so an agent cannot use it to pick its own guard.
 7. **A bootstrap launcher stays in sh.** Something reads the lock before an engine exists. It does
@@ -171,8 +158,8 @@ These are the assumptions; each is accepted only on the cited result (PRAC-0023)
 **Decision 3: option (b).** The owner chose (b): the engine is fetched at SessionStart into
 `CLAUDE_PLUGIN_DATA/engine/<sha256>/`. That replaces leaving the place open as the owner's choice.
 
-**The row split.** The owner split the work the same day: OPS-184 lands the release workflow and
-the marker read. OPS-218 builds resolve-once and the trust roots, packages and fetches the engines,
+**The row split.** The owner split the work the same day: OPS-184 lands the release workflow.
+OPS-218 builds the marker read, resolve-once and the trust roots, packages and fetches the engines,
 and builds the `enabledPlugins` setting and the canary. OPS-224 switches both registration paths to
 the launcher.
 

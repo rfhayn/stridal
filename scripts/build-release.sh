@@ -22,8 +22,8 @@
 #
 # -buildvcs=false: the engine's hash must not depend on the checkout's commit or a dirty tree, so
 # it reproduces. So a release binary carries no vcs.revision: doctor says it cannot compare the
-# panel's build with it, and the panel's self-update plans from the fast-forward's base, not from
-# the binary's own commit (internal/panel/install).
+# panel's build with it, and a release binary never rebuilds itself: its self-update sends a notice
+# instead (internal/panel/install/selfupdate.go).
 #
 # This builds; it never tags, uploads or publishes. Run by .github/workflows/release-build.yml and
 # release.yml, which is what uploads.
@@ -51,7 +51,7 @@ stage=$(mktemp -d "${TMPDIR:-/tmp}/build-release.XXXXXX")
 trap 'rm -rf "$stage"' EXIT INT TERM
 
 # The template as committed: a stray local file (a worktree, an editor backup) never ships.
-# NUL-separated, so a name with a newline or a leading - is one name, never a flag.
+# NUL-separated, so a name with a newline or a backslash is read as that one name.
 (cd "$root" && git ls-files -z template) > "$stage/template.list"
 [ -s "$stage/template.list" ] || { echo "build-release: git lists no template files" >&2; exit 1; }
 

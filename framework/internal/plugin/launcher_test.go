@@ -122,7 +122,7 @@ func TestLaunchControlsPutsEveryControlBehindTheLauncher(t *testing.T) {
 	}
 }
 
-// Until OPS-184 ships an engine, the committed registrations stay as they are: OPS-183 ships
+// Until OPS-224 switches them, the committed registrations stay as they are: OPS-183 ships
 // inactive, because a marked repository with no engine refuses every guarded call.
 func TestTheCommittedRegistrationsDoNotYetRunTheLauncher(t *testing.T) {
 	for _, p := range []string{
@@ -134,7 +134,7 @@ func TestTheCommittedRegistrationsDoNotYetRunTheLauncher(t *testing.T) {
 			t.Fatal(err)
 		}
 		if strings.Contains(string(data), LauncherHook) {
-			t.Errorf("%s registers %s before any release carries an engine (OPS-184 registers it)", p, LauncherHook)
+			t.Errorf("%s registers %s before any release carries an engine (OPS-224 registers it)", p, LauncherHook)
 		}
 	}
 }
