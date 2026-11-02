@@ -301,6 +301,11 @@ never report and would block every merge; the bare `test` is what a draft's skip
 GitHub counts that as passing. The ruleset `main requires test` has required that leg since
 2026-11-02 (OPS-165).
 
+## Amendment — 2026-11-02: OPS-164 is cancelled into OPS-162
+The owner cancelled OPS-164 into OPS-162: `merge-reader.awk` is frozen, not ported, so D6's third PR
+and D4's deletion of the reader no longer run as drawn. The session numbers above have moved too:
+`docs/roadmap.md`'s *Session plan* holds them. See ADR-0017's amendment of the same date.
+
 ## Related
 - PRAC-0010 (close the class, not the instance): this record applies it to the merge guard.
 - `docs/principles.md`, *A check that reads source is a parser*.
