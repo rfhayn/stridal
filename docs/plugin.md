@@ -37,7 +37,7 @@ also writes `enabledPlugins` and `extraKnownMarketplaces` into the repository's
 Project scope stays the recommendation for a repository that runs the model. A plugin installed
 at user scope (`claude plugin install stridal@stridal --scope user`) is enabled in every
 repository you open, the model's or not. In a repository that does not run the model (no
-`.claude/stridal-plugin`), that means:
+`.claude/stridal-plugin`, here or on its main branch), that means:
 
 - **What loads:** the `/stridal:*` skills and the plugin's agents, namespaced so they never
   collide with the repository's own; `stridal-model` on the Bash tool's `PATH`; and the
@@ -45,8 +45,9 @@ repository you open, the model's or not. In a repository that does not run the m
   lives, in the plugin's own data directory outside the repository, and says nothing there.
 - **What does not:** the guard hooks (`pr-merge-guard`, `no-blind-source-rewrite`,
   `no-background-gate`, `no-silent-wait`, `format`, `focus-staleness`). Each runs through `hooks/if-project.sh`,
-  which stands aside (exit 0, payload unread) in a repository without `.claude/stridal-plugin`.
-  So they never judge a call there beside the repository's own guards.
+  which stands aside (exit 0, payload unread) in a repository without `.claude/stridal-plugin`,
+  here or on its main branch, at a cost of one `git` process per hook where there is a `.git`, and
+  none where there is not. So they never judge a call there beside the repository's own guards.
 
 **The per-repository opt-out.** A repository with an operating model of its own (one the panel
 serves through `stridal panel attach`, say: [docs/panel.md](panel.md#attach-a-repository-without-writing-to-it))

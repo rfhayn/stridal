@@ -20,7 +20,13 @@
 # The panel runs on macOS only (launchctl, osascript), but the CLI (install, update, init, diff,
 # plugin, lock-run) must build and run on Linux too, so the Linux targets are release targets.
 #
-# This builds; it never tags, uploads or publishes. Run by .github/workflows/release-build.yml.
+# -buildvcs=false: the engine's hash must not depend on the checkout's commit or a dirty tree, so
+# it reproduces. So a release binary carries no vcs.revision: doctor says it cannot compare the
+# panel's build with it, and the panel's self-update plans from the fast-forward's base, not from
+# the binary's own commit (internal/panel/install).
+#
+# This builds; it never tags, uploads or publishes. Run by .github/workflows/release-build.yml and
+# release.yml, which is what uploads.
 set -eu
 
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -45,7 +51,8 @@ stage=$(mktemp -d "${TMPDIR:-/tmp}/build-release.XXXXXX")
 trap 'rm -rf "$stage"' EXIT INT TERM
 
 # The template as committed: a stray local file (a worktree, an editor backup) never ships.
-(cd "$root" && git ls-files template) > "$stage/template.list"
+# NUL-separated, so a name with a newline or a leading - is one name, never a flag.
+(cd "$root" && git ls-files -z template) > "$stage/template.list"
 [ -s "$stage/template.list" ] || { echo "build-release: git lists no template files" >&2; exit 1; }
 
 for t in $targets; do
@@ -55,7 +62,7 @@ for t in $targets; do
   mkdir -p "$dir"
   echo "build-release: $name (CGO_ENABLED=0)"
   (cd "$root/framework" && CGO_ENABLED=0 GOOS=$os GOARCH=$arch \
-    go build -trimpath -ldflags "-s -w" -o "$dir/stridal" ./cmd/stridal)
+    go build -buildvcs=false -trimpath -ldflags "-s -w" -o "$dir/stridal" ./cmd/stridal)
   # The binary records its build settings: hold it to the claim above.
   info=$(go version -m "$dir/stridal")
   for want in "CGO_ENABLED=0" "GOOS=$os" "GOARCH=$arch"; do
@@ -65,7 +72,7 @@ for t in $targets; do
       exit 1
     }
   done
-  (cd "$root" && tar -cf - -T "$stage/template.list") | (cd "$dir" && tar -xf -)
+  (cd "$root" && tar --null -cf - -T "$stage/template.list") | (cd "$dir" && tar -xf -)
   cp "$root/LICENSE" "$root/README.md" "$dir/"
   [ ! -f "$root/CHANGELOG.md" ] || cp "$root/CHANGELOG.md" "$dir/"
   # COPYFILE_DISABLE: macOS tar would otherwise add ._ AppleDouble files to the archive.
@@ -79,3 +86,12 @@ done
   else shasum -a 256 stridal-*.tar.gz; fi
 ) > "$out/checksums.txt"
 echo "build-release: $(wc -l < "$out/checksums.txt" | tr -d ' ') archive(s) in $out"
+
+# The engines' own sums: an archive's bytes carry mtimes, a binary's do not, so these are what
+# scripts/check-release-repro.sh reproduces and what a lock can pin (ADR-0018).
+(
+  cd "$stage"
+  for f in stridal-*/stridal; do
+    if command -v sha256sum >/dev/null 2>&1; then sha256sum "$f"; else shasum -a 256 "$f"; fi
+  done
+) > "$out/engines.sha256"

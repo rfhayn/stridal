@@ -231,7 +231,7 @@ for f in $merge; do
       fi ;;
   esac
 done
-printf 'This repository runs the stridal operating model from the stridal plugin (0.1.0 at init).\nThe plugin'"'"'s hooks act only where this file exists. Delete it to make them stand aside.\n' > .claude/stridal-plugin
+printf 'This repository runs the stridal operating model from the stridal plugin (0.1.0 at init).\nThe plugin'"'"'s hooks act where this file exists here or on the main branch. To make them stand aside, remove it on main.\n' > .claude/stridal-plugin
 echo "  marked: .claude/stridal-plugin"
 # The tools the model uses, present or missing, with this OS's install hints. A report: it never
 # fails the init (the template's .claude/prereqs.sh, which the plugin carries beside this script).

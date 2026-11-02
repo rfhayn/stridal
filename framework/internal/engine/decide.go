@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -100,10 +101,39 @@ type Decision struct {
 	Engine  string // the engine path that verified, or was refused
 }
 
-// HasMarker says the repository runs the model: from the plugin, or from `stridal install`.
+// HasMarker says the repository runs the model, from the plugin or from `stridal install`: the
+// marker in the worktree, or in main's tree as local refs show it (ADR-0018 decision 5's proposed
+// amendment). A directory with no .git, a session below a repository's top, is unmarked. Doctor
+// reads this; the unregistered launcher still reads the worktree alone, until OPS-218.
 func HasMarker(projectDir string) bool {
-	for _, m := range []string{brand.PluginMarker(brand.Name), brand.InstallMarker(brand.Name)} {
+	markers := []string{brand.PluginMarker(brand.Name), brand.InstallMarker(brand.Name)}
+	for _, m := range markers {
 		if fi, err := os.Stat(filepath.Join(projectDir, m)); err == nil && !fi.IsDir() {
+			return true
+		}
+	}
+	if _, err := os.Stat(filepath.Join(projectDir, ".git")); err != nil {
+		return false
+	}
+	ctx := context.Background()
+	ref := "refs/heads/" + DefaultMain
+	if out, err := gitOut(ctx, projectDir, "symbolic-ref", "-q", "refs/remotes/origin/HEAD"); err == nil {
+		ref = strings.TrimSpace(string(out))
+		if !strings.HasPrefix(ref, "refs/remotes/origin/") {
+			return false
+		}
+	} else if out, err := gitOut(ctx, projectDir, "config", "--local", "--get", MainBranchKey); err == nil {
+		b := strings.TrimSuffix(string(out), "\n")
+		if !GoodBranch(b) {
+			return false
+		}
+		ref = "refs/heads/" + b
+	}
+	for _, m := range markers {
+		// Local and literal: it never fetches a missing object, never takes a replacement for one.
+		c := exec.CommandContext(ctx, "git", "-C", projectDir, "cat-file", "-e", ref+":"+filepath.ToSlash(m))
+		c.Env = append(os.Environ(), "GIT_NO_LAZY_FETCH=1", "GIT_NO_REPLACE_OBJECTS=1")
+		if c.Run() == nil {
 			return true
 		}
 	}

@@ -96,6 +96,19 @@ authorities**:
    - **This fail-closed rule covers controls and the dispatcher.** A judgment gate fails open
      (ADR-0020), because its subject is different. The control beside it is the floor, and this rule
      holds that floor.
+   - **Proposed amendment, 2026-11-02, for the owner to read, not accepted (OPS-184; option B, the
+     owner's choice that day).** A repository counts as marked if a model marker is in the worktree
+     or in the tree of main as local refs show it: origin's HEAD, else a branch named `main`.
+     - **On the plugin's path, today** (`if-project.sh`), deleting the marker alone in a lane changes
+       nothing, and a branch with no `.claude` of a marked repository is guarded.
+     - **Until OPS-218**, local refs and working-tree files are what a lane can write: deleting the
+       marker and moving those refs, or adding `.claude/stridal-template`, still stands aside.
+     - **A session rooted below a repository's top** (no `.git` there) stands aside, as before.
+     - **The exception:** a repository with no origin's HEAD and no branch named `main` is known by
+       its worktree's marker alone, because the plugin's read stays at one git process; `stridal
+       doctor` also reads `stridal.mainBranch`.
+     - **The launcher is unregistered and unchanged:** it still reads the worktree's marker alone.
+     - **The opt-out** is removing the marker on main, by a reviewed PR.
 6. **A fenced test override.** `STRIDAL_ENGINE=<path>` exists for fixtures. The engine ignores it
    unless HOME is a check's fixture HOME, so an agent cannot use it to pick its own guard.
 7. **A bootstrap launcher stays in sh.** Something reads the lock before an engine exists. It does
