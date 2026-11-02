@@ -123,6 +123,19 @@ and unit tests.
   re-estimate of the ports after it. A port past 6 rounds stops for redesign, and is named in Gate
   D's record.
 
+## Amendment — 2026-11-02: the port order, and shims only on need
+- **Source**: the three reviews of 2026-11-02 (`docs/plans/s22-review-mapping.md`); the owner's decision.
+
+- **Decision 4.** After the engine's release and the parity harness, the ports run lease, gate, merge.
+  The rest of the port, and the MCP server of decision 1, go to v0.2 (ADR-0011's amendment).
+- **Decision 3.** A shim comes only when a caller needs one, not before any library moves. An
+  extension's contract still holds at each move, and a broken extension still blocks.
+- **Decision 2.** OPS-164 is cancelled into OPS-162: `merge-reader.awk` is frozen, not ported or
+  extended, and is deleted when nothing reads it.
+
+**Enforcement** (in addition to the above): the Deps cells of `docs/roadmap.md`, which
+`checks/roadmap.sh` parses; the order itself is **Nothing. You.**
+
 ## Related
 - ADR-0016 (the five kinds), ADR-0018 (one version authority), ADR-0019 (parity ports), ADR-0020
   (judgment gates), ADR-0021 (the roadmap as data). Amends ADR-0012.

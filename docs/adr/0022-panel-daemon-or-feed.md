@@ -63,6 +63,17 @@ unchanged.
 - A hook can append under the git common dir outside the sandbox: S5b, **passed**.
 - Polling a feed file is fast enough for the terminal UI: **untested**. Measured in the FEED row.
 
+## Amendment — 2026-11-02: PANEL-25 is cancelled now
+- **Source**: the three reviews of 2026-11-02 (`docs/plans/s22-review-mapping.md`); the owner's decision.
+
+The owner cancelled PANEL-25 and removed `changes/panel-25-idle-cost/`, without waiting for OPS-203.
+This replaces "Until then PANEL-25 stays on the plan unchanged" above: the row is only worth doing
+under option A, and the owner has chosen B. If OPS-203 finds B fails, it re-opens the question with
+a new row. The status stays Proposed until OPS-203.
+
+**Enforcement** (in addition to the above): `checks/changes.sh` fails a directory whose row is
+cancelled.
+
 ## Related
 - ADR-0003 (one panel for many repositories), ADR-0005 (never kill a tmux server), ADR-0017,
   ADR-0018. PRD-tui. PANEL-25, PANEL-61, PANEL-62, ST-17.

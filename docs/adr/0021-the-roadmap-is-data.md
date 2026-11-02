@@ -80,5 +80,13 @@ that bypasses the engine.
   round 3 review (team-queue `--next-id`, `roadmap-tracker.sh`) among them: S6a, **passed**.
 - The Claude Docs tools are reachable from the main session: S6b, **passed**.
 
+## Amendment — 2026-11-02: the JSON roadmap comes after the libraries
+- **Source**: the three reviews of 2026-11-02 (`docs/plans/s22-review-mapping.md`); the owner's decision.
+
+The owner moved the roadmap as data to v0.2, after the libraries become engine queries: OPS-195 and
+OPS-207 follow OPS-190. Until then `docs/roadmap.md` and `.claude/roadmap-queue.sh` stay the authority.
+
+**Enforcement** (in addition to the above): OPS-195's and OPS-207's Deps in `docs/roadmap.md`.
+
 ## Related
 - ADR-0016, ADR-0017. Replaces the roadmap's grammar section and `roadmap-queue.sh`. OPS-68.

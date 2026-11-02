@@ -289,8 +289,9 @@ D1 to D7 stand as decisions. What builds them changes:
   then ported.
 
 **Enforcement** (replacing the paths named above): once built, `stridal merge` for the rules, the
-`stridal gh` wrapper for the refusal of every other merge, and ADR-0019's parity receipt for the
-reader's deletion, which the merge guard checks (OPS-185). Until OPS-162 to OPS-164 merge, the
+`stridal gh` wrapper for the refusal of every other merge, and, for the reader's deletion, the
+frozen entry in the parity data that ADR-0019's amendment of 2026-11-02 names, which the merge guard
+checks (OPS-185). Until OPS-162 to OPS-164 merge, the
 guard keeps the limits its header lists, as above.
 
 ## Amendment — 2026-11-02: D7 names the check's leg
@@ -300,6 +301,11 @@ The owner approved naming the required check `test (ubuntu-latest)` in D7 and op
 never report and would block every merge; the bare `test` is what a draft's skipped run reports, and
 GitHub counts that as passing. The ruleset `main requires test` has required that leg since
 2026-11-02 (OPS-165).
+
+## Amendment — 2026-11-02: OPS-164 is cancelled into OPS-162
+The owner cancelled OPS-164 into OPS-162: `merge-reader.awk` is frozen, not ported, so D6's third PR
+and D4's deletion of the reader no longer run as drawn. The session numbers above have moved too:
+`docs/roadmap.md`'s *Session plan* holds them. See ADR-0017's amendment of the same date.
 
 ## Related
 - PRAC-0010 (close the class, not the instance): this record applies it to the merge guard.
