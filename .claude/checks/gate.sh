@@ -74,6 +74,17 @@ EOF
   printf 'secret\n' > "$L/FAIL_SECRET"; git -C "$L" add FAIL_SECRET && git -C "$L" commit -qm "a leak"
   own; rc=$?
   expect_rc 1 "$rc" "...and a secret fails it at the secrets step"
+  # The scan tree holds EVERY tracked file (#383). A list past one xargs batch (BSD: 5000 args;
+  # GNU: about 128 KiB, so the names are long) once made several archives, and `tar -x` stopped
+  # at the first one's end: the secret sits last in `git ls-files` order, in the last batch.
+  git -C "$L" rm -q FAIL_SECRET
+  mkdir -p "$L/bulk" "$L/zz"; i=0
+  while [ "$i" -lt 6000 ]; do i=$((i + 1)); : > "$L/bulk/a-tracked-file-with-a-long-name-$i"; done
+  printf 'secret\n' > "$L/zz/FAIL_SECRET"
+  git -C "$L" add -A && git -C "$L" commit -qm "6000 files, then a leak"
+  [ "$(git -C "$L" ls-files | tail -1)" = zz/FAIL_SECRET ] || fail "the planted leak is not last in git ls-files order"
+  own; rc=$?
+  expect_rc 1 "$rc" "...and a secret past the first xargs batch of 6000 tracked files fails it too"
 fi
 
 # ── The lease conformance kit (P1.12): shipped as stridal tests it ────────────────────

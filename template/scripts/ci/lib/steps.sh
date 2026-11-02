@@ -58,7 +58,9 @@ model_secret_scan() {
   _ss_src=. _ss_tmp=""
   if [ -d .git ] || [ -f .git ]; then
     _ss_tmp=$(mktemp -d "${TMPDIR:-/tmp}/secrets.XXXXXX")
-    git ls-files -z | xargs -0 tar -cf - 2>/dev/null | tar -xf - -C "$_ss_tmp" 2>/dev/null
+    # One archive from the whole list: through xargs, a list past one batch made several, and
+    # `tar -x` stops at the first one's end, so the later files went unscanned (#383).
+    git ls-files -z | tar --null -T - -cf - 2>/dev/null | tar -xf - -C "$_ss_tmp" 2>/dev/null
     _ss_src=$_ss_tmp
   fi
   _ss_rc=0
