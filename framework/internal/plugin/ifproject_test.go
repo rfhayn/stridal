@@ -117,6 +117,15 @@ func TestIfProjectCountsAMarkerInTheWorktreeOrOnMain(t *testing.T) {
 			t.Error("stood aside")
 		}
 	})
+	t.Run("on origin's main with no local main, gone from the worktree", func(t *testing.T) {
+		p := newIfProject(t)
+		dir := p.clone()
+		p.git(dir, "branch", "-m", "main", "lane")
+		p.deleteMarker(dir)
+		if !p.ran(dir) {
+			t.Error("stood aside")
+		}
+	})
 	t.Run("on a local main with no origin, gone from the worktree", func(t *testing.T) {
 		p := newIfProject(t)
 		dir := t.TempDir()
