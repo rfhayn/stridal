@@ -74,8 +74,8 @@ authorities**:
    - **A repository with no model marker** (`.claude/stridal-plugin` or `.claude/stridal-template`):
      the dispatcher stands aside (exit 0, payload unread), as `if-project.sh` does today. An enabled
      plugin's hooks fire in every repo the user opens, and unrelated repos must not break. The owner
-     chose on 2026-11-02 that a marker on main's tree also counts; the wording lands with S22's
-     batch 2 (OPS-184).
+     chose on 2026-11-02 that a marker on main's tree also counts; the wording lands with OPS-218,
+     with the marker read.
    - **Every control hook entry carries `"onFailure": "block"`** and a stated timeout. Claude Code
      blocks only on exit 2 by default: a missing engine (exit 126 or 127) and a hung engine (a
      timeout) both let the call through (S1a, S1c). With `onFailure: "block"`, both block (S1d,
@@ -115,7 +115,7 @@ authorities**:
   re-enabled.
 - **A shipped binary executes on every tool call**, a much larger trust surface than readable shell.
   Two steps, both mandatory, at different times:
-  - **Integrity, from OPS-184:** every binary is verified against the lock's sha256 before its
+  - **Integrity, from OPS-218:** every binary is verified against the lock's sha256 before its
     first exec.
   - **Authenticity, from OPS-213:** a signature or provenance attestation shows who built it.
     Whether OPS-213 lands before the launch (REL-1) or in v0.1.1, as the old roadmap
@@ -158,8 +158,8 @@ These are the assumptions; each is accepted only on the cited result (PRAC-0023)
 **Decision 3: option (b).** The owner chose (b): the engine is fetched at SessionStart into
 `CLAUDE_PLUGIN_DATA/engine/<sha256>/`. That replaces leaving the place open as the owner's choice.
 
-**The row split.** The owner split the work the same day: OPS-184 lands the release workflow and
-the marker read. OPS-218 builds resolve-once and the trust roots, packages and fetches the engines,
+**The row split.** The owner split the work the same day: OPS-184 lands the release workflow.
+OPS-218 builds the marker read, resolve-once and the trust roots, packages and fetches the engines,
 and builds the `enabledPlugins` setting and the canary. OPS-224 switches both registration paths to
 the launcher.
 
