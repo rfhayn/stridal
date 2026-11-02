@@ -17,9 +17,9 @@ it. Row ids from OPS-219 on assume `ops/s22-records` lands first (it adds OPS-21
 | `framework/internal/engine` is about 540 lines of launcher and lock | True: 540 production lines |
 | 56 checks, about 16k lines | True: 56 scripts, 16,148 lines |
 | 57 queued and 9 planned rows | True |
-| `project.conf` is run as shell by hooks and the status line | True: `lib/conf.sh:81`, reached by six hooks and `statusline.sh` |
-| `FORMAT_CMD`, `ROADMAP_PARSER`, `ROADMAP_NORMALIZER`, `BATCH_REGENERATE` go through a shell | True: `format.sh`, `conf.sh:113-117`, `batch.sh:60` |
-| A sandboxed session can write the files hooks then run | True, and wider than the review could show: a sandboxed Bash here wrote `.claude/project.conf` in the main checkout, and `project.conf`, `hooks/`, `settings.json` and `bin/` in a lane's worktree. `.claude/agents/` is refused |
+| `project.conf` is run as shell by hooks and the status line | True. OPS-219 owns it |
+| `FORMAT_CMD`, `ROADMAP_PARSER`, `ROADMAP_NORMALIZER`, `BATCH_REGENERATE` go through a shell | True. OPS-219 owns it |
+| A sandboxed session can write files the hooks later run | True. OPS-219 and OPS-220 own it |
 | `excludedCommands` lists docker, git, gh, tmux, stridal | True (`template/.claude/settings.json`), and S5h shows the list is not honoured on 2.1.316 |
 | `pattern-kill-path.sh` prepends a directory to `PATH` | True; the repository's own only on a copy install |
 | `govulncheck@latest` | True: `dependency-audit.yml:37` |
@@ -34,11 +34,11 @@ it. Row ids from OPS-219 on assume `ops/s22-records` lands first (it adds OPS-21
 |---|---|
 | The SIGPIPE flake is open | Fixed on `main` by #384: `run-local.sh` drains the pipe, and a check holds it. What remains is the class: any later early-exiting reader in a `pipefail` script. So OPS-187's reason is removing the class, not stopping a live flake |
 | Ubuntu "hit closed #234 again on 11/1" because of unscaled sleeps | That failure was #382, in `TestStallMergedPRNotPushedOnAnOldNone`, a test-only race fixed in #384. The two sleeps are in other tests. Worth fixing, but nothing ties them to that failure |
-| Stock macOS has no `readlink -f`, so `change-guard.sh:271-274` lets a link through | Not on this Mac: `/usr/bin/readlink -f` on 27.2 resolves the link, so the path is refused. macOS added it in 12.3 (from memory, not checked here). The fallback only matters on older systems. Keep the case for `stridal merge`, at low priority |
+| A merge-guard path check depends on stock macOS having `readlink -f` | Not on this Mac: `/usr/bin/readlink -f` on 27.2 works, so the check holds. macOS added it in 12.3 (from memory, not checked here). The fallback only matters on older systems. Keep the case for `stridal merge`, at low priority |
 | The team-queue listing ships to adopters | It does not: it lives in `.claude/local/`. Only `.github/ISSUE_TEMPLATE/` and a check's mention remain |
 | OPS-165's ruleset is ready and unticked; the marker question is open | Both done on 2026-11-02. The ticks are on `ops/s22-records` |
 | Resolve-once, marker read from main and least-privilege release jobs are still to do | All built, on the unmerged `ops/ops-184-engine-release` |
-| #25 is closed unmerged (REL-1's cell) | It is still open. The row is stale; closing it is the owner's |
+| #25 is closed unmerged (REL-1's cell) | It was still open when the reviews ran. It was closed unmerged on 2026-11-02 |
 
 ## Where this session disagrees
 

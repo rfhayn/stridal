@@ -58,7 +58,7 @@ authorities**:
      hook. Hooks run outside the Bash sandbox (Claude Code's sandboxing docs), so the
      hook can write a build or cache directory where one is needed (the framework repo, decision 4).
      That directory goes under `CLAUDE_PLUGIN_DATA`, which survives plugin updates, unlike
-     `CLAUDE_PLUGIN_ROOT`. OPS-184 confirms this on the Mac and records it.
+     `CLAUDE_PLUGIN_ROOT`. S5a confirmed this on the Mac, and OPS-218 builds on it.
    - Each tool call's dispatcher reads only that path: no hashing and no `git` per call.
    - A lock that changes mid-session (a `git pull` of main) is re-resolved at the next SessionStart
      or by `stridal doctor`. Until then the session runs the version it verified.

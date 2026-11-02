@@ -62,10 +62,11 @@ same rule.
   reason a control refuses for; the words may change.
 - **A frozen reader is not ported.** `merge-reader.awk` (ADR-0017's amendment) takes no new case and
   needs no parity receipt, because nothing replaces it rule for rule: `stridal merge` is judged on
-  its own cases.
+  its own cases. The parity data names it as frozen, with its reason. That named entry is what the
+  merge guard accepts when the reader is deleted, so the exemption is data, not prose.
 
-**Enforcement** (in addition to the above): OPS-185's `stridal check parity`. Until it merges,
-**Nothing. You.**
+**Enforcement** (in addition to the above): OPS-185's `stridal check parity` and its merge-guard
+rule, which reads the frozen entry. Until it merges, **Nothing. You.**
 
 ## Related
 - ADR-0017 (the port order), AGENTS.md rule 2, PRAC-0010 (close the class).

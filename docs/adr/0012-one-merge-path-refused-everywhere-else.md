@@ -289,8 +289,9 @@ D1 to D7 stand as decisions. What builds them changes:
   then ported.
 
 **Enforcement** (replacing the paths named above): once built, `stridal merge` for the rules, the
-`stridal gh` wrapper for the refusal of every other merge, and ADR-0019's parity receipt for the
-reader's deletion, which the merge guard checks (OPS-185). Until OPS-162 to OPS-164 merge, the
+`stridal gh` wrapper for the refusal of every other merge, and, for the reader's deletion, the
+frozen entry in the parity data that ADR-0019's amendment of 2026-11-02 names, which the merge guard
+checks (OPS-185). Until OPS-162 to OPS-164 merge, the
 guard keeps the limits its header lists, as above.
 
 ## Amendment — 2026-11-02: D7 names the check's leg
