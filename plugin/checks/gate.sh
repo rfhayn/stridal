@@ -662,6 +662,29 @@ fi
 chmod -R u+w "$d/tmp" "$R/locked" 2>/dev/null; rm -rf "$d/tmp" "$R/locked"
 grep -q '^exit pid=[0-9]* code=0 ' "$STATE" && ok "a cleanup that fails still leaves the run's exit line" || fail "failing cleanup: state $(tr '\n' '|' < "$STATE" 2>/dev/null); $(grep '^==>' "$d/out" | tr '\n' ' ')"
 
+# The clean room survives a tar that stops reading at the archive's end marker (#374): bsdtar
+# (macOS) exits there, and git archive's last write, the record's zero padding, then dies of
+# SIGPIPE, which pipefail made the whole run's exit 141 before any step ran. A stand-in git writes
+# more padding than a pipe holds, so a reader that stops early always breaks the pipe; the run must
+# drain the stream past tar. (GNU tar reads to the end, so on Linux this passes either way.)
+# The run's TMPDIR is the scratch's, as above: should LOCK_CLEANUP survive, its locked room lands
+# there, never in the caller's TMPDIR.
+git -C "$R" rm -q LOCK_CLEANUP && git -C "$R" commit -qm "no locking step" \
+  || fail "the padded-archive case could not drop LOCK_CLEANUP: it would run the locking step too"
+real_git=$(command -v git); mkdir -p "$d/padgit" "$d/tmp"
+cat > "$d/padgit/git" <<EOF
+#!/bin/sh
+[ "\$1" = archive ] || exec "$real_git" "\$@"
+"$real_git" "\$@" || exit \$?
+dd if=/dev/zero bs=1024 count=256 2>/dev/null
+EOF
+chmod +x "$d/padgit/git"; rm -f "$STATE"
+(cd "$R" && PATH="$d/padgit:$d/bin:$np" CI= STRIDAL_LANE=check TMPDIR="$d/tmp" bash "$RUN_REL") > "$d/out" 2>&1; rc=$?
+chmod -R u+w "$d/tmp" 2>/dev/null; rm -rf "$d/tmp"
+[ "$rc" = 0 ] && grep -q '^==> clean room: ' "$d/out" \
+  && ok "a clean room whose archive runs on past tar's end marker still gates (the run drains the stream: git archive never dies of SIGPIPE)" \
+  || fail "a padded archive stopped the gate (exit $rc, want 0): state $(tr '\n' '|' < "$STATE" 2>/dev/null); $(grep '^==>' "$d/out" | tr '\n' ' ')"
+
 # Every place that tells an agent to run the gate says how to follow one the tool backgrounds. Read
 # from the model's own copy: the project's, or the plugin's (STRIDAL_FW).
 for f in workflows/build-change.js skills/apply-change/SKILL.md; do
