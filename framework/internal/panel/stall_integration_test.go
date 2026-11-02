@@ -555,8 +555,13 @@ func TestStallMergedPRNotPushedOnAnOldNone(t *testing.T) {
 			t.Fatalf("notify tick %d: a merged pull request's lane pushed: %v", i+1, got)
 		}
 	}
-	release()
+	// n is read while the hold is on (#382): the fake counts a merged read only once it
+	// is past the hold, so every read counted beyond n answered after release, the held
+	// one included. Read after release, n could already count the held read, and once a
+	// read finds the merge the panel never asks again for that branch and HEAD, so the
+	// wait below would wait for a read that never comes.
 	n := w.mergedCalls("change/a")
+	release()
 	// Notify ticks are what advance a merged read. The deadline is the same scaled
 	// bound waitFor used, so a read that never arrives fails here instead of spinning
 	// until go test's own timeout.
