@@ -115,7 +115,7 @@ authorities**:
   re-enabled.
 - **A shipped binary executes on every tool call**, a much larger trust surface than readable shell.
   Two steps, both mandatory, at different times:
-  - **Integrity, from OPS-184:** every binary is verified against the lock's sha256 before its
+  - **Integrity, from OPS-218:** every binary is verified against the lock's sha256 before its
     first exec.
   - **Authenticity, from OPS-213:** a signature or provenance attestation shows who built it.
     Whether OPS-213 lands before the launch (REL-1) or in v0.1.1, as the old roadmap
