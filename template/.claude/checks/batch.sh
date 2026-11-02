@@ -14,8 +14,9 @@ B="$ROOT/$(gate_file_path batch.sh)"
 g() { git -C "$F" "$@"; }
 setup() {  # an origin, a clone on a batch branch, two lane branches, one that conflicts, one fragment
   rm -rf "$S/o" "$S/w"; F="$S/w"
-  git init -q --bare -b main "$S/o"
-  git clone -q "$S/o" "$F" 2>/dev/null
+  # Both on main, whatever git's default branch is here: this clone commits and pushes main, and `moved` clones the origin's HEAD.
+  git init -q --bare "$S/o"; git -C "$S/o" symbolic-ref HEAD refs/heads/main
+  git clone -q "$S/o" "$F" 2>/dev/null; g symbolic-ref HEAD refs/heads/main
   g config user.name "Ann Example"; g config user.email a@example.com
   mkdir -p "$F/.claude/lib" "$F/docs/journal.d"
   cp "$ROOT/.claude/lib/conf.sh" "$ROOT/.claude/lib/fragments.sh" "$F/.claude/lib/"

@@ -115,7 +115,10 @@ started from the panel's **New lane** (or by hand), on one branch:
   `stridal` off `PATH`, a fresh `HOME` and `CI` empty, and `checks/no-stridal.sh`, inside that
   run, asserts it is there and runs the gate, a skill context script and the status line the same
   way, failing on anything that errors or asks for the binary or the panel. So a check that needs
-  your gh login, ssh keys, git signing or `CI=true` sets them up in its own scratch.
+  your gh login, ssh keys, git signing or `CI=true` sets them up in its own scratch. That `HOME`'s
+  git defaults to a branch named `no-fixture-default`, so a fixture that assumes `main` passes by
+  name and fails here, with `src refspec main does not match any` or an empty clone: name its
+  branch (`git init -b main`, `git clone -b main`, `git symbolic-ref HEAD refs/heads/main`).
   `CHECKS_DOUBLE_PASS=1` switches back to the double pass (every check in your own environment, then
   `no-stridal.sh` running this directory's checks again without `stridal`), as a stopgap
   while you fix such a check. A gate calls `model_step_checks` (`scripts/ci/lib/steps.sh`).

@@ -526,9 +526,10 @@ func env(t *testing.T, home string) []string {
 		}
 		e = append(e, kv)
 	}
-	// A developer's global config usually names main as the default branch; the checks' scratch
-	// origins rely on it (a bare `git init` otherwise points HEAD at master).
-	os.WriteFile(filepath.Join(home, ".gitconfig"), []byte("[init]\n\tdefaultBranch = main\n"), 0o644)
+	// GIT_CONFIG_GLOBAL, below, overrides the HOME the checks' own environment gives git, and `bare`
+	// passes it through, so this file carries that environment's default branch (lib.sh's bare_env):
+	// with main here, this road would be blind to a fixture relying on a repo's default HEAD (#375).
+	os.WriteFile(filepath.Join(home, ".gitconfig"), []byte("[init]\n\tdefaultBranch = no-fixture-default\n"), 0o644)
 	// testgit's config goes back in: the filter above dropped it, and without it git runs auto
 	// maintenance in the fixtures (#343).
 	return testgit.WithConfig(append(e, "HOME="+home, "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+filepath.Join(home, ".gitconfig"),
