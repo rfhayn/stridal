@@ -102,8 +102,13 @@ bare_env() {
   done
   IFS=$_bifs
   BARE_HOME="$BARE_DIR/home"; mkdir -p "$BARE_HOME"
-  # A contributor without stridal still has a git identity.
-  printf '[user]\n\tname = check\n\temail = check@example.com\n[commit]\n\tgpgsign = false\n[init]\n\tdefaultBranch = main\n' > "$BARE_HOME/.gitconfig"
+  # A contributor without stridal still has a git identity. Git's default branch here is one no
+  # fixture uses, so a fixture relying on a repo's default HEAD fails in a whole-set run on any OS,
+  # and not only on a machine whose git happens to say otherwise (#375: Apple's says main, Ubuntu's
+  # master). A GIT_CONFIG_GLOBAL from the caller overrides this HOME and passes through `bare`.
+  # no-stridal.sh holds the value; run.sh's FAIL line and the playbook say how to fix such a
+  # fixture: name its branch.
+  printf '[user]\n\tname = check\n\temail = check@example.com\n[commit]\n\tgpgsign = false\n[init]\n\tdefaultBranch = no-fixture-default\n' > "$BARE_HOME/.gitconfig"
 }
 # bare_exec replaces the calling shell with CMD (run.sh `exec`s itself into the environment); bare
 # is the same in a subshell, for every other caller.
