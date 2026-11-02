@@ -60,7 +60,7 @@ unchanged.
 - **The feed's schema and rotation:** engine tests (FEED row).
 
 ## Rests on
-- A hook can append under the git common dir outside the sandbox: **untested**. Gate A (OPS-199).
+- A hook can append under the git common dir outside the sandbox: S5b, **passed**.
 - Polling a feed file is fast enough for the terminal UI: **untested**. Measured in the FEED row.
 
 ## Related

@@ -160,6 +160,7 @@ func checkProject(rep *doctorReport) *doctorRepo {
 	case modelPlugin:
 		rep.add(groupProject, doctorLine{level: levelNote, subject: "model",
 			detail: "runs the operating model from the stridal plugin (" + evidence + "); it is updated with the plugin (docs/plugin.md), and install and update refuse here"})
+		checkEngine(rep, r)
 	case modelOwn:
 		// diff's RunE is template.Survey of the current directory, so Survey here decides whether
 		// the printed diff runs (D8).
@@ -190,6 +191,7 @@ func checkProject(rep *doctorReport) *doctorRepo {
 	case modelStridal:
 		rep.add(groupProject, doctorLine{level: levelOK, subject: "model", detail: "Stridal's operating model (" + evidence + ")"})
 		checkDrift(rep, r)
+		checkEngine(rep, r)
 		rep.checks = "sh .claude/checks/run.sh"
 		if r.below {
 			rep.checks = "cd " + install.ShellWord(r.top) + " && " + rep.checks

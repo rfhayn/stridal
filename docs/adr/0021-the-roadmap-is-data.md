@@ -74,10 +74,11 @@
 - **The owner's doc is current:** the tracker step's STALE line in session-start's context, as today.
 
 ## Rests on
-- Every reader and writer of the roadmap is known: the S19 classification (section E) and the
-  round 3 review (team-queue `--next-id`, `roadmap-tracker.sh`). A reader found later is added to
-  OPS-195 before it merges; `checks/roadmap.sh` fails a reader that bypasses the engine.
-- The Claude Docs tools are reachable from the main session: **passed** (S19 built the doc).
+A reader found later is added to OPS-195 before it merges, and `checks/roadmap.sh` fails a reader
+that bypasses the engine.
+- Every reader and writer of the roadmap is known, the S19 classification (section E) and the
+  round 3 review (team-queue `--next-id`, `roadmap-tracker.sh`) among them: S6a, **passed**.
+- The Claude Docs tools are reachable from the main session: S6b, **passed**.
 
 ## Related
 - ADR-0016, ADR-0017. Replaces the roadmap's grammar section and `roadmap-queue.sh`. OPS-68.

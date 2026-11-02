@@ -81,12 +81,12 @@ Five rules hold across the kinds:
 - **"A query never words":** review judgment. **Nothing. You.**
 
 ## Rests on
+Scope: Claude Code only (the owner, 2026-10-31); other clients (Cursor) are out of scope.
 - A dead MCP server disappears silently, so MCP cannot hold a control: S2c, **passed**.
 - `mcp_tool` hooks cannot carry context: S2d and S2e, **passed**.
 - Prompt and agent hooks behave as ADR-0020 records: S3a to S3c, **passed**.
-- Scope: Claude Code only (the owner, 2026-10-31). Other clients (Cursor) are out of scope.
-  Whether a cloud Claude Code session runs the engine is **untested** — accepted at risk by the
-  owner (2026-10-31); tested by OPS-199.
+- A cloud Claude Code session builds and runs the engine, a plugin's command hooks run it, and a
+  plugin's stdio MCP server connects there: S5j, **passed**.
 
 ## Related
 - Supersedes ADR-0006. ADR-0017 (the engine), ADR-0018 (one version authority), ADR-0019 (parity

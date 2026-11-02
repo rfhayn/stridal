@@ -477,8 +477,13 @@ func pluginHooks(settings []byte) ([]byte, error) {
 			for _, h := range g.Hooks {
 				cmd, _ := h["command"].(string)
 				m := hookCmd.FindStringSubmatch(cmd)
-				if m == nil {
-					return nil, fmt.Errorf("template hook %q (%s): not of the form sh \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/<x>.sh, which the packager rewrites (framework/internal/plugin/build.go, pluginHooks)", cmd, event)
+				pluginCmd := ""
+				if m != nil {
+					pluginCmd = PluginHookPrefix + m[1]
+				} else if m = launchedCmd.FindStringSubmatch(cmd); m != nil {
+					pluginCmd = PluginLauncherPrefix + m[1]
+				} else {
+					return nil, fmt.Errorf("template hook %q (%s): not of the form sh \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/<x>.sh (or the launcher's, %s<x>.sh), which the packager rewrites (framework/internal/plugin/build.go, pluginHooks)", cmd, event, ProjectLauncherPrefix)
 				}
 				if _, drop := droppedHooks[m[1]]; drop {
 					continue
@@ -487,7 +492,7 @@ func pluginHooks(settings []byte) ([]byte, error) {
 				for k, v := range h {
 					nh[k] = v
 				}
-				nh["command"] = `sh "${CLAUDE_PLUGIN_ROOT}/hooks/if-project.sh" ` + m[1]
+				nh["command"] = pluginCmd
 				ng.Hooks = append(ng.Hooks, nh)
 			}
 			if len(ng.Hooks) > 0 {

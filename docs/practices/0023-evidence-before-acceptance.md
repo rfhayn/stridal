@@ -56,7 +56,7 @@ minutes, and four more by spikes in an evening (`docs/plans/s19-spikes.md`).
 ## Enforcement
 - **Practices 1 and 2:** a check, OPS-200 (the evidence-gated ADRs row in the roadmap). An Accepted
   ADR dated after this record must have a `## Rests on` section in which no item reads "untested"
-  without "accepted at risk by the owner". Until OPS-200 merges, **Nothing. You.**
+  without "accepted at risk by the owner". **`.claude/checks/adr-evidence.sh`** (OPS-200, #378).
 - **Practice 3:** the phase-gate filter in `roadmap.next` and `lanes.candidates` (OPS-207). It
   offers no row of a phase whose previous gate's evidence is not recorded in `plan.json`. Until
   then, **Nothing. You.**
