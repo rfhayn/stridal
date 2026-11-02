@@ -39,9 +39,10 @@ The plugin stays the generated copy of `template/`. What a release holds, and wh
 runs, change:
 - **A release carries the engine.** Under ADR-0017 the controls move into the `stridal` binary, so
   a plugin release carries `hooks.json`, the skills and agents, and the engine for that same
-  version: the binaries under `engine/` (never a top-level `bin/`), or their manifest with sha256s
-  (where they live is OPS-184's choice). The plugin's hooks and its MCP server call one bootstrap
-  launcher, which picks the binary for the running platform.
+  version: the binaries, attached to the release and fetched at SessionStart into
+  `CLAUDE_PLUGIN_DATA/engine/<sha256>/` (ADR-0018 decision 3, option (b); the owner, 2026-11-02).
+  The plugin's hooks and its MCP server call one bootstrap launcher, which picks the binary for the
+  running platform.
 - **The repo pins the release.** `.claude/stridal.lock`, read from `origin/<main>`, names the
   release and its sha256s, so every worktree is guarded by main's release. A mismatch refuses
   every guarded decision, and allows the commands that repair it.

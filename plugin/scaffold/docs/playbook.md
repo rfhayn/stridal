@@ -121,7 +121,10 @@ started from the panel's **New lane** (or by hand), on one branch:
   `stridal` off `PATH`, a fresh `HOME` and `CI` empty, and `checks/no-stridal.sh`, inside that
   run, asserts it is there and runs the gate, a skill context script and the status line the same
   way, failing on anything that errors or asks for the binary or the panel. So a check that needs
-  your gh login, ssh keys, git signing or `CI=true` sets them up in its own scratch.
+  your gh login, ssh keys, git signing or `CI=true` sets them up in its own scratch. That `HOME`'s
+  git defaults to a branch named `no-fixture-default`, so a fixture that assumes `main` passes by
+  name and fails here, with `src refspec main does not match any` or an empty clone: name its
+  branch (`git init -b main`, `git clone -b main`, `git symbolic-ref HEAD refs/heads/main`).
   `CHECKS_DOUBLE_PASS=1` switches back to the double pass (every check in your own environment, then
   `no-stridal.sh` running this directory's checks again without `stridal`), as a stopgap
   while you fix such a check. A gate calls `model_step_checks` (`scripts/ci/lib/steps.sh`).
@@ -243,7 +246,7 @@ machine needs Claude Code, then:
 
 | Tool | Why | macOS | Linux, WSL2 (Ubuntu) |
 |---|---|---|---|
-| git, jq | the hooks, checks and gate | `brew install git jq` | `sudo apt-get install git jq` |
+| git 2.31 or later (the model calls `rev-parse --path-format`), jq | the hooks, checks and gate | `brew install git jq` | `sudo apt-get install git jq` |
 | gh, logged in (`gh auth login`) | PRs, the merge guard, health lines | `brew install gh` (the token goes to the keychain) | GitHub's apt repository (cli.github.com); keep the token in a keyring (`gnome-keyring` or another Secret Service), not in `~/.config/gh/hosts.yml`: `gh auth status` must say `(keyring)` (below) |
 | gitleaks | the gate's secret scan (skipped locally without it, fails under CI) | `brew install gitleaks` | a release binary from github.com/gitleaks/gitleaks/releases, on `PATH` |
 | bubblewrap, socat | Claude Code's Bash sandbox | nothing: macOS has Seatbelt | `sudo apt-get install bubblewrap socat` |
@@ -255,7 +258,9 @@ machine needs Claude Code, then:
 **Why gh's token belongs in a keyring.** The session-start context and the health lines run `gh`
 inside the sandbox, and there `gh` must read `~/.config/gh/` to find its account, so
 `settings.json` does not deny that folder (OPS-75). With a keyring the folder holds no secret.
-Without one, `gh` writes the token into `hosts.yml` in plain text, where an agent could read it.
+Without one, `gh` writes the token into `hosts.yml` in plain text, where an agent could read it:
+the health line `gh-token-file` reads that file at each session start and says `FAILED` if a token
+sits there, never printing it.
 
 Add whatever else your gate's steps call. **The panel is macOS-only and optional**: it runs on
 tmux, launchd and Terminal.app. Nothing needs it (`checks/no-stridal.sh`): lanes are plain git
@@ -584,7 +589,7 @@ Haiku for the reviewer or the planner: economy mode never drops them either.
 | `focus-staleness.sh` | every prompt | nudges when the status-line focus is stale |
 | `format.sh` | every Write/Edit | runs the project's formatter, when configured |
 | `run-local.sh` | every gate | takes the gate lease; runs the scenario trace and the secret scan (gitleaks) before your steps; writes the receipt only for a complete, clean run; records every run in the worktree's state file and the repository's run log |
-| `settings.json` | every tool call | denies reads of `.env` files and keys and a few commands (force-push, `tmux kill-server`); runs Bash in the sandbox with a network allowlist. Add a host per machine in `.claude/settings.local.json` (`sandbox.network.allowedDomains`); `sandbox.excludedCommands` is not honoured on Claude Code 2.1.316 (spike S5h) |
+| `settings.json` | every tool call | denies reads of `.env` files, keys and credential files (`~/.git-credentials`, `~/.netrc`, `~/.npmrc`) and a few commands (force-push, `tmux kill-server`); runs Bash in the sandbox with a network allowlist. Add a host per machine in `.claude/settings.local.json` (`sandbox.network.allowedDomains`); `sandbox.excludedCommands` names only the gate and is not honoured on Claude Code 2.1.316 (spike S5h) |
 | `${CLAUDE_PLUGIN_ROOT}/checks/run.sh` | every gate (a step) | the process checks: hook tables, the roadmap parser, ADR numbering, model roles, the budget |
 
 AGENTS.md's *What executes each rule* table is the full list, including the honest last row: what

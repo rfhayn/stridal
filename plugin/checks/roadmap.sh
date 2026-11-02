@@ -287,7 +287,7 @@ awk -v mode="$mode" '
   /^#### Gate / { split($0, a, " "); gate = "Gate " a[3]; go = ""; next }
   /^\*\*Phase [0-9]+ owner:\*\*/ { po = $4; next }
   /^\*\*Gate [^ ]+ owner:\*\*/ { go = $4; next }
-  /^\| [0-9A-Za-z.]+ \|/ {
+  /^\| [0-9A-Za-z.]+ \|/ && ph != "-" {
     n = split($0, c, "|"); id = trim(c[2]); if (id == "#") next
     match(c[3], /`[^`]+`/); cid = substr(c[3], RSTART + 1, RLENGTH - 2)
     sm = substr(c[3], RSTART + RLENGTH); gsub(/\*\*|~~/, "", sm); sub(/^[ \t—-]+/, "", sm); sm = trim(sm)
@@ -426,4 +426,144 @@ expect_rc 0 "$rc" "the project's roadmap ($ROADMAP) parses: $(printf '%s' "$out"
 out=$(roadmap_queue --tsv "$ROOT/$ROADMAP"); rc=$?
 expect_rc 0 "$rc" "the project's roadmap meets the --tsv contract through ${ROADMAP_PARSER:-.claude/roadmap-queue.sh}"
 [ "$rc" -eq 0 ] || printf '%s\n' "$out" | sed 's/^/     /'
+
+# ── The project's Session plan, through its one parser (OPS-226) ───────────────────────────────
+# A plan with a row in two sessions passed every check above (S20's close, #379): the plan's table is
+# not a queue table, so the queue parser skips it, and only roadmap-plan.sh refuses that row. Nothing
+# ran it over the project's own plan before a merge. The fixtures run plan_verdict, the same call the
+# project's plan gets, so they hold the verdict the gate acts on, not the reader alone.
+# plan_verdict READER FILE: one ok or FAIL line, naming FILE; under a FAIL, the reader's own errors.
+# With ROADMAP_PARSER set the roadmap's grammar is the project's: it may have no file at that path,
+# or a section of this name in its own shape, and neither is an error, unless the reader found a row
+# or session twice in it (it then read the table, so that is the plan's error, not a shape) or
+# refused the plan's own table as a second one, whose rows it never reached. With it empty, both are
+# errors, and so is the plan's table under any other heading: the reader finds no section there, and
+# its rows would read as no plan at all. A heading alone holds nothing unread.
+plan_verdict() {
+  _pv_f=${2#"$ROOT/"}; _pv_last=$2
+  if [ -n "$ROADMAP_PARSER" ] && [ ! -f "$2" ]; then
+    ok "$_pv_f plans no session: no such file, and ROADMAP_PARSER reads the project's queue (the plan is optional)"
+    return 0
+  fi
+  _pv=$(sh "$1" "$2" 2>"$d/plan.err"); _pv_rc=$?
+  _pv_tbl=$(grep -inE '^\|[[:blank:]]*Session[[:blank:]]*\|[[:blank:]]*When[[:blank:]]*\|[[:blank:]]*Focus[[:blank:]]*\|[[:blank:]]*Rows[[:blank:]]*\|' "$2" 2>/dev/null | head -n 1)
+  if [ "$_pv_rc" -eq 0 ]; then
+    _pv_n=$(printf '%s\n' "$_pv" | awk -F'\t' '$1 == "S" { s++ } $1 == "R" { r++ } END { print s + 0 " session(s), " r + 0 " planned entr(ies)" }')
+    case $_pv_n in
+      "0 session(s)"*)
+        if [ -z "$ROADMAP_PARSER" ] && [ -n "$_pv_tbl" ] && ! grep -qE '^## Session plan[[:blank:]]*$' "$2"; then
+          fail "$_pv_f holds the Session plan's table (line ${_pv_tbl%%:*}) under another heading, so no row of it was checked: its parser reads only \`## Session plan\`"
+        else
+          ok "$_pv_f plans no session under \`## Session plan\` (the plan is optional)"
+        fi ;;
+      *) ok "the Session plan in $_pv_f reads through roadmap-plan.sh, each row in one session or its proposal and its build: $_pv_n" ;;
+    esac
+  elif [ -n "$ROADMAP_PARSER" ] && [ "$_pv_rc" -eq 1 ] \
+    && grep -qE 'the Session plan header must be|the Session plan section has no table' "$d/plan.err" \
+    && ! grep -qE 'is planned in|is built in|is planned twice' "$d/plan.err" \
+    && { [ -z "$_pv_tbl" ] || ! grep -q 'a second table' "$d/plan.err"; }; then
+    ok "the Session plan in $_pv_f was NOT read: ROADMAP_PARSER is set and the section's shape is the project's own, not roadmap-plan.sh's table, so no row in it was checked. The reader said:"
+    sed 's/^/     /' "$d/plan.err"
+  else
+    fail "the Session plan in $_pv_f cannot be read by roadmap-plan.sh, so the panel, the session marker and the session-start line cannot either:"
+    sed 's/^/     /' "$d/plan.err"
+  fi
+}
+# pv_as PARSER READER FILE: the verdict for a project with that ROADMAP_PARSER, in a subshell, so it
+# leaves this check's count and this project's key alone. The reader reads the key from its own project.
+pv_as() { _pa=$1; shift; (ROADMAP_PARSER=$_pa; plan_verdict "$@"); }
+# Its own project, so a ROADMAP_PARSER this project sets does not read the fixtures' grammar.
+PL="$d/plan"; mkdir -p "$PL/.claude/lib"
+cp "$STRIDAL_FW/lib/conf.sh" "$STRIDAL_FW/lib/change.sh" "$STRIDAL_FW/lib/fragments.sh" "$PL/.claude/lib/"
+cp "$STRIDAL_FW/roadmap-queue.sh" "$STRIDAL_FW/roadmap-plan.sh" "$PL/.claude/"
+cat > "$PL/once.md" <<'EOF'
+# Roadmap
+## Phase 1 — Now
+| # | Change | Scope | Deps | Status |
+|---|---|---|---|---|
+| OPS-165 | `ops/ops-165-check` — a | s | — | ⬜ queued |
+| OPS-183 | `ops/ops-183-pin` — b | s | — | ⬜ queued |
+| OPS-300 | `ops-300-thing` — c | s | — | ⬜ queued |
+## Session plan
+| Session | When | Focus | Rows | The owner decides |
+|---|---|---|---|---|
+| S20 | (done) | first | OPS-300 (proposal) | — |
+| S21–S22 | | then | OPS-165, OPS-183, OPS-300 | — |
+EOF
+# S20's close: the row moved to the next session and stayed in the closed one. Only this differs.
+sed 's/| OPS-300 (proposal) |/| OPS-165, OPS-300 (proposal) |/' "$PL/once.md" > "$PL/twice.md"
+sed '/^## Session plan/,$d' "$PL/once.md" > "$PL/none.md"
+{ cat "$PL/none.md"; printf '## Session plan\n| Week | Rows |\n|---|---|\n| 1 | OPS-165, OPS-165 |\n'; } > "$PL/own.md"
+# pv_case LABEL PATTERN PARSER READER FILE: the verdict for that project matches PATTERN (a case glob).
+pv_case() {
+  _pc_l=$1; _pc_p=$2; shift 2
+  _pc_o=$(pv_as "$@")
+  # shellcheck disable=SC2254
+  case $_pc_o in
+    $_pc_p) ok "$_pc_l" ;;
+    *) fail "$_pc_l: the verdict was: $_pc_o" ;;
+  esac
+}
+PR="$PL/.claude/roadmap-plan.sh"
+pv_case "a row planned in two sessions fails the plan's verdict, naming the row and both sessions" 'FAIL*OPS-165 is planned in S20 and S21–S22*' "" "$PR" "$PL/twice.md"
+# OPS-300 is in two sessions here too: a change's `(proposal)`, then its build, is allowed.
+pv_case "a change's (proposal) in one session and its build in the next passes the plan's verdict, both entries read" 'ok *2 session(s), 4 planned*' "" "$PR" "$PL/once.md"
+pv_case "a roadmap with no Session plan passes the plan's verdict, saying it has none" 'ok *plans no session*' "" "$PR" "$PL/none.md"
+pv_case "with no ROADMAP_PARSER, a section of its name in another shape fails" 'FAIL*header must be*' "" "$PR" "$PL/own.md"
+pv_case "with no ROADMAP_PARSER, no roadmap file fails" 'FAIL*is missing*' "" "$PR" "$PL/absent.md"
+# The plan's table under another heading hides #379's duplicate behind "plans no session".
+for _h in '## Session Plan' '### Session plan' '## Session plan (S23)' '## Session plan:' '## Session plans' '## Sessions plan' '## Session  plan' '## Session-plan' '## Session_plan' '##Session plan'; do
+  sed "s/^## Session plan\$/$_h/" "$PL/twice.md" > "$PL/near.md"
+  pv_case "with no ROADMAP_PARSER, the plan's table under '$_h' fails, never reads as no plan" 'FAIL*under another heading*' "" "$PR" "$PL/near.md"
+done
+# The same words with no table hold nothing unread: a project with no plan stays green.
+for _h in '## Session plan history' '### Session plan notes' '## Why we dropped the session plan' '## Session Plan'; do
+  { cat "$PL/none.md"; printf '%s\nNot planned.\n' "$_h"; } > "$PL/bare.md"
+  pv_case "...and '$_h' with no table stays no plan" 'ok *plans no session*' "" "$PR" "$PL/bare.md"
+done
+{ cat "$PL/none.md"; printf '## Notes\n```sh\n# session plan\n```\n'; } > "$PL/fenced.md"
+pv_case "...as does a fenced '# session plan' shell comment" 'ok *plans no session*' "" "$PR" "$PL/fenced.md"
+sed '/^| S2[01]/d' "$PL/once.md" > "$PL/empty.md"
+pv_case "...and an empty table under the exact heading" 'ok *plans no session*' "" "$PR" "$PL/empty.md"
+{ cat "$PL/none.md"; printf '## Workshops\n| Session | When | Who |\n|---|---|---|\n| 1 | May | Ana |\n'; } > "$PL/workshops.md"
+pv_case "...and an unrelated table that starts alike" 'ok *plans no session*' "" "$PR" "$PL/workshops.md"
+sed -e 's/^## Session plan$/## Session Plan/' -e 's/^| Session | When | Focus | Rows |/| session | when | focus | rows |/' "$PL/twice.md" > "$PL/lower.md"
+pv_case "with no ROADMAP_PARSER, the plan's table in lower case under another heading fails too" 'FAIL*under another heading*' "" "$PR" "$PL/lower.md"
+# A project with its own parser (OPS-226): the foreign grammar above, then a parser that ignores its
+# file, as a project's may. `## Session plan` tables are the reader's, whatever reads the queue.
+printf '#!/bin/sh\ncase ${1:-} in --tsv) printf "1\\t1\\t\\t1.1\\tadd-a\\tchange\\tqueued\\t\\tAna\\tsummary\\t\\t\\n" ;; --check) echo "roadmap ok: 1 row(s)" ;; *) echo "  1.1  add-a  [queued]" ;; esac\n' > "$F/infra/ignores.sh"
+PF="$F/.claude/roadmap-plan.sh"
+{ cat "$F/docs/roadmap.md"; printf '## Session plan\n| Session | When | Focus | Rows | The owner decides |\n|---|---|---|---|---|\n| S1 | | first | 2A.3 | — |\n| S2 | | then | 2U.1 | — |\n'; } > "$F/docs/plan-ok.md"
+sed 's/| then | 2U\.1 |/| then | 2U.1, 2A.3 |/' "$F/docs/plan-ok.md" > "$F/docs/plan-twice.md"
+{ cat "$F/docs/roadmap.md"; printf '## Session plan\n| Week | Rows |\n|---|---|\n| 1 | 2A.3, 2A.3 |\n'; } > "$F/docs/plan-own.md"
+{ cat "$F/docs/roadmap.md"; printf '## Session plan\nIn the project tracker.\n'; } > "$F/docs/plan-prose.md"
+sed 's/^## Session plan$/## Session Plan/' "$F/docs/plan-ok.md" > "$F/docs/plan-near.md"
+sed 's/| The owner decides |/| Owner decides |/' "$F/docs/plan-twice.md" > "$F/docs/plan-typo.md"
+{ cat "$F/docs/roadmap.md"; printf '## Session plan\n| Week | Rows |\n|---|---|\n| 1 | a |\n'; sed -n '/^| Session | When/,$p' "$F/docs/plan-twice.md"; } > "$F/docs/plan-under.md"
+{ cat "$F/docs/roadmap.md"; printf '## Session plan\n| Week | Rows |\n|---|---|\n| 1 | a |\n\n'; sed -n '/^| Session | When/,$p' "$F/docs/plan-twice.md"; } > "$F/docs/plan-second.md"
+{ cat "$F/docs/roadmap.md"; printf '## Session plan\n| Week | Rows |\n|---|---|\n| 1 | a |\n\n| Goal | Who |\n|---|---|\n| b | c |\n'; } > "$F/docs/plan-own2.md"
+{ cat "$F/docs/roadmap.md"; printf '## Session plan\n| Week | Goal | Who | Items | Notes |\n|---|---|---|---|---|\n| 1 | ship | Ana | write the doc | n |\n'; } > "$F/docs/plan-five.md"
+# A reader that printed the header error, then died: the status a shell reports for a killed one.
+printf '#!/bin/sh\necho "the Session plan header must be ..." >&2\nexit 137\n' > "$F/infra/died.sh"
+for _p in "sh infra/roadmap-queue.sh" "sh infra/ignores.sh"; do
+  conf "$_p" "sh infra/normalize.sh"
+  pv_case "ROADMAP_PARSER ($_p): a roadmap with no plan plans no session" 'ok *plans no session*' "$_p" "$PF" "$F/docs/roadmap.md"
+  pv_case "...a plan in the reader's table reads" 'ok *2 session(s), 2 planned*' "$_p" "$PF" "$F/docs/plan-ok.md"
+  pv_case "...a row in two sessions of that table fails, naming it" 'FAIL*2A.3 is planned in S1 and S2*' "$_p" "$PF" "$F/docs/plan-twice.md"
+  pv_case "...so does a one-word typo in its header: the reader still found the row twice" 'FAIL*2A.3 is planned in S1 and S2*' "$_p" "$PF" "$F/docs/plan-typo.md"
+  pv_case "...and the table under an own-shape one it runs on from" 'FAIL*2A.3 is planned in S1 and S2*' "$_p" "$PF" "$F/docs/plan-under.md"
+  pv_case "...a section in the project's own shape passes, saying it was NOT read and what the reader said" 'ok *NOT read*header must be*' "$_p" "$PF" "$F/docs/plan-own.md"
+  pv_case "...the plan's table refused as the second after an own-shape one fails: its rows went unread" 'FAIL*a second table*' "$_p" "$PF" "$F/docs/plan-second.md"
+  pv_case "...two tables of its own pass, saying they were NOT read" 'ok *NOT read*a second table*' "$_p" "$PF" "$F/docs/plan-own2.md"
+  pv_case "...as does a 5-cell one of its own whose items are no row ids" 'ok *NOT read*is not a row id*' "$_p" "$PF" "$F/docs/plan-five.md"
+  pv_case "...a section with no table passes, saying it was NOT read" 'ok *NOT read*no table*' "$_p" "$PF" "$F/docs/plan-prose.md"
+  pv_case "...a reader that dies after that error is no verdict" 'FAIL*header must be*' "$_p" "$F/infra/died.sh" "$F/docs/plan-own.md"
+  pv_case "...the plan's table under another heading is the project's own, and plans no session" 'ok *plans no session*' "$_p" "$PF" "$F/docs/plan-near.md"
+  pv_case "...no file at the path plans no session" 'ok *plans no session*' "$_p" "$PF" "$F/docs/absent.md"
+done
+plan_verdict "$STRIDAL_FW/roadmap-plan.sh" "$ROOT/$ROADMAP"
+# Every fixture ran in a subshell, so this is set only by the line above: without it, all of them stay
+# green and the project's plan goes unread, which is the miss this section exists to close.
+[ "${_pv_last:-}" = "$ROOT/$ROADMAP" ] && ok "the verdict above is of the project's own plan ($ROADMAP), not a fixture's" \
+  || fail "this check never ran plan_verdict over the project's own plan ($ROADMAP)"
 finish

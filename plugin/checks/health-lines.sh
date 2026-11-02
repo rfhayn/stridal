@@ -350,7 +350,8 @@ has "coauthor: no origin/main is CANNOT CHECK" "$out" "CANNOT CHECK — cannot r
 must git -C "$C" fetch -q origin
 # A shallow clone: the commit that added the line may be past its depth, where git shows the
 # boundary commit as adding every file. That is no baseline: CANNOT CHECK, never a quiet narrowing.
-must git clone -q --depth 1 "file://$d/co.git" "$d/co-shallow"
+# Named: a bare repo's HEAD is git's default branch, whatever this machine's is, not main (#375).
+must git clone -q --depth 1 -b main "file://$d/co.git" "$d/co-shallow"
 must cp "$C/.claude/model-roles.json" "$d/co-shallow/.claude/"
 out=$(cd "$d/co-shallow" && sh .claude/health/coauthor-trailers.sh 2>&1); cos="$cos$out
 "

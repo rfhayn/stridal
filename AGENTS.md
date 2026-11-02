@@ -4,13 +4,13 @@
 > for at each start. `.claude/checks/agents-md-budget.sh` holds it to a byte ceiling and
 > each table row to a length ceiling. **New lessons go to `docs/insights-log.md`** (from a row, by
 > its fragment); detail goes to **`docs/conventions.md`**. Change this file only to add a
-> mechanism or to delete something, and give the mechanism its row in the table below.
+> mechanism or to delete something, and give the mechanism its row below.
 
 ## Four rules that keep the model honest
 
 Rule 4 is the general shape; rules 1–3 are its three costliest instances. What unites them is a
 failure MODE, not a subject: **each degrades to silence rather than to an error**, so every
-automated check passes and the work reads as correct. The cited principles are argued in
+check passes and the work reads as correct. The cited principles are argued in
 `docs/principles.md`.
 
 **1. Deferring a finding means naming the CHANGE that will close it, not an endpoint.** An
@@ -66,7 +66,7 @@ One row a line; the last row last.
 | A role's model or a trigger it declares (`evals.triggers`: its agent, the marked review prompt) changes only with a passing eval receipt | **`pr-merge-guard.sh`** rule 13 (blocking); **`checks/model-roles.sh`** (the `eval` evidence); **`checks/evals.sh`** |
 | A change stays within its budget; a soft one (`**Budget:** $N, soft`) reports its overrun and goes on | **`build-change.js`** stops or warns (`.claude/change-cost.sh`); **`checks/build-change.sh`**; by hand, **Nothing. You.** |
 | A build-change run starts only below the 7-day quota threshold | **`.claude/quota-gate.sh`** via build-change's preflight; **`checks/quota-reading.sh`**; other lanes (panel, by hand): **Nothing. You.** |
-| No secret is committed, and agents cannot read the project's | **`run-local.sh`** secrets step (gitleaks; fails under CI without it); **`settings.json`** deny list and sandbox; **`checks/settings.sh`**, **`checks/gate.sh`** |
+| No secret is committed; agents cannot read the project's | **`run-local.sh`** secrets (gitleaks; CI needs it); **`settings.json`** deny list, sandbox; **`extensions.sh`** (`sandbox-writes`); **`checks/settings.sh`**, **`checks/gate.sh`** |
 | A dependency release ages before it is proposed; an advisory reaches a reader | **`.github/dependabot.yml`** cooldown; **`dependency-audit.yml`** and its health line; **`checks/supply-chain.sh`** |
 | Review a change PER TASK GROUP, not per PR | **`.claude/workflows/build-change.js`** when built through it; **Nothing. You.** by hand (`/apply-change`) |
 | The panel offers only what the roadmap allows next | **`.claude/panel-suggest.sh`** over the one parser; **`checks/panel-suggest.sh`** |
@@ -89,7 +89,7 @@ One row a line; the last row last.
 | A module adds only while `MODULES` names it; a broken extension guard rule blocks, never allows | **`lib/modules.sh`** for every host; **`pr-merge-guard.sh`** extension rules; **`checks/modules.sh`** |
 | Orphans and clean lane worktrees do not outlive a session; tmux lanes are never killed | **`.claude/machine-quiet.sh`** via `session-close`; **`checks/machine-quiet.sh`** |
 | Work that needs the owner at the computer is seen | **`.claude/owner-queue.sh`** via `session-start` and the panel card |
-| The change queue is read ONE way, and a malformed row is an error, not a shorter queue | **`roadmap_queue`** (`lib/conf.sh`) over `.claude/roadmap-queue.sh` or `ROADMAP_PARSER`; **`checks/roadmap.sh`** fails a bypass |
+| The change queue is read ONE way; a malformed row is an error, not a shorter queue | **`roadmap_queue`** (`lib/conf.sh`) over `.claude/roadmap-queue.sh` or `ROADMAP_PARSER`; **`checks/roadmap.sh`** fails a bypass and a row planned twice |
 | A project's history is never reformatted; records since adoption meet the format | `RECORDS_BASELINE`, `CHANGES_LEGACY` (`lib/records.sh`); **`checks/journal.sh`**, **`adr-numbering.sh`**, **`changes.sh`** |
 | ADRs, PRACs: unique numbers (one space), indexed, naming enforcement and evidence | **`checks/adr-numbering.sh`**, **`adr-evidence.sh`**; `new-adr` numbers from `origin/main`, open PRs |
 | A skill's context script and every `.claude/` path a skill or agent names exists | **`checks/skills.sh`** |
