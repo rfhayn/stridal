@@ -238,13 +238,43 @@ var launcherCases = []launcherCase{
 			return wt
 		},
 		check: refused("is not the one the lock pins", "claude plugin update stridal@stridal")},
-	{name: "with no origin, a main worktree on no branch refuses", verdict: Refuse,
+	{name: "with no origin, a lock on another branch does not count", verdict: Refuse,
+		setup: func(f *fixture) string {
+			good := f.lockFor(f.engineSum())
+			f.git(f.proj, "remote", "remove", "origin")
+			f.commitLock(f.proj, "")
+			f.git(f.proj, "checkout", "-q", "-b", "side") // the main checkout itself moves
+			f.commitLock(f.proj, good)
+			return ""
+		},
+		check: refused("no .claude/stridal.lock at refs/heads/main", "stridal doctor")},
+	{name: "with no origin, a detached main checkout still reads main", verdict: Run,
 		setup: func(f *fixture) string {
 			f.git(f.proj, "remote", "remove", "origin")
 			f.git(f.proj, "checkout", "-q", "--detach")
 			return ""
 		},
-		check: refused("the main worktree has no branch", "stridal doctor")},
+		check: ranControl(pluginGuard, 0)},
+	{name: "with no origin, stridal.mainBranch names the branch", verdict: Run,
+		setup: func(f *fixture) string {
+			f.git(f.proj, "remote", "remove", "origin")
+			f.commitLock(f.proj, f.lockFor(garbage))
+			f.git(f.proj, "branch", "trunk", "HEAD~1") // the clone's first commit: the good lock
+			f.git(f.proj, "config", "stridal.mainBranch", "trunk")
+			return ""
+		},
+		check: ranControl(pluginGuard, 0)},
+	{name: "with no origin, a worktree's own config does not name main", verdict: Refuse,
+		setup: func(f *fixture) string {
+			good := f.lockFor(f.engineSum())
+			f.git(f.proj, "remote", "remove", "origin")
+			f.commitLock(f.proj, f.lockFor(garbage))
+			wt := worktree(f, good)
+			f.git(f.proj, "config", "extensions.worktreeConfig", "true")
+			f.git(wt, "config", "--worktree", "stridal.mainBranch", "lane")
+			return wt
+		},
+		check: refused("is not the one the lock pins", "claude plugin update stridal@stridal")},
 	{name: "a lane's MAIN_BRANCH naming its own pushed branch does not choose the pin", verdict: Refuse,
 		setup: func(f *fixture) string {
 			good := f.lockFor(f.engineSum())
@@ -370,7 +400,35 @@ func copyInstall(f *fixture) {
 	f.env["CLAUDE_PLUGIN_ROOT"] = ""
 }
 
+// badMains are names good_branch refuses, one per alternative of its pattern, each reachable:
+// stridal.mainBranch is a free string, so each is set there (an origin's HEAD can name
+// refs/remotes/origin/-x too, a valid refname).
+var badMains = []struct{ alternative, name string }{
+	{"empty", ""},
+	{"a leading dash", "-x"},
+	{"a leading slash", "/x"},
+	{"a trailing slash", "x/"},
+	{"two dots", "main..x"},
+	{"a .lock suffix", "x.lock"},
+	{"a revision expression", "main~1"},
+	{"a character outside the plain set", "a+b"},
+}
+
+func badMainCase(alternative string) string {
+	return "with no origin, a stridal.mainBranch with " + alternative + " refuses"
+}
+
 func init() {
+	for _, b := range badMains {
+		b := b
+		launcherCases = append(launcherCases, launcherCase{name: badMainCase(b.alternative), verdict: Refuse,
+			setup: func(f *fixture) string {
+				f.git(f.proj, "remote", "remove", "origin")
+				f.git(f.proj, "config", "stridal.mainBranch", b.name)
+				return ""
+			},
+			check: refused("stridal.mainBranch names "+b.name+", not a plain branch name", "stridal doctor")})
+	}
 	for _, tool := range []string{"openssl", "shasum"} {
 		tool := tool
 		launcherCases = append(launcherCases,

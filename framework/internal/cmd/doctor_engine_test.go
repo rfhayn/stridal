@@ -62,6 +62,10 @@ func TestDoctorEngineLineIsTheLaunchersDecision(t *testing.T) {
 		t.Errorf("the note does not say the launcher is not registered yet: %s", l)
 	}
 	needExact(t, out, "fix: stridal doctor")
+	// With no origin, doctor says where main comes from and how to name another.
+	if l := needLine(t, out, "note", "main", "git config stridal.mainBranch"); !strings.Contains(detailOf(out, l), "never the checked-out branch") {
+		t.Errorf("the main line does not say the checkout never names main: %s", l)
+	}
 
 	lock := string((&engine.Lock{Release: "1.2.3", Engines: map[string]string{engine.Platform(): sum}}).Format())
 	t.Chdir(lockedRepo(t, lock))

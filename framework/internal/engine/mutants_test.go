@@ -3,6 +3,7 @@ package engine
 import (
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -108,7 +109,22 @@ type mutant struct {
 const (
 	fixPlugin = "claude plugin update stridal@stridal"
 	steered   = "a lane's MAIN_BRANCH naming its own pushed branch does not choose the pin"
+	// noOriginMain is where the launcher names main with no origin.
+	noOriginMain = `main=$(git -C "$proj" config --local --get stridal.mainBranch 2>/dev/null) || main=main`
+	// goodBranchCase is good_branch's pattern, one alternative per way a name is refused.
+	goodBranchCase = `case $1 in "" | -* | /* | */ | *..* | *.lock | *[!A-Za-z0-9/._-]*) return 1 ;; esac`
 )
+
+// badMainCases names the bad-stridal.mainBranch cases for the alternatives given, or all of them.
+func badMainCases(alternatives []string) []string {
+	var out []string
+	for _, b := range badMains {
+		if alternatives == nil || slices.Contains(alternatives, b.alternative) {
+			out = append(out, badMainCase(b.alternative))
+		}
+	}
+	return out
+}
 
 var mutants = []mutant{
 	// Standing aside, and the control's name.
@@ -159,13 +175,34 @@ var mutants = []mutant{
 		[]string{"origin with no HEAD refuses"}},
 	{"an origin with no HEAD refuses", `unverified "origin has no HEAD, so which of its branches is main is unknown" "git remote set-head origin --auto"; return 1`, `exit 0`,
 		[]string{"origin with no HEAD refuses"}},
-	{"with no origin, main is the main worktree's branch", `main=$(git -C "$proj" worktree list --porcelain 2>/dev/null | sed -n '1,/^$/s/^branch refs\/heads\///p')`,
-		`main=$(git -C "$proj" symbolic-ref --short HEAD 2>/dev/null)`,
-		[]string{"with no origin, a lane's own branch does not count"}},
-	{"with no origin, only the first worktree counts", `sed -n '1,/^$/s/^branch refs\/heads\///p'`, `sed -n 's/^branch refs\/heads\///p'`,
-		[]string{"with no origin, a lane's own branch does not count"}},
-	{"with no origin, a main worktree on no branch refuses", `good_branch "$main" || { unverified "with no origin, the main worktree has no branch to read the lock from" "stridal doctor"; return 1; }`, `:`,
-		[]string{"with no origin, a main worktree on no branch refuses"}},
+	// Review round 2: with no origin, main came from the main worktree's checkout.
+	{"with no origin, main is not the main worktree's branch", noOriginMain,
+		`main=$(git -C "$proj" worktree list --porcelain 2>/dev/null | sed -n '1,/^$/s/^branch refs\/heads\///p')`,
+		[]string{"with no origin, a lock on another branch does not count"}},
+	{"with no origin, main is not this checkout's branch", noOriginMain, `main=$(git -C "$proj" symbolic-ref --short HEAD 2>/dev/null)`,
+		[]string{"with no origin, a lock on another branch does not count", "with no origin, a lane's own branch does not count"}},
+	{"with no origin, only the common dir's config names main", `config --local --get stridal.mainBranch`, `config --get stridal.mainBranch`,
+		[]string{"with no origin, a worktree's own config does not name main"}},
+	{"with no origin, stridal.mainBranch is read", `config --local --get stridal.mainBranch 2>/dev/null) || main=main`, `config --local --get stridal.nothing 2>/dev/null) || main=main`,
+		[]string{"with no origin, stridal.mainBranch names the branch"}},
+	{"with no origin, unset means main", `2>/dev/null) || main=main`, `2>/dev/null) || main=`,
+		[]string{"a repository with no origin reads its own main", "with no origin, a detached main checkout still reads main"}},
+	{"a bad stridal.mainBranch refuses", `good_branch "$main" || { unverified "stridal.mainBranch names $main, not a plain branch name" "stridal doctor"; return 1; }`, `:`,
+		badMainCases(nil)},
+	{"good_branch refuses an empty name", goodBranchCase, strings.Replace(goodBranchCase, `"" | `, ``, 1),
+		badMainCases([]string{"empty"})},
+	{"good_branch refuses a leading dash", goodBranchCase, strings.Replace(goodBranchCase, `-* | `, ``, 1),
+		badMainCases([]string{"a leading dash"})},
+	{"good_branch refuses a leading slash", goodBranchCase, strings.Replace(goodBranchCase, `/* | `, ``, 1),
+		badMainCases([]string{"a leading slash"})},
+	{"good_branch refuses a trailing slash", goodBranchCase, strings.Replace(goodBranchCase, `*/ | `, ``, 1),
+		badMainCases([]string{"a trailing slash"})},
+	{"good_branch refuses two dots", goodBranchCase, strings.Replace(goodBranchCase, `*..* | `, ``, 1),
+		badMainCases([]string{"two dots"})},
+	{"good_branch refuses a .lock suffix", goodBranchCase, strings.Replace(goodBranchCase, `*.lock | `, ``, 1),
+		badMainCases([]string{"a .lock suffix"})},
+	{"good_branch refuses a character outside the plain set", goodBranchCase, strings.Replace(goodBranchCase, ` | *[!A-Za-z0-9/._-]*`, ``, 1),
+		badMainCases([]string{"a revision expression", "a character outside the plain set"})},
 	{"with no origin, a missing lock refuses", `lock=$(read_lock "$ref") || { unverified "no .claude/stridal.lock at $ref" "stridal doctor"; return 1; }`, `lock=$(read_lock "$ref") || exit 0`,
 		[]string{"with no origin, a missing lock refuses"}},
 	{"the lock is origin's ref, by its full name", "ref=refs/remotes/origin/$main\n", "ref=origin/$main\n",
@@ -262,6 +299,9 @@ func TestEachLauncherCaseFailsWithoutItsControl(t *testing.T) {
 	named := map[string]bool{}
 	covered := map[int]bool{}
 	for _, m := range mutants {
+		if len(m.kills) == 0 {
+			t.Errorf("mutant %q names no case: nothing shows its control is tested", m.control)
+		}
 		if n := strings.Count(src, m.old); n != 1 {
 			t.Errorf("mutant %q: its text occurs %d times in the launcher, want 1: %q", m.control, n, m.old)
 			continue

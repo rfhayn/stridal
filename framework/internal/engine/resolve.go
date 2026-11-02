@@ -1,8 +1,6 @@
 package engine
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -50,14 +48,16 @@ func FixOf(err error) string {
 }
 
 // MainRef is the ref a repository's lock is read from, the launcher's way. Which branch is main
-// comes from git's own record, never from the working tree, which a lane can edit (its
-// project.conf could name a branch it pushed, or main~1, an older pin):
+// comes from the git common dir, never from a checkout's HEAD or the working tree, which are
+// what a lane changes in its normal work (its project.conf could name a branch it pushed, or
+// main~1, an older pin; `git checkout -b side` in the main checkout moves HEAD):
 //   - with an origin, origin's HEAD (set by clone; `git remote set-head origin --auto` sets it
 //     again), and a repository whose origin has no HEAD is refused;
-//   - with no origin, the branch the main worktree has checked out (the first entry of git
-//     worktree list), which a lane's own worktree does not change.
+//   - with no origin, MainBranchKey in the common dir's config, else DefaultMain.
 //
-// Full ref names, so a local branch named "origin/main" cannot stand in for the remote's.
+// Full ref names, so a local branch named "origin/main" cannot stand in for the remote's. The
+// trust root is the git common dir and the plugin root: a lane that can write those can choose
+// its pin (OPS-184 makes them not lane-writable before the launcher is switched on).
 func MainRef(ctx context.Context, projectDir string) (string, error) {
 	if out, err := gitOut(ctx, projectDir, "symbolic-ref", "-q", "refs/remotes/origin/HEAD"); err == nil {
 		head := strings.TrimSpace(string(out))
@@ -70,23 +70,23 @@ func MainRef(ctx context.Context, projectDir string) (string, error) {
 	if _, err := gitOut(ctx, projectDir, "config", "--get", "remote.origin.url"); err == nil {
 		return "", lockError{msg: "origin has no HEAD, so which of its branches is main is unknown", fix: FixSetHead}
 	}
-	out, _ := gitOut(ctx, projectDir, "worktree", "list", "--porcelain")
-	main := ""
-	sc := bufio.NewScanner(bytes.NewReader(out))
-	for sc.Scan() {
-		line := sc.Text()
-		if line == "" {
-			break // the first entry is the main worktree
-		}
-		if b, ok := strings.CutPrefix(line, "branch refs/heads/"); ok {
-			main = b
-		}
+	main := DefaultMain
+	if out, err := gitOut(ctx, projectDir, "config", "--local", "--get", MainBranchKey); err == nil {
+		main = strings.TrimSuffix(string(out), "\n")
 	}
 	if !GoodBranch(main) {
-		return "", lockError{msg: "with no origin, the main worktree has no branch to read the lock from", fix: FixDoctor}
+		return "", lockError{msg: MainBranchKey + " names " + main + ", not a plain branch name", fix: FixDoctor}
 	}
 	return "refs/heads/" + main, nil
 }
+
+// MainBranchKey is the git config key (the common dir's own config, --local) that names main in
+// a repository with no origin; DefaultMain is main when it is unset. Never a checkout's HEAD and
+// never a working-tree file: those are what a lane changes in its normal work.
+const (
+	MainBranchKey = "stridal.mainBranch"
+	DefaultMain   = "main"
+)
 
 // ReadLock reads and parses the lock at MainRef, and says which ref it read. Every worktree of a
 // repository shares its refs, so a worktree reads main's lock and never its own working-tree

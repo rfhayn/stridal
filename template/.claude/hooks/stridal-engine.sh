@@ -71,8 +71,9 @@ refuse() {
   exit 2
 }
 
-# good_branch: a plain branch name. git already refuses an invalid symbolic ref (origin/HEAD
-# pointing at main~1 or x/.hidden reads as no HEAD at all), and this is stricter than git
+# good_branch: a plain branch name, no revision expression (main~1, main^{/x}, @{-1}) and nothing
+# git would read as an option or another ref. Every alternative is reachable: stridal.mainBranch
+# is a free string, and refs/remotes/origin/-x is a valid refname. It is stricter than git
 # check-ref-format --branch, which would cost a process and could never refuse what this passes.
 good_branch() {
   case $1 in "" | -* | /* | */ | *..* | *.lock | *[!A-Za-z0-9/._-]*) return 1 ;; esac
@@ -86,9 +87,11 @@ good_branch() {
 unverified() { why=$1 fix=$2; }
 verified_engine() {
   # Which branch is main: origin's HEAD (set by clone; git remote set-head origin --auto sets it
-  # again), or with no origin the main worktree's branch. Never the lane's project.conf, which a
-  # lane can point at a branch it pushed. Full ref names, so a local branch named origin/main
-  # cannot stand in for the remote's.
+  # again), or with no origin stridal.mainBranch in git's config, else main. Never a checkout's
+  # HEAD and never a working-tree file (the lane's project.conf): those are what a lane changes in
+  # its normal work. Full ref names, so a local branch named origin/main cannot stand in for the
+  # remote's. The trust root is the git common dir and the plugin root: a lane that can write
+  # those can choose its pin (docs/journal.d/OPS-183.md; OPS-184 makes them not lane-writable).
   if head=$(git -C "$proj" symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null); then
     main=${head#refs/remotes/origin/}
     [ "$main" != "$head" ] && good_branch "$main" ||
@@ -98,10 +101,10 @@ verified_engine() {
   elif git -C "$proj" config --get remote.origin.url >/dev/null 2>&1; then
     unverified "origin has no HEAD, so which of its branches is main is unknown" "git remote set-head origin --auto"; return 1
   else
-    # No origin (a fork, a project not yet pushed): the branch the main worktree has checked out,
-    # the first entry git worktree list prints, which a lane's own worktree does not change.
-    main=$(git -C "$proj" worktree list --porcelain 2>/dev/null | sed -n '1,/^$/s/^branch refs\/heads\///p')
-    good_branch "$main" || { unverified "with no origin, the main worktree has no branch to read the lock from" "stridal doctor"; return 1; }
+    # No origin (a fork, a project not yet pushed): stridal.mainBranch, else main. --local reads
+    # only the common dir's config, not a worktree's own config.worktree or the user's.
+    main=$(git -C "$proj" config --local --get stridal.mainBranch 2>/dev/null) || main=main
+    good_branch "$main" || { unverified "stridal.mainBranch names $main, not a plain branch name" "stridal doctor"; return 1; }
     ref=refs/heads/$main
     lock=$(read_lock "$ref") || { unverified "no .claude/stridal.lock at $ref" "stridal doctor"; return 1; }
   fi
