@@ -66,7 +66,7 @@ One row a line; the last row last.
 | A role's model or a trigger it declares (`evals.triggers`: its agent, the marked review prompt) changes only with a passing eval receipt | **`pr-merge-guard.sh`** rule 13 (blocking); **`checks/model-roles.sh`** (the `eval` evidence); **`checks/evals.sh`** |
 | A change stays within its budget; a soft one (`**Budget:** $N, soft`) reports its overrun and goes on | **`build-change.js`** stops or warns (`.claude/change-cost.sh`); **`checks/build-change.sh`**; by hand, **Nothing. You.** |
 | A build-change run starts only below the 7-day quota threshold | **`.claude/quota-gate.sh`** via build-change's preflight; **`checks/quota-reading.sh`**; other lanes (panel, by hand): **Nothing. You.** |
-| No secret is committed; agents cannot read the project's | **`run-local.sh`** secrets (gitleaks; CI needs it); **`settings.json`** deny list, sandbox; **`extensions.sh health`** (`sandbox-writes`); **`checks/settings.sh`**, **`checks/gate.sh`** |
+| No secret is committed; agents cannot read the project's | **`run-local.sh`** secrets (gitleaks; CI needs it); **`settings.json`** deny list, sandbox; **`extensions.sh`** (`sandbox-writes`); **`checks/settings.sh`**, **`checks/gate.sh`** |
 | A dependency release ages before it is proposed; an advisory reaches a reader | **`.github/dependabot.yml`** cooldown; **`dependency-audit.yml`** and its health line; **`checks/supply-chain.sh`** |
 | Review a change PER TASK GROUP, not per PR | **`.claude/workflows/build-change.js`** when built through it; **Nothing. You.** by hand (`/apply-change`) |
 | The panel offers only what the roadmap allows next | **`.claude/panel-suggest.sh`** over the one parser; **`checks/panel-suggest.sh`** |
