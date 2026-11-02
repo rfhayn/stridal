@@ -67,81 +67,98 @@ refuse() {
   exit 2
 }
 
-# Each process costs a few milliseconds on every guarded call, so the common path forks as few
-# as it can: one sed for MAIN_BRANCH (the last assignment wins), one git for the lock.
-nl='
+# verified_engine: resolve main's pin and verify this platform's engine against it. On success,
+# $engine is the verified path and $release the pinned release; on failure, $why and $fix say
+# why. It reads no payload and refuses nothing itself, so it is the one seam a SessionStart hook
+# can call once per session to cache the verified path (resolve once, ADR-0018 decision 3; that
+# rests on OPS-199's CLAUDE_ENV_FILE spike, so nothing caches it yet).
+unverified() { why=$1 fix=$2; }
+verified_engine() {
+  # Each process costs a few milliseconds on every guarded call, so the common path forks as few
+  # as it can: one sed for MAIN_BRANCH (the last assignment wins), one git for the lock.
+  nl='
 '
-main=$(sed -n 's/^MAIN_BRANCH="\{0,1\}\([^" 	]*\)"\{0,1\}[ 	]*$/\1/p' "$proj/.claude/project.conf" 2>/dev/null)
-main=${main##*"$nl"}
-main=${main:-main}
-# Full ref names, so a local branch named origin/main cannot stand in for the remote's.
-read_lock() { git -C "$proj" cat-file blob "$1:.claude/stridal.lock" 2>/dev/null; }
-ref=refs/remotes/origin/$main
-if ! lock=$(read_lock "$ref"); then
-  # Only a repository with no origin at all reads its own main (a fork, a project not yet pushed).
-  if git -C "$proj" config --get remote.origin.url >/dev/null 2>&1; then
-    refuse "no .claude/stridal.lock at $ref" "git fetch origin"
+  main=$(sed -n 's/^MAIN_BRANCH="\{0,1\}\([^" 	]*\)"\{0,1\}[ 	]*$/\1/p' "$proj/.claude/project.conf" 2>/dev/null)
+  main=${main##*"$nl"}
+  main=${main:-main}
+  # Full ref names, so a local branch named origin/main cannot stand in for the remote's.
+  ref=refs/remotes/origin/$main
+  if ! lock=$(read_lock "$ref"); then
+    # Only a repository with no origin at all reads its own main (a fork, a project not yet pushed).
+    if git -C "$proj" config --get remote.origin.url >/dev/null 2>&1; then
+      unverified "no .claude/stridal.lock at $ref" "git fetch origin"; return 1
+    fi
+    ref=refs/heads/$main
+    lock=$(read_lock "$ref") || { unverified "no .claude/stridal.lock at $ref" "stridal doctor"; return 1; }
   fi
-  ref=refs/heads/$main
-  lock=$(read_lock "$ref") || refuse "no .claude/stridal.lock at $ref" "stridal doctor"
-fi
 
-um=$(uname -sm)
-case ${um%% *} in
-  Darwin) os=darwin ;; Linux) os=linux ;; *) os=unknown ;;
-esac
-case ${um##* } in
-  x86_64 | amd64) arch=amd64 ;; arm64 | aarch64) arch=arm64 ;; *) arch=unknown ;;
-esac
-platform=$os/$arch
+  um=$(uname -sm)
+  case ${um%% *} in
+    Darwin) os=darwin ;; Linux) os=linux ;; *) os=unknown ;;
+  esac
+  case ${um##* } in
+    x86_64 | amd64) arch=amd64 ;; arm64 | aarch64) arch=arm64 ;; *) arch=unknown ;;
+  esac
+  platform=$os/$arch
 
-# The lock's format is engine.Parse's: one release line, engine lines, nothing else.
-pin=$(printf '%s\n' "$lock" | awk -v want="$platform" '
-  { sub(/\r$/, "") }
-  /^[ \t]*(#|$)/ { next }
-  $1 == "release" { if (NF != 2 || $2 !~ /^[0-9A-Za-z][0-9A-Za-z.+-]*$/ || rel != "") bad = 1; rel = $2; next }
-  $1 == "engine" {
-    if (NF != 3 || $2 !~ /^[a-z0-9]+\/[a-z0-9]+$/ || $3 !~ /^[0-9a-f]+$/ || length($3) != 64 || ($2 in sum)) bad = 1
-    sum[$2] = $3; n++; next
-  }
-  { bad = 1 }
-  END {
-    if (bad || rel == "" || n == 0) { print "bad"; exit }
-    print rel " " ((want in sum) ? sum[want] : "-")
-  }')
-case $pin in
-  "" | bad) refuse ".claude/stridal.lock at $ref does not parse (stridal doctor names the line)" "stridal doctor" ;;
-esac
-release=${pin% *} want=${pin#* }
-[ "$want" != - ] || refuse "the lock at $ref pins no engine for $platform" "stridal doctor"
+  # The lock's format is engine.Parse's: one release line, engine lines, nothing else.
+  pin=$(printf '%s\n' "$lock" | awk -v want="$platform" '
+    { sub(/\r$/, "") }
+    /^[ \t]*(#|$)/ { next }
+    $1 == "release" { if (NF != 2 || $2 !~ /^[0-9A-Za-z][0-9A-Za-z.+-]*$/ || rel != "") bad = 1; rel = $2; next }
+    $1 == "engine" {
+      if (NF != 3 || $2 !~ /^[a-z0-9]+\/[a-z0-9]+$/ || $3 !~ /^[0-9a-f]+$/ || length($3) != 64 || ($2 in sum)) bad = 1
+      sum[$2] = $3; n++; next
+    }
+    { bad = 1 }
+    END {
+      if (bad || rel == "" || n == 0) { print "bad"; exit }
+      print rel " " ((want in sum) ? sum[want] : "-")
+    }')
+  case $pin in
+    "" | bad) unverified ".claude/stridal.lock at $ref does not parse (stridal doctor names the line)" "stridal doctor"; return 1 ;;
+  esac
+  release=${pin% *} want=${pin#* }
+  [ "$want" != - ] || { unverified "the lock at $ref pins no engine for $platform" "stridal doctor"; return 1; }
 
-root=${CLAUDE_PLUGIN_ROOT:-}
-if [ -z "$root" ]; then
-  f="${CLAUDE_CODE_PLUGIN_CACHE_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins}/data/stridal-stridal/root"
-  [ -f "$f" ] && IFS= read -r root < "$f"
-fi
-[ -n "$root" ] || refuse "no stridal plugin root (CLAUDE_PLUGIN_ROOT is unset and the plugin has recorded none)" "claude plugin install stridal@stridal"
-version=$(sed -n '/^[ 	]*"version":/{s/^[ 	]*"version":[ 	]*"\([^"]*\)".*/\1/p;q;}' "$root/.claude-plugin/plugin.json" 2>/dev/null)
-[ "$version" = "$release" ] ||
-  refuse "the lock at $ref pins release $release, and the plugin is ${version:-unknown}" "claude plugin update stridal@stridal"
+  root=${CLAUDE_PLUGIN_ROOT:-}
+  if [ -z "$root" ]; then
+    f="${CLAUDE_CODE_PLUGIN_CACHE_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins}/data/stridal-stridal/root"
+    [ -f "$f" ] && IFS= read -r root < "$f"
+  fi
+  [ -n "$root" ] || { unverified "no stridal plugin root (CLAUDE_PLUGIN_ROOT is unset and the plugin has recorded none)" "claude plugin install stridal@stridal"; return 1; }
+  version=$(sed -n '/^[ 	]*"version":/{s/^[ 	]*"version":[ 	]*"\([^"]*\)".*/\1/p;q;}' "$root/.claude-plugin/plugin.json" 2>/dev/null)
+  [ "$version" = "$release" ] ||
+    { unverified "the lock at $ref pins release $release, and the plugin is ${version:-unknown}" "claude plugin update stridal@stridal"; return 1; }
 
-engine=$root/engine/$os-$arch/stridal
-if [ -n "${STRIDAL_ENGINE:-}" ] && [ -f "$HOME/.stridal-fixture-home" ]; then
-  h=$(cd -P "$HOME" 2>/dev/null && pwd) t=$(cd -P "${TMPDIR:-/tmp}" 2>/dev/null && pwd)
-  case $h in "${t%/}"/?*) [ -n "$t" ] && engine=$STRIDAL_ENGINE ;; esac
-fi
-[ -f "$engine" ] && [ -x "$engine" ] || refuse "no executable engine at $engine" "claude plugin update stridal@stridal"
+  engine=$root/engine/$os-$arch/stridal
+  if [ -n "${STRIDAL_ENGINE:-}" ] && [ -f "$HOME/.stridal-fixture-home" ]; then
+    h=$(cd -P "$HOME" 2>/dev/null && pwd) t=$(cd -P "${TMPDIR:-/tmp}" 2>/dev/null && pwd)
+    case $h in "${t%/}"/?*) [ -n "$t" ] && engine=$STRIDAL_ENGINE ;; esac
+  fi
+  [ -f "$engine" ] && [ -x "$engine" ] || { unverified "no executable engine at $engine" "claude plugin update stridal@stridal"; return 1; }
 
-if command -v sha256sum >/dev/null 2>&1; then
-  got=$(sha256sum "$engine" 2>/dev/null)
-elif command -v shasum >/dev/null 2>&1; then
-  got=$(shasum -a 256 "$engine" 2>/dev/null)
-else
-  got=$(openssl dgst -sha256 -r "$engine" 2>/dev/null)
-fi
-got=${got%% *}
-[ "$got" = "$want" ] ||
-  refuse "the engine at $engine is not the one the lock pins (sha256 ${got:-unreadable}, pinned $want)" "claude plugin update stridal@stridal"
+  # STRIDAL_SHA256 picks the tool, for the latency measurement only: whichever runs, the sum must
+  # still equal the pin, so it can choose how to hash, never what passes.
+  case ${STRIDAL_SHA256:-} in
+    openssl) got=$(openssl dgst -sha256 -r "$engine" 2>/dev/null) ;;
+    shasum) got=$(shasum -a 256 "$engine" 2>/dev/null) ;;
+    *)
+      if command -v sha256sum >/dev/null 2>&1; then
+        got=$(sha256sum "$engine" 2>/dev/null)
+      elif command -v shasum >/dev/null 2>&1; then
+        got=$(shasum -a 256 "$engine" 2>/dev/null)
+      else
+        got=$(openssl dgst -sha256 -r "$engine" 2>/dev/null)
+      fi ;;
+  esac
+  got=${got%% *}
+  [ "$got" = "$want" ] ||
+    { unverified "the engine at $engine is not the one the lock pins (sha256 ${got:-unreadable}, pinned $want)" "claude plugin update stridal@stridal"; return 1; }
+}
+read_lock() { git -C "$proj" cat-file blob "$1:.claude/stridal.lock" 2>/dev/null; }
+
+verified_engine || refuse "$why" "$fix"
 
 # Not exec: a verified engine that still cannot start (exit 126 or 127) must refuse, not fail
 # open, and only this shell is left to say so. Its stdin is the payload, still unread.

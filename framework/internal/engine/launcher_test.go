@@ -261,6 +261,20 @@ func copyInstall(f *fixture) {
 }
 
 func init() {
+	for _, tool := range []string{"openssl", "shasum"} {
+		tool := tool
+		launcherCases = append(launcherCases,
+			launcherCase{name: "hashed with " + tool + ", the pinned engine verifies", verdict: Run,
+				setup: func(f *fixture) string { f.env["STRIDAL_SHA256"] = tool; return "" },
+				check: ranControl(pluginGuard, 0)},
+			launcherCase{name: "hashed with " + tool + ", a mismatched engine is refused", verdict: Refuse,
+				setup: func(f *fixture) string {
+					f.env["STRIDAL_SHA256"] = tool
+					f.writeEngine(fakeEngine + "# not the pinned build\n")
+					return ""
+				},
+				check: refused("is not the one the lock pins", "claude plugin update stridal@stridal")})
+	}
 	launcherCases = append(launcherCases,
 		launcherCase{name: "the copy-install path reads the same lock and engine", verdict: Run,
 			setup: func(f *fixture) string { copyInstall(f); return "" },

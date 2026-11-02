@@ -75,30 +75,27 @@ func TestTheRealEngineRunsTheControl(t *testing.T) {
 	}
 }
 
-// TestLauncherLatency measures one guarded call through the launcher and the real engine, the
-// per-call cost the row asks for. Resolve once, at SessionStart (ADR-0018 decision 3), would take
-// the git read and the hash off this path; it rests on OPS-199's CLAUDE_ENV_FILE spike, so this
-// is the cost until then. It reports; the 10 ms ceiling is OPS-185's latency test, on the
-// one dispatcher per event.
+// TestLauncherLatency measures one guarded call, verify plus exec, through the launcher and the
+// real engine, with each hash tool the launcher can use: the per-call cost the row asks for.
+// Resolve once, at SessionStart (ADR-0018 decision 3), would take the git read and the hash off
+// this path; it rests on OPS-199's CLAUDE_ENV_FILE spike, so this is the cost until then. It
+// reports; the 10 ms ceiling is OPS-185's latency test, on the one dispatcher per event.
 func TestLauncherLatency(t *testing.T) {
 	f := realFixture(t)
 	bash(f, "ls")
+	const runs = 40
 	measure := func(name string, fn func()) time.Duration {
 		var ds []time.Duration
-		for range 25 {
+		for range runs {
 			start := time.Now()
 			fn()
 			ds = append(ds, time.Since(start))
 		}
 		sort.Slice(ds, func(i, j int) bool { return ds[i] < ds[j] })
-		t.Logf("%s: median %v, p90 %v (25 runs)", name, ds[len(ds)/2], ds[len(ds)*9/10])
-		return ds[len(ds)/2]
+		med, p95 := ds[len(ds)/2], ds[len(ds)*95/100]
+		t.Logf("%-38s median %8v  p95 %8v  (%d runs)", name, med.Round(10*time.Microsecond), p95.Round(10*time.Microsecond), runs)
+		return med
 	}
-	launcher := measure("launcher + engine + control", func() {
-		if r := f.run("guard.sh"); r.code != 0 {
-			t.Fatalf("exit %d: %s", r.code, r.stderr)
-		}
-	})
 	bare := measure("sh control alone", func() {
 		c := exec.Command("sh", filepath.Join(f.plugin, "hooks", "guard.sh"))
 		c.Stdin = strings.NewReader(f.payload)
@@ -106,5 +103,13 @@ func TestLauncherLatency(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	t.Logf("launcher overhead per call: %v", launcher-bare)
+	for _, tool := range []string{"default (sha256sum first)", "openssl", "shasum"} {
+		f.env["STRIDAL_SHA256"] = strings.Fields(tool)[0]
+		med := measure("launcher, "+tool, func() {
+			if r := f.run("guard.sh"); r.code != 0 {
+				t.Fatalf("exit %d: %s", r.code, r.stderr)
+			}
+		})
+		t.Logf("%-38s %v over the bare control", "  overhead, "+tool, (med - bare).Round(10*time.Microsecond))
+	}
 }

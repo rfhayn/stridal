@@ -46,6 +46,8 @@ type fixture struct {
 	log      string // the fake engine's record
 	env      map[string]string
 	payload  string
+	// registered, when set, is a registration's command line, run in place of the launcher.
+	registered string
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -183,6 +185,10 @@ func (f *fixture) runIn(proj, hook string) result {
 	}
 	w.Close()
 	c := exec.Command("sh", f.launcher, hook)
+	if f.registered != "" {
+		// As Claude Code runs a registration's command: through sh -c, in the project.
+		c = exec.Command("sh", "-c", f.registered)
+	}
 	c.Dir = proj
 	c.Stdin = r
 	var stderr bytes.Buffer
