@@ -86,8 +86,9 @@ The owner accepts option B, on the test OPS-203 asked for and with the condition
   report from it, and may decide nothing that a control would rely on.
 - **Polling speed is accepted at risk**, measured by OPS-204's 250 ms ceiling.
 
-This replaces "To be taken by the owner at Gate C" above. If OPS-204's measurement fails, the
-question reopens with a new row.
+This replaces "To be taken by the owner at Gate C" above, and both statements above that the status
+stays Proposed, which are kept as history. If OPS-204's measurement fails, the question reopens with
+a new row.
 
 ## Related
 - ADR-0003 (one panel for many repositories), ADR-0005 (never kill a tmux server), ADR-0017,
