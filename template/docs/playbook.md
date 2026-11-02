@@ -73,8 +73,7 @@ started from the panel's **New lane** (or by hand), on one branch:
   `.git/config` and `.git/hooks` are denied to every sandboxed command.
   - **A lane that is an agent of the main session** brings its own hooks and skills along
     (`stridal update`, a rebase, a merge) inside the sandbox. That was seen to work on
-    2026-10-28, though these commands match the `git *` and `stridal *` entries below; what
-    those entries do is Stridal's #307.
+    2026-10-28. The `git *` and `stridal *` entries below did not lift it (spike S5h).
   - **A lane that is its own session** (a panel lane, or a new terminal tab) cannot: the session
     that opens it syncs them (Stridal's ST-15). Until that exists, the owner syncs such a lane
     by hand.
@@ -85,16 +84,15 @@ started from the panel's **New lane** (or by hand), on one branch:
   - **No sync or agents step runs a lane's files outside the sandbox.** A lane can edit every file
     in its worktree, so an unsandboxed run of a script, a build or a config there runs whatever the
     lane wrote; a plain rebase, merge or update runs no file the lane wrote.
-  - **What does run outside the sandbox:** a command matching `sandbox.excludedCommands` in
-    `settings.json`, and any command run with an approved sandbox bypass. The gate is one, since
-    its process checks need `ps`, tmux and loopback, so a lane's gate runs the lane's own checks and
-    tests. The controls are review before the gate and the approval itself (Stridal's #307).
-    An entry matches only the script run alone, so a subagent lane, whose Bash starts in the main
-    checkout, runs `scripts/ci/gate.sh -C <worktree>` (and `scripts/ci/gate-wait.sh -C <worktree>`),
-    never `cd <worktree> && …` or a pipe: those run sandboxed and fail (`checks/settings.sh`).
-    Seen 2026-10-28: a `git` command matching the `git *` entry was still refused `.git/config`,
-    and that day's unsandboxed runs each went through an approved bypass, so what the entries do
-    on their own is unverified (Stridal's #307).
+  - **What does run outside the sandbox:** only a command run with an approved sandbox bypass.
+    `sandbox.excludedCommands` in `settings.json` is not honoured on Claude Code 2.1.316 (spike
+    S5h: all four shapes tried, in the main session and in a subagent). The gate is such a command,
+    since its process checks need `ps`, tmux and loopback, so a lane's gate runs the lane's own
+    checks and tests. The controls are review before the gate and the approval itself (Stridal's
+    #307). Until Stridal's OPS-216, the orchestrating session runs every gate and the full process
+    checks with the sandbox off, naming the lane's worktree: `scripts/ci/gate.sh -C <worktree>` (and
+    `scripts/ci/gate-wait.sh -C <worktree>`), the form `checks/settings.sh` holds. A lane runs only
+    the checks its files touch.
   - A plugin install takes its hooks, skills and agents from the plugin cache, so their sync does
     not apply there.
 - **A request is priced before it is relayed to a running lane.** The orchestrator tells the owner
@@ -575,7 +573,7 @@ Haiku for the reviewer or the planner: economy mode never drops them either.
 | `focus-staleness.sh` | every prompt | nudges when the status-line focus is stale |
 | `format.sh` | every Write/Edit | runs the project's formatter, when configured |
 | `run-local.sh` | every gate | takes the gate lease; runs the scenario trace and the secret scan (gitleaks) before your steps; writes the receipt only for a complete, clean run; records every run in the worktree's state file and the repository's run log |
-| `settings.json` | every tool call | denies reads of `.env` files and keys and a few commands (force-push, `tmux kill-server`); runs Bash in the sandbox with a network allowlist. Loosen per machine in `.claude/settings.local.json` (`sandbox.excludedCommands`, `sandbox.network.allowedDomains`) |
+| `settings.json` | every tool call | denies reads of `.env` files and keys and a few commands (force-push, `tmux kill-server`); runs Bash in the sandbox with a network allowlist. Add a host per machine in `.claude/settings.local.json` (`sandbox.network.allowedDomains`); `sandbox.excludedCommands` is not honoured on Claude Code 2.1.316 (spike S5h) |
 | `.claude/checks/run.sh` | every gate (a step) | the process checks: hook tables, the roadmap parser, ADR numbering, model roles, the budget |
 
 AGENTS.md's *What executes each rule* table is the full list, including the honest last row: what

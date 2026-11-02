@@ -9,9 +9,12 @@ STRIDAL_FW=$(cd "$(dirname "$0")/.." && pwd) # stridal plugin: the plugin root (
 # Fails when: the deny list or the sandbox is missing; a rule from the required set below is gone;
 # a deny rule is not `Tool(...)` with a tool Claude Code knows (a misspelt rule denies nothing);
 # the sandbox is not enabled, or has no network allowlist. Add your own rules freely; remove one of
-# the required set only by editing this list in a PR that says why. A tool that fails in the
-# sandbox is loosened per machine in .claude/settings.local.json (sandbox.excludedCommands,
-# sandbox.network.allowedDomains merge across scopes), never by turning the sandbox off here.
+# the required set only by editing this list in a PR that says why. A tool that needs a host gets it
+# per machine in .claude/settings.local.json (sandbox.network.allowedDomains merges across scopes),
+# never by turning the sandbox off here. sandbox.excludedCommands is not honoured on Claude Code
+# 2.1.316 (spike S5h), so until OPS-216 a tool that fails in the sandbox for another reason, the gate
+# included, runs from the orchestrating session with the sandbox off. This still holds the list's
+# shape, so the instructions and install's entries do not part.
 # `~/.config/gh` is deliberately not denied: a sandboxed script's gh must read hosts.yml to find
 # its keyring account, so gh's token belongs in a keyring (docs/playbook.md; OPS-75). The keys are Claude Code's
 # (code.claude.com/docs/en/permissions, /docs/en/sandboxing; checked 2026-09-30).
@@ -69,7 +72,7 @@ check_settings() {  # check_settings FILE: prints ok/FAIL lines
   if ! jq -e '.sandbox | type == "object"' "$f" >/dev/null 2>&1; then
     echo "FAIL settings.json has no sandbox settings"
   else
-    jq -e '.sandbox.enabled == true' "$f" >/dev/null && echo "ok   the Bash sandbox is enabled" || echo "FAIL sandbox.enabled is not true (loosen a tool in .claude/settings.local.json instead: sandbox.excludedCommands)"
+    jq -e '.sandbox.enabled == true' "$f" >/dev/null && echo "ok   the Bash sandbox is enabled" || echo "FAIL sandbox.enabled is not true (a host goes in .claude/settings.local.json instead: sandbox.network.allowedDomains; a command the sandbox refuses runs from the orchestrating session with the sandbox off, since sandbox.excludedCommands is not honoured on Claude Code 2.1.316)"
     jq -e '(.sandbox.network.allowedDomains | type == "array" and length > 0)' "$f" >/dev/null \
       && echo "ok   the sandbox's network allowlist names $(jq '.sandbox.network.allowedDomains | length' "$f") domain(s)" \
       || echo "FAIL sandbox.network.allowedDomains is missing or empty: a sandboxed command's network would be unbounded or prompt every time"
@@ -79,10 +82,11 @@ check_settings() {  # check_settings FILE: prints ok/FAIL lines
     _x=$(jq -r '(.sandbox.excludedCommands // [])[]' "$f" | grep -E "$INTEROP_RE")
     [ -z "$_x" ] && echo "ok   no Windows interop command (cmd.exe, powershell.exe, pwsh.exe, wsl.exe, /mnt/...) is excluded from the sandbox" \
       || echo "FAIL sandbox.excludedCommands runs Windows interop outside the sandbox: $(printf '%s' "$_x" | tr '\n' ' ')"
-    # The gate and gate-wait run outside the sandbox (OPS-72): their process checks use `ps`, tmux
-    # and loopback, which the sandbox refuses. An entry lifts the sandbox only for the script run
-    # ALONE, bare or with arguments, so both forms are listed: the receipt runs the gate bare, and a
-    # lane runs either with `-C <worktree>` (OPS-161). gate-wait.sh is where install put it (gate_wait_path, conf.sh):
+    # The gate and gate-wait need the sandbox off (OPS-72): their process checks use `ps`, tmux and
+    # loopback, which the sandbox refuses. These entries do not give them that: the list is not
+    # honoured on Claude Code 2.1.316 (S5h), so until OPS-216 the orchestrating session runs them with
+    # the sandbox off. An entry names the script run ALONE, bare or with arguments, so both forms are
+    # listed: the receipt runs the gate bare, and a lane's is named with `-C <worktree>` (OPS-161). gate-wait.sh is where install put it (gate_wait_path, conf.sh):
     # beside the template's runner, but at scripts/ci/ beside a project's own runner.
     # Both as install writes them: the gate as a command (gate_cmd), gate-wait where it put it.
     # An empty GATE is the template's gate: build-change runs scripts/ci/gate.sh then (`c.gate ||`),
@@ -93,15 +97,17 @@ check_settings() {  # check_settings FILE: prints ok/FAIL lines
       for _p in "$_g" "$_g *"; do
         jq -e --arg p "$_p" '(.sandbox.excludedCommands // []) | index($p)' "$f" >/dev/null \
           && echo "ok   sandbox.excludedCommands lists '$_p'" \
-          || echo "FAIL sandbox.excludedCommands lacks '$_p': build-change's gate runs it sandboxed, where its process checks fail whatever the code did"
+          || echo "FAIL sandbox.excludedCommands lacks '$_p': the list and the instructions' gate commands have parted (the list does not lift the sandbox on Claude Code 2.1.316: the gate runs from the orchestrating session with the sandbox off)"
       done
     done
   fi
 }
 
-# ── Every gate command an instruction gives runs outside the sandbox (OPS-161) ───────────────
-# An exclusion lifts the sandbox only for a command that IS the script: `P` exactly, `P *` with
-# arguments, and nothing chained, piped or redirected around it. A subagent lane's Bash starts in the
+# ── Every gate command an instruction gives matches the list (OPS-161) ───────────────────────
+# An exclusion names a command that IS the script: `P` exactly, `P *` with arguments, and nothing
+# chained, piped or redirected around it. It does not lift the sandbox: the list is not honoured on
+# Claude Code 2.1.316 (S5h), so until OPS-216 the orchestrating session runs the gate with the sandbox
+# off, and this holds the one form it names a worktree in. A subagent lane's Bash starts in the
 # main checkout, so `cd <worktree> && <gate>` was the natural instruction, and it ran the gate
 # sandboxed, where `ps`, git's caches and the loopback name fail whatever the code does. The lane
 # form is `<gate> -C <worktree>`. This reads the Markdown instructions (AGENTS.md, CLAUDE.md, the
@@ -118,7 +124,7 @@ check_settings() {  # check_settings FILE: prints ok/FAIL lines
 # before its paragraph or block, and the exemption covers that one unit. build-change's gate prompts
 # are JavaScript, held to its LONE rule by checks/build-change.sh instead.
 GATE_EXAMPLE='<!-- gate-check: example -->'
-excluded() {  # excluded SETTINGS CMD: CMD runs outside the sandbox by SETTINGS' excludedCommands
+excluded() {  # excluded SETTINGS CMD: CMD matches an entry of SETTINGS' excludedCommands
   case $2 in *'&'* | *'|'* | *';'* | *'>'* | *'<'* | *'$('* | *'`'* | *'
 '*) return 1 ;; esac
   jq -r '(.sandbox.excludedCommands // [])[]' "$1" | {
@@ -187,17 +193,17 @@ check_lane_gates() {  # check_lane_gates SETTINGS FILE...: prints ok/FAIL lines
   while IFS='	' read -r _f _c; do
     _n=$((_n + 1))
     _x=$(printf '%s' "$_c" | sed 's|<[A-Za-z_-]*>|/abs/lane|g')
-    excluded "$_s" "$_x" || echo "FAIL ${_f#"$ROOT"/}: \`$_c\` matches no sandbox.excludedCommands entry: run as written, the gate runs sandboxed and its process checks fail. $_how"
+    excluded "$_s" "$_x" || echo "FAIL ${_f#"$ROOT"/}: \`$_c\` matches no sandbox.excludedCommands entry: the instruction and the list have parted. $_how"
   done < "$d/gatecmds"
   awk -F'\t' '$1 == "U" { print $2 "\t" $4 }' "$d/units" | grep -E "$_infield" | while IFS='	' read -r _f _u; do
     printf '%s\n' "$_u" | grep -qE '(^|[[:space:];&|(])(cd|pushd)([[:space:]]|$)' || continue
     # What names the gate once every `<gate> -C` is taken out: a gate this unit runs where it cd'd.
     printf '%s\n' "$_u" | sed -E "s#(\\./)?($_re) -C##g" | grep -qE "$_names" || continue
-    echo "FAIL ${_f#"$ROOT"/}: a paragraph or block changes directory and names the gate or gate-wait without -C ($(printf '%s' "$_u" | cut -c1-240)): a lane following it runs the gate sandboxed. $_how"
+    echo "FAIL ${_f#"$ROOT"/}: a paragraph or block changes directory and names the gate or gate-wait without -C ($(printf '%s' "$_u" | cut -c1-240)): a gate run that way tests whichever checkout the directory change reached, not a named one. $_how"
   done
   echo "ok   $_n gate command(s) in the instructions checked against sandbox.excludedCommands"
   grep -q ' -C ' "$d/gatecmds" && echo "ok   an instruction gives the lane form, the gate with -C <worktree>" \
-    || echo "FAIL no instruction gives the lane form (\`<gate> -C <worktree>\`): a subagent lane is left to cd into its worktree, and its gate runs sandboxed"
+    || echo "FAIL no instruction gives the lane form (\`<gate> -C <worktree>\`): a subagent lane is left to cd into its worktree rather than name it"
 }
 
 # Self-test: the template's settings pass; each broken shape fails.

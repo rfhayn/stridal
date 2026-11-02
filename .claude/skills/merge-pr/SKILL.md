@@ -70,10 +70,12 @@ again, the receipt is stale: re-run.
 
 **A lane whose Bash starts in another checkout** (a subagent's every call starts in the main
 checkout) names its worktree rather than `cd`-ing to it: `scripts/ci/gate.sh -C <worktree>`, and
-`scripts/ci/gate-wait.sh -C <worktree>` if the tool backgrounds it. Run each alone, as written:
-`settings.json` lifts the sandbox only for the script run alone, so a change of directory before
-it, a pipe or a redirect runs the gate sandboxed, where its process checks fail. Never
-`dangerouslyDisableSandbox`.
+`scripts/ci/gate-wait.sh -C <worktree>` if the tool backgrounds it. Run each alone, as written.
+**The gate needs the sandbox off, and `settings.json` does not give it that:**
+`sandbox.excludedCommands` is not honoured on Claude Code 2.1.316 (spike S5h), and sandboxed, the
+gate's process checks fail whatever the code did. Until Stridal's OPS-216, the orchestrating session
+runs every gate and the full process checks with `dangerouslyDisableSandbox`, and a lane leaves
+them to it.
 
 **A prose-only PR** (Markdown outside `.claude/`, `agents/`, `commands/`, the specs, and the files
 agents load, AGENTS.md, CLAUDE.md, CLAUDE.local.md and SKILL.md, in any case: a record, a roadmap

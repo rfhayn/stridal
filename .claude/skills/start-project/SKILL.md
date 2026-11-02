@@ -51,11 +51,14 @@ If those lines show as literal text, run the commands yourself.
 4. **The formatter** (`FORMAT_CMD`, `FORMAT_EXT`), if the project has one.
 4b. **Least privilege** (`.claude/settings.json`, kept current by `stridal install`): Claude may
    not read `.env` files, keys, `~/.ssh` or `~/.aws`, force-push, or kill a tmux server, and Bash
-   runs in the sandbox with a network allowlist (git, gh, tmux, stridal, docker and the gate run
-   outside it). Tell the user. If one of the project's tools fails in the sandbox, or needs a host,
-   loosen it in **`.claude/settings.local.json`** (`sandbox.excludedCommands`,
-   `sandbox.network.allowedDomains`: these lists merge with the project's, and an install never
-   overwrites the local file), not in `settings.json`.
+   runs in the sandbox with a network allowlist. `settings.json` lists git, gh, tmux, stridal,
+   docker and the gate in `sandbox.excludedCommands`, but that list is not honoured on Claude Code
+   2.1.316 (spike S5h): until Stridal's OPS-216, the gate and the full process checks run from the
+   orchestrating session with the sandbox off. Tell the user. If one of the project's tools needs a
+   host, add it in **`.claude/settings.local.json`** (`sandbox.network.allowedDomains`: this list
+   merges with the project's, and an install never overwrites the local file), not in
+   `settings.json`. A tool that fails in the sandbox for another reason runs from that session with
+   the sandbox off too.
 5. **AGENTS.md "Essentials"**: replace the examples with this project's few load-bearing rules
    (two lines each), and fill the *(yours)* sections of `docs/conventions.md`. Keep AGENTS.md under
    its byte budget (`sh .claude/checks/run.sh agents-md-budget`; the ceilings are

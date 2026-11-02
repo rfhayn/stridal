@@ -383,12 +383,13 @@ if (inMainCheckout && !(args.allowMainCheckout && RESUME != null)) return stop('
 ROOT = norm(pre.toplevel)
 const PIN = `Repo root: ${ROOT}. Before anything else run \`cd ${ROOT} && git rev-parse --show-toplevel\`; if it does not print exactly ${ROOT}, change nothing and report that as the failure. Start every Bash command with \`cd ${ROOT} &&\`, and give Read/Edit/Write absolute paths under ${ROOT}.\n\n`
 const spawn = (prompt, opts) => agent(PIN + prompt, opts)
-// THE GATE RUNS AS A LONE COMMAND, the one exception to PIN's `cd` rule (OPS-72). settings.json's
-// sandbox.excludedCommands lifts the Bash sandbox for the gate and gate-wait only when the command
-// IS that script: `cd <root> && scripts/ci/gate.sh --quick` ran sandboxed, where `ps`, tmux and
-// loopback binding fail, so the gate's process checks failed whatever the code did (PANEL-48's
-// build, 2026-10-17). A lone `cd <root>` moves the shell there and the shell stays.
-const LONE = (cmd) => `Run \`${cmd}\` as a LONE Bash command, exactly as written, and \`${GATE_WAIT}\` as a LONE Bash command whenever you call it: this is the one exception to the \`cd ${ROOT} &&\` rule above, because the sandbox exclusion for these two scripts applies only to a command that is the script alone. So no \`cd\`, \`&&\`, \`;\`, pipe or redirect around either, and no sandbox flag (never dangerouslyDisableSandbox). Run them from ${ROOT}: first run \`pwd\` on its own; if it does not print exactly ${ROOT}, run \`cd ${ROOT}\` on its own and \`pwd\` again; if it still does not, do not run the gate and report that as the failure.`
+// THE GATE RUNS AS A LONE COMMAND, the one exception to PIN's `cd` rule (OPS-72): the form
+// settings.json's sandbox.excludedCommands names and checks/settings.sh holds. It does not lift the
+// Bash sandbox: that list is not honoured on Claude Code 2.1.316 (S5h), so until OPS-216 this
+// workflow's gate agents run sandboxed, where `ps`, tmux and loopback binding fail and the gate's
+// process checks can fail whatever the code did. A lone `cd <root>` moves the shell there and the
+// shell stays.
+const LONE = (cmd) => `Run \`${cmd}\` as a LONE Bash command, exactly as written, and \`${GATE_WAIT}\` as a LONE Bash command whenever you call it: this is the one exception to the \`cd ${ROOT} &&\` rule above, the one form the project's checks hold these two scripts to. So no \`cd\`, \`&&\`, \`;\`, pipe or redirect around either, and no sandbox flag (never dangerouslyDisableSandbox). The sandbox stays on for you (sandbox.excludedCommands is not honoured on Claude Code 2.1.316): if a process check fails on \`ps\`, git's caches, tmux or loopback rather than on the code, report it as a sandbox failure, not a code failure. Run them from ${ROOT}: first run \`pwd\` on its own; if it does not print exactly ${ROOT}, run \`cd ${ROOT}\` on its own and \`pwd\` again; if it still does not, do not run the gate and report that as the failure.`
 const gateCmd = (flags) => [GATE_CMD, flags].filter(Boolean).join(' ')
 
 // The risk tier the owner approved picks each role's variant; economy mode drops the roles it lists.

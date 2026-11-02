@@ -313,8 +313,8 @@ else
 fi
 
 # ── -C DIR: a lane names its worktree from the main checkout (OPS-161) ──────────────────────
-# The sandbox exclusion holds only for the gate's command alone, and a subagent lane's Bash starts in
-# the main checkout, so it runs `<gate> -C <worktree>` and `gate-wait.sh -C <worktree>`. Both must
+# A subagent lane's Bash starts in the main checkout, and the orchestrating session gates a lane from
+# there too, so each names it: `<gate> -C <worktree>` and `gate-wait.sh -C <worktree>`. Both must
 # answer for THAT tree, through its own copies, never for the caller's.
 if [ -n "$WRAP" ] && [ -f "$R/$RUN_DIR/gate-wait.sh" ]; then
   W="$d/lane"; git -C "$R" worktree add -q --detach "$W"
