@@ -14,6 +14,206 @@ entries with one number on `main`.
 
 <!-- Newest session goes below this line. -->
 
+## Session 21 — 2026-11-01 — Rich — S21: Gate A spikes recorded; CI green; engine lock inactive
+
+**Totals.** Gate 0 min (a row's gate was CANNOT CHECK, so this is a floor); cost $0 (a row's cost was CANNOT CHECK, so this is a floor).
+
+**Rows folded.** OPS-165 (#385); OPS-183 (#385); OPS-199 (#385).
+
+**What happened.** The owner ran S21 overnight, hands-off from about 21:30 ET. Five lanes ran in parallel, each in its own worktree, and every gate ran in the orchestrator outside the sandbox, because a lane's process checks fail on `ps` and git's xcrun cache, and its `checks/run.sh` hangs in merge-guard. Two batches landed. The **fix batch (#384)** carried #374 item 1 (macOS gate exit 141: bsdtar stops at the archive's end marker and git died of SIGPIPE under pipefail), #382 (a test-only race in `TestStallMergedPRNotPushedOnAnOldNone`) and #383. Review of #374 found #383: the secret scan copied only xargs' first batch of tracked files. It then closed #383's class, not just its form, with a completeness check that fails the step whenever the copy is short, and a copy that works with any tar (BusyBox rejected the first fix's `--null`). Main's `test.yml` went green on both legs after #384. **Batch A (#385)** carried OPS-199, OPS-165 and OPS-183.
+- **OPS-199.** The owner ran the spikes twice outside the sandbox. The first run's FAILs and INCONCLUSIVEs were mostly the harness's: an untrusted fixture workspace dropped the allow rules, and a braced variable was refused before it ran. Every ADR from ADR-0016 now rests on cited evidence with no waiver.
+- **The one real failure was S5h.** `sandbox.excludedCommands` is not honoured on 2.1.316, in a subagent, the main session or an interactive session. The rule that settings.json lifts the sandbox for the gate is therefore not in force, which explains the lanes' sandbox trouble. The new row OPS-216, at the owner's request, owns making the model work inside the sandbox for adopters, and it is now a Gate H criterion.
+- **OPS-183** shipped the engine lock inactive after four review rounds. The owner raised the cap 3→4. Each round closed one input that let a lane choose its pin, until the trust roots were stated as one property, verified against an authority lanes cannot write, as a precondition of OPS-184's switch-on. Outside the sandbox, per-call verify costs ~50 ms over a bare hook, so resolve-once is required.
+
+**Owner decisions.** Two batches of gates (S21 and S22, not one). Every owner-queue item handled this session. OPS-183's cap 3→4, docs-only (option A). OPS-216 added. Pending: the ruleset (now safe), finishing the main checkout's pull, OPS-216's timing, and the marker question for OPS-184.
+
+**Flow.** cycle 1.7h median, lead 3.3h, 41.5 merges/wk, change-fail 4.7%, approval wait 4.6h, review rounds 2, spend $813.06/wk, 12 in flight (excludes unpriced models: claude-haiku-5-5).
+
+**Cost** (usage-report.sh, this session, this machine, list price). ops, opus: $88.81; session, opus: $18.87; fix, opus: $15.31; reviewer, opus: $14.55. Total ~$137.53, plus the spikes' own runs, $0.12. The reviewers caught two highs and a medium in a fail-closed control (OPS-183), and a silent secret-scan gap twice (#383).
+
+**What's next.** S22: OPS-184 (the release that carries the engine; its switch-on waits for resolve-once, a resolved-path latency number and verified trust roots), then OPS-201. Before that, the owner finishes the main checkout's pull, sets up the ruleset, and answers the marker question.
+
+### OPS-165 — the server-side required check, queued for the owner
+
+- **PR**: #385
+- **Session**: S21, started 2026-11-01 18:41 ET (the lane's worktree; the marker did not run, no PR)
+- **Review**: 2 rounds, peak medium, cap 3, converged in round 2; round 1's two medium and four low were all applied
+- **Gate**: CANNOT CHECK — no full gate passed before this commit (the sandboxed checks failed on `ps` alone: gate, machine-quiet, people); the batch PR's gate, run outside the sandbox, is the receipt
+- **Cost**: CANNOT CHECK — a lane shares the orchestrator's session id
+- **Session start**: CANNOT CHECK — the marker did not run (the lane opened no PR)
+
+#### What happened
+
+ADR-0012's D7 is queued for the owner. Once the owner sets it, a GitHub ruleset on `main` requires
+`test (ubuntu-latest)` from GitHub Actions (integration 15368), with no bypass actor, so a merge
+from the website, another client or a Cursor lane cannot land without that check green. The owner
+queue's item of 2026-11-01 names the settings, the `gh api` create command and the reads that
+verify it. `docs/playbook.md` (both copies) gains *A required check on the server*: the generic
+how-to in the template, this repository's values in the repo copy. `docs/conventions.md` states
+the ruleset in the conditional, and that nothing local checks it. AGENTS.md gains its row, whose
+executor reads **Nothing** until the owner sets it. Read on 2026-11-01: the repository had no
+ruleset and no branch protection.
+
+**Review round 1** (two medium, four low), all applied:
+- Medium: the owner-queue wait was wider than the control. Only `test (ubuntu-latest)` is
+  required and macOS never runs on a PR, so the ruleset waits for #382's fix and a green
+  `test (ubuntu-latest)` on main alone; the macOS failure (#374) is context.
+- Medium: the AGENTS.md row stated an unset control as if it existed; its executor now says
+  **Nothing** until the owner sets it, and the rule names the leg, not the bare `test`.
+- Low: the repo playbook's commands carry `rfhayn/stridal`, `main` and the real check name; the
+  template's use `<main>` and `<job> (<leg>)` placeholders and say what a PR job with no matrix
+  needs (a one-leg matrix, or no draft `if:`); conventions moved to the conditional tense; the
+  roadmap row lists `AGENTS.md` and `docs/playbook.md`, and the owner-queue item says ADR-0012
+  D7's "the remote `test` check" is the owner's to amend to the leg name.
+
+**Review round 2**: clean.
+
+#### Decisions
+
+- **Only `test (ubuntu-latest)` is required.** A PR runs Ubuntu alone (`test.yml`), so a required
+  `test (macos-latest)` would never report and would block every merge. The bare `test` is never
+  required: a draft's skipped run reports it, GitHub counts a skipped check as passing, and that
+  check stays on the commit after the PR is marked ready.
+- **The source is pinned to GitHub Actions** (`integration_id` 15368), so a commit status another
+  token posts under the same name does not satisfy it. "Require branches to be up to date" stays off.
+- **The ruleset waits for #382's fix** (`TestStallMergedPRNotPushedOnAnOldNone`, Ubuntu, 2 of 36
+  completed runs since 2026-10-30): with no bypass actor, a flaky required check holds every PR it
+  fails until its job is re-run.
+- **AGENTS.md is now at its ceiling, 16000 of 16000 bytes.** The new row fitted only after other
+  lines were reworded (the table's lead-in, rule 2's list, rule 3's and rule 4's wording, the
+  commits line's `PANEL-19:` example). The next row that adds a table row must trim or move detail
+  out, or ask the owner to raise `AGENTS_MD_MAX_BYTES`.
+
+#### Surprises
+
+- The worktree's environment sets `STRIDAL_FRAMEWORK` to the main checkout, so `stridal update`
+  built here read the main checkout's template until it was pointed at the worktree.
+- Inside the lane's sandbox the process checks fail on `/usr/bin/git`'s xcrun cache write (into
+  `/var/folders`) as well as on `ps`; a real git first on `PATH`
+  (`/Library/Developer/CommandLineTools/usr/bin/git`) leaves only the `ps` failures.
+
+#### Insights
+
+None.
+
+### OPS-183 — the engine's lock and its fail-closed launcher
+
+- **PR**: #385
+- **Session**: S21, started 2026-11-01 18:40 ET (the lane's start: the marker did not run, no PR)
+- **Review**: 4 rounds, peak high, cap 4 (raised by the owner 3→4 on 2026-11-01); round 4: 1 low, fixed. By the orchestrator. Round 1: 2 high, 3 medium, 4 low. Round 2: 1 high, 1 medium, 2 low. Round 3: 1 medium, 1 low. Round 4 converged. All applied.
+- **Gate**: CANNOT CHECK — one gate runs over the batch after this commit
+- **Cost**: CANNOT CHECK — a batch lane shares the orchestrator's session id, so no cost is the row's own
+- **Session start**: CANNOT CHECK — a batch lane runs no session-start marker
+
+#### What happened
+
+`.claude/stridal.lock` pins a plugin release and one engine sha256 per platform, in a line format (`release <v>`, `engine <goos>/<goarch> <sha256>`). The sh launcher reads it with awk and `engine.Parse` reads it in Go, and a line either reader does not know is an error. `template/.claude/hooks/stridal-engine.sh` is the bootstrap launcher (ADR-0018 decision 7):
+- In a repository with no model marker it stands aside without reading the payload.
+- Otherwise it reads the lock through git, so a worktree is always guarded by main's pin. With an origin it reads `refs/remotes/origin/<main>`, where `<main>` is what `refs/remotes/origin/HEAD` names; an origin with no HEAD is refused. With no origin it reads `refs/heads/<main>`, where `<main>` is `git config --local stridal.mainBranch`, else `main`. It never takes `<main>` from a checkout's HEAD or the lane's `project.conf`.
+- It verifies the plugin's engine for this platform against the pin, then runs it on the control (`stridal hook <control>.sh`, which execs the shell control).
+- It refuses with one fix line when the lock is missing or bad, when no engine is pinned for this platform, when the plugin is not the pinned release, and when the engine is missing, mismatched or will not start (126, 127).
+- While refused it still allows `git fetch [listed flags] [origin]`, `git remote set-head origin --auto`, the plugin's update and install, and `stridal doctor`, and nothing else.
+- `STRIDAL_ENGINE` counts only under a fixture HOME.
+
+`internal/engine` is the Go twin, and doctor's new engine line reports what the launcher would decide here.
+
+`plugin.LaunchControls` is the generator for both registration paths. It puts every `"onFailure": "block"` entry of a settings.json behind the launcher. The plugin build carries that form into hooks.json through if-project.sh, which now passes on its arguments. `TestBothRegistrationPathsReadTheOneLock` runs both generated command lines as Claude Code does (`sh -c`) and shows each one verifying, and refusing, on the one lock. The committed registrations do not use the launcher yet, and `TestTheCommittedRegistrationsDoNotYetRunTheLauncher` holds them to that.
+
+The tests: 53 launcher cases, a 44-command recovery corpus and a 14-text lock corpus, each run against the real launcher in a fixture and checked against `engine.Decide`. `TestEachLauncherCaseFailsWithoutItsControl` removes one control at a time across 65 mutants, and every case a mutant names must fail. A mutant that names no case fails the test. Two authorities are enumerated: every case must be named by some mutant, and every control site in the launcher (each refusal, `return 1` and `exit 2`) must lie inside some mutant's text. A control added without a mutant therefore fails the test.
+
+Review round 1 found that a lane could choose its own pin. MAIN_BRANCH in its `project.conf` could name a branch it had pushed, or `main~1`, which reads an older lock. The recovery list also allowed `git fetch . +HEAD:refs/remotes/origin/main`, `git fetch origin +ops/x:refs/heads/main` and `git fetch ext::sh`. Each became a case that was seen failing against the launcher before the fix (20 cases failed there), and each is now in both twins' corpora.
+
+#### Decisions
+
+- **The row ships inactive** (the orchestrator agreed, 2026-11-01). No release carries an engine until OPS-184. A marked repository with no engine refuses every guarded call, so registering the launcher now would refuse every Bash call here and in every `/stridal:init` repository. OPS-184's row switches both registration paths to it, and turns doctor's note into a FAIL then. There is no transitional mode that skips the check when no lock is present, because the row says a missing lock refuses. Doctor calls `engine.Decide` in production. The sh launcher has no production caller until OPS-184.
+- **Which branch is main comes from the git common dir, never from a checkout or the working tree.** It is origin's HEAD, or, with no origin, `git config --local stridal.mainBranch`, else `main`. Round 2 found that the no-origin rule round 1 chose (the main worktree's checked-out branch) moved with `git checkout -b side`, the normal flow in a new repository. The class is "the pin's ref is chosen by state its subject controls", so the rule is a property, not an instance: nothing a lane changes in its normal work names main. `--local` keeps out a worktree's own `config.worktree` and the user's config. `stridal init` lies outside this row's work, so doctor says how to set the key, and OPS-184's row has both inits write it. The name must be plain characters (`[A-Za-z0-9/._-]`, no `..`, no leading `-` or `/`). git already reads an origin/HEAD that names `main~1` or `x/.hidden` as no HEAD at all. That makes `git check-ref-format --branch` a process that could never refuse what the filter passes, so the launcher does not run it.
+- **Resolve once is OPS-184's** (the switch-on waits for it). At SessionStart it verifies the engine, copies it into a content-addressed directory and caches the path in `CLAUDE_ENV_FILE`; OPS-199's S5d decides the mechanism. The seam is `verified_engine` in the launcher, which resolves and verifies the engine and refuses nothing itself.
+- **`STRIDAL_SHA256`** (`openssl` or `shasum`) chooses the hash tool, for the latency measurement. Whichever tool runs, its sum must still equal the pin, so it chooses how the engine is hashed, never what passes.
+- **The recovery allowlist lives in the launcher**, because it must run when no engine can be trusted: an unverified binary is never exec'd. `engine.IsRecovery` is its twin, and the corpus holds the two equal. It allows only exact commands, or `git fetch` with the listed flags and the one operand `origin`. Commands may contain only plain characters, so no refspec (`:` or `+`), transport (`::`) or option that runs a program can appear. Without jq no recovery command is recognized, and the refusal says jq is required.
+- **The trust root, and its known limit (owned by OPS-184).** Every input the launcher trusts lives in the git common dir (`refs/remotes/origin/*`, origin's HEAD, `remote.origin.*`, `stridal.mainBranch`, `packed-refs`), in the plugin root, or in two working-tree files it reads on every call: the worktree's `.git` pointer file and the model marker. A lane that can write any of those can choose its pin. Round 3's reviewer rewrote the pointer to `gitdir: <a crafted repo>`, and the launcher ran that repo's engine. Deleting the marker makes the launcher stand aside. The launcher reads no checkout's HEAD and no file a lane edits as content (its `project.conf`), but it does read those two files. Normal work writes `.git/config` and `packed-refs`, so the roots cannot simply be made not lane-writable. OPS-184's switch-on therefore waits for verification against an authority lanes cannot write: resolve-once checks `refs/remotes/origin/<main>` against `git ls-remote` of a url recorded outside the repository, resolves the pointer once, and per call the launcher reads only the cached engine path. Whether a missing marker may still stand aside is the owner's question under ADR-0018 decision 5, owned by OPS-184. A command guard is only defence in depth. Until then the server-side required check (OPS-165) still holds what merges to main.
+- **Known limit, owned by OPS-184: hash then exec by path.** The launcher hashes the engine and then execs it by path, so a file swapped in between runs unverified. The plugin root can also be steered through `CLAUDE_CODE_PLUGIN_CACHE_DIR`, `CLAUDE_CONFIG_DIR` and `HOME`. Resolve once closes both: the engine is verified once into a directory agents cannot write (ADR-0018 3(b), `CLAUDE_PLUGIN_DATA/engine/<sha256>/`), and only that copy is exec'd.
+- **Where the engine lives** (`<plugin root>/engine/<goos>-<goarch>/stridal`, or the root plugin-session.sh records, for the copy install) is OPS-184's to settle once OPS-199 has found where binaries can live.
+
+#### Surprises
+
+The latency was measured twice with `TestLauncherLatency` (40 runs each, verify plus exec of the real 16 MB engine): in this lane's sandbox, with the real git first on PATH, and by the owner on the Mac outside the sandbox (2026-11-01, Claude Code 2.1.316).
+
+| Path | Sandbox median | Sandbox p95 | Outside median | Outside p95 | Outside, over bare |
+|---|---|---|---|---|---|
+| bare sh control | 5.9 ms | 9.0 ms | 2.7 ms | 6.84 ms | — |
+| launcher, default `sha256sum` | 71.5 ms | 158.7 ms | 51.2 ms | 58.32 ms | 48.5 ms |
+| launcher, openssl | 74.4 ms | 99.1 ms | 53.53 ms | 67.55 ms | 50.83 ms |
+| launcher, shasum | 113.2 ms | 148.0 ms | 82.27 ms | 137.47 ms | 79.57 ms |
+
+Even outside the sandbox, per-call verify (git cat-file plus a sha256 of a 16 MB engine) costs about 50 ms over a bare hook. That is about 5 times ADR-0018's 10 ms ceiling, and it confirms that resolve once is required before OPS-184's switch-on. It does not test S4's assumption, that a resolved launcher plus the engine's exec costs 3.87 ms. OPS-184 measures that path (cached engine, no git, no hash) once resolve once exists. In the sandbox, process start-up under Seatbelt adds more again (the launcher starts about 13 processes), and through `/usr/bin/git` each git call costs about 100 ms more, because xcrun cannot write its cache.
+
+#### Insights
+
+1 row(s), moved to the insights log.
+
+### OPS-199 — the Gate A spikes on the Mac and in the cloud, recorded and cited
+
+- **PR**: #385
+- **Session**: S21, started 2026-11-01 18:41 ET (the lane's worktree; the marker did not run, no PR)
+- **Review**: 2 rounds, peak medium, cap 2 (round 1: 3 medium and 8 low, all applied; round 2: 2 low, fixed)
+- **Gate**: CANNOT CHECK — no full gate passed before this commit (the sandboxed checks fail on `ps` alone: gate, machine-quiet, people); the batch PR's gate, run outside the sandbox, is the receipt
+- **Cost**: CANNOT CHECK — a lane shares the orchestrator's session id; the spikes themselves reported $0.069 (first run), $0.0495 (second run)
+- **Session start**: CANNOT CHECK — the marker did not run (the lane opened no PR)
+
+#### What happened
+
+The nested `claude` sessions inherit a lane's Seatbelt sandbox, so the lane built a throwaway
+harness and the owner ran it outside the sandbox: a fixture `CLAUDE_CONFIG_DIR` under `$TMPDIR`, a
+stdlib-only Go MCP server under a plugin's `engine/`, a git marketplace served over smart HTTP on
+127.0.0.1, and headless haiku runs at about $0.005 each. The first run's INCONCLUSIVE rows were
+the harness's, not Claude Code's: the scratch repos were never trusted, and 2.1.316 drops a
+project's allow rules in an untrusted workspace, headless too. The fixed second run, and a
+cloud-session prompt the owner pasted, gave S5a to S5j (`docs/plans/s19-spikes.md`). Every result
+passed but S5h: `sandbox.excludedCommands` takes nothing out of the sandbox on 2.1.316, in the main
+session or a subagent, in any settings shape. The ADRs' *Rests on* now cite S5a to S5j, S6a and
+S6b, `ADR_EVIDENCE_KNOWN` is empty, and `checks/adr-evidence.sh` passes every Accepted ADR from
+ADR-0016 with no waiver. PRAC-0023 names that check; OPS-195 names S6a's readers; OPS-216, queued at
+the owner's request, now removes each sandbox need in code and corrects the files that state the
+exclusion lifts the sandbox.
+
+#### Decisions
+
+- The owner chose "record and cite" for ADR-0021's items (S6a, S6b) and S3c's re-run for ADR-0020
+  item 3 (S5i), 2026-11-01.
+- The owner queued OPS-216 (the model works inside the sandbox) and its Gate H criterion,
+  2026-11-01: adopters attaching product projects must not meet the sandbox as a limit.
+- S5f is recorded as passed on evidence from three runs: the git-installed binary's mode, its hook
+  exec, both servers connecting, and its calls answered in S5e and S5g. Its own call was denied by
+  the worktree-trust quirk, a harness gap, not a result.
+- S5h is recorded as a real failure: the command met every rule the binary states for an
+  exclusion, in three headless tier shapes, with the workspace trusted and no
+  `dangerouslyDisableSandbox`, and it failed the same way in this repo's interactive main session.
+- S5h breaks no ADR (none rests on `excludedCommands`; grep of `docs/adr` and `docs/practices`), so
+  OPS-183 is not stopped; the owner saw it and OPS-216 owns it.
+- Left open, with owners. S5g tested `tools:` filtering by each tool's name only, not a server name
+  or a wildcard there, which OPS-193's read/write split (and ADR-0017 decision 1's "names the
+  servers it may call") rests on: OPS-193's row now tests that form before it splits, and an
+  owner-queue item asks for a citation or an at-risk acceptance first. S5b's sandboxed-Bash write
+  into the git common dir is confounded, since that dir sat under `$TMPDIR`, which the sandbox
+  allows, so whether a sandboxed model can forge ADR-0022's feed in a real checkout is not shown:
+  ADR-0022's acceptance row, OPS-203, now tests it before accepting option B.
+- Two rows of the insights log are edited in place, not through this fragment: the sandbox rows of
+  2026-10-31 now name OPS-216 as owner. The fold only appends a fragment's rows, and a change of
+  owner on an existing row has no fragment form.
+
+#### Surprises
+
+- S5d first read as a FAIL, and the proposed framing was "headless only". The logs said otherwise:
+  the check's own `printf "${…}"` was refused by the permission check, while another variable that
+  only `CLAUDE_ENV_FILE` set did expand. `printenv` confirmed it, headless.
+- 2.1.316 keys a worktree's trust to its main repository, and a built-in plugin's store
+  (`~/.claude/plugins/store/cc-plugin-diff_builtin-…`) was rewritten during the zip run in both
+  runs, despite the fixture config dir.
+
+#### Insights
+
+2 row(s), moved to the insights log.
+
 ## Session 20 — 2026-10-31 — Rich — S20: S19's leftovers landed; evidence-gated ADRs
 
 **Totals.** Gate 0 min (a row's gate was CANNOT CHECK, so this is a floor); cost $0 (a row's cost was CANNOT CHECK, so this is a floor).
