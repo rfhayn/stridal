@@ -1,7 +1,7 @@
 # Working conventions
 
 > **A budget, not an archive.** Every session and subagent loads this file, so each line is paid
-> for on every agent start. `.claude/checks/agents-md-budget.sh` holds it to a byte ceiling and
+> for at each start. `.claude/checks/agents-md-budget.sh` holds it to a byte ceiling and
 > each table row to a length ceiling. **New lessons go to `docs/insights-log.md`** (from a row, by
 > its fragment); detail goes to **`docs/conventions.md`**. Change this file only to add a
 > mechanism or to delete something, and give the mechanism its row in the table below.
@@ -22,20 +22,20 @@ roadmap row, an issue) is part of deferring.
 - **Prefer a condition you would OBSERVE over a phase label.** A phase slips quietly.
 
 **2. A handoff summary is a claim, not a receipt.** Verify what a summary names by **existence**
-(`ls`, `grep`, `git log`, `gh pr list`), never by re-reading the summary. Verify the outcome,
+(`ls`, `grep`, `git log`, `gh`), never by re-reading it. Verify the outcome,
 never the exit code, never the report. When you write a test for a control, ask what would have to
 be true for it to pass **without** the control, and confirm it fails there first (*A passing test
 is evidence of nothing until it has failed*).
 
 **3. For every capability, name the process that invokes it IN PRODUCTION.** If the only answer
-is "a test", it is not shipped. The check is one `grep` for the callers and the question *"is any
-of these a real process?"*. A package, a script and a config key are capabilities too.
+is "a test", it is not shipped. The check: `grep` the callers and ask *"is any of these a
+real process?"*. Packages, scripts and config keys are capabilities too.
 
 **4. For every rule this repo states, name what EXECUTES it.** If the answer is "whoever reads the
 file", it is documentation, not a control. Corollaries:
 - **A note instructing a future reader is not a mechanism.** Prefer a hook, a check, a constraint.
-- **A delegation target is a NAMED THING: check it exists.** Skills, script paths and config keys
-  are named things. A missing function throws, but a missing instruction gets interpreted.
+- **A delegation target is a NAMED THING: check it exists.** Skills, script paths, config keys.
+  A missing function throws; a missing instruction gets interpreted.
 - **A guard must iterate the AUTHORITY, not the list it was handed** (*Enumerate the authority*),
   and run the negative case.
 - **Ask WHO RECEIVES the result when it fails**, and whether they already look there (*A control
@@ -43,13 +43,13 @@ file", it is documentation, not a control. Corollaries:
 
 ### What executes each rule
 
-Rule 4 applied to this file: most of it is documentation, and says so. One line per row; keep
-the last row last.
+One row a line; the last row last.
 
 | Rule / convention | What executes it |
 |---|---|
 | No `--auto`, no `--admin`; only an open PR merges, with gate evidence for its exact head commit | **`.claude/hooks/pr-merge-guard.sh`** rules 1–2 and 14 (blocking); **`checks/merge-guard.sh`** |
 | Only a complete run of a clean tree is evidence; two full gates on one machine never overlap | **`scripts/ci/run-local.sh`**: the receipt, and the panel's gate lease (`lock-run` or `lease.sh`); **`checks/gate.sh`** |
+| Any merge needs `test (ubuntu-latest)` green | **Nothing** until the owner sets it (owner queue); then GitHub's `main` ruleset requiring it; unchecked locally |
 | Every change PR states its slice | **`pr-merge-guard.sh`** rule 3 (blocking) |
 | Only a daily close adds a `## Session N`, never one claimed twice; a row's records go to its fragment, `docs/journal.d/<row id>.md` | **`pr-merge-guard.sh`** rule 7 (blocking); **`checks/journal.sh`** (the fragment's shape); `session-close/fold.sh`; **`checks/fold.sh`**; writing the fragment: **Nothing. You.** |
 | A PR that changes the journal or insights log lands on top of `origin/main`, never on a picture main has moved past | **`pr-merge-guard.sh`** rule 8 (blocking, any branch); **`checks/merge-guard.sh`** |
@@ -128,8 +128,8 @@ another person needs goes in the repo. Detail: `docs/conventions.md`; how-to: `d
 
 - **Branching.** One change = one branch = one squash PR: `change/<id>` for a capability,
   `fix/<n>-<slug>`, `ops/<name>` otherwise. No stacked PRs. The main checkout stays on `main`.
-- **Commits and PR titles** start with the roadmap row's id, `PREFIX-N:` (`PANEL-19:`), in the
-  imperative. **No `Co-Authored-By`**, no provenance trailers (`.claude/model-roles.json`, ADR-0008).
+- **Commits and PR titles** start with the roadmap row's id, `PREFIX-N:`, in the imperative.
+  **No `Co-Authored-By`**, no provenance trailers (`.claude/model-roles.json`, ADR-0008).
 - **The gate** is `GATE_RUN` in `.claude/project.conf`; agents run it through `GATE`.
 - **`template/` is the product.** A template edit ships: rebuild the plugin
   (`scripts/build-plugin.sh`) and sync this repo's copy with `stridal update`.
