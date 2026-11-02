@@ -373,7 +373,7 @@ const t = (label, cond, got) => out.push(`${cond ? 'ok  ' : 'FAIL'} driver: ${la
   const gate = later.find((c) => c.opts.label === 'gate:3#1'), receipt = later.find((c) => c.opts.label === 'receipt')
   t('the quick gate agent runs `scripts/ci/gate.sh --quick` and gate-wait as LONE commands, exempt from PIN\'s cd rule, chained nowhere', !!gate && lone(gate, 'scripts/ci/gate.sh --quick'), gate && gate.prompt)
   t('the receipt agent runs `scripts/ci/gate.sh` and gate-wait the same way', !!receipt && lone(receipt, 'scripts/ci/gate.sh'), receipt && receipt.prompt)
-  // A gate agent runs sandboxed until OPS-216: a sandbox refusal stops the run, naming the line, and
+  // A gate agent runs sandboxed until Stridal's OPS-216: a sandbox refusal stops the run, naming the line, and
   // no builder is sent after a failure that is not the code's (OPS-217).
   const refused = 'go: mkdir cache: Operation not permitted'
   const faulted = await run([], { groups: [{ n: 1, title: 'Substrate', openTasks: 1 }], gateResult: { passed: false, environmentFault: true, evidence: refused } })
