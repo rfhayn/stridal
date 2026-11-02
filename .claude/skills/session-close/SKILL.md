@@ -140,7 +140,8 @@ for the person opening the next session.
 Re-run the Context block and read it (AGENTS.md rule 2). The end state: clean tree, nothing ahead
 of `origin`, no unaccounted open PR of yours, no unarchived finished change, at most one proposed,
 journal and insights carrying today's date (on a row's close, instead: the row's fragment in its
-PR, passing `sh .claude/checks/run.sh journal`), `sh .claude/checks/run.sh` green, a status line
+PR, passing `sh .claude/checks/run.sh journal`), `sh .claude/checks/run.sh` green (the whole set
+needs the sandbox off until Stridal's OPS-216: `merge-pr` step 2), a status line
 pointing forward. Then state what is still outstanding **and the change that owns it** (AGENTS.md
 rule 1); if no change owns it, creating one (a roadmap row, an issue) is part of closing.
 
@@ -150,8 +151,8 @@ rule 1); if no change owns it, creating one (a roadmap row, an issue) is part of
 2. `git fetch origin main && git merge origin/main`, **every time**, even with no conflict shown:
    someone may have closed while you wrote. Resolve per the table above. `pr-merge-guard` rule 8
    blocks a close whose head does not contain `origin/main`.
-3. The gate (`scripts/ci/gate.sh`, no flags): the merge commit is a new head and needs its own
-   receipt.
+3. The gate (`scripts/ci/gate.sh`, no flags, with the sandbox off until Stridal's OPS-216: `merge-pr`
+   step 2): the merge commit is a new head and needs its own receipt.
 4. **`merge-pr`**, all of it. For a docs-only diff its review step takes the `reviewer-docs` lane.
    If rule 7 blocks, renumber and repeat from 2. Anything else that blocks and is not mechanical is
    a **Blocked** notification.

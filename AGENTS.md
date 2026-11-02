@@ -49,7 +49,7 @@ One row a line; the last row last.
 |---|---|
 | No `--auto`, no `--admin`; only an open PR merges, with gate evidence for its exact head commit | **`.claude/hooks/pr-merge-guard.sh`** rules 1–2 and 14 (blocking); **`checks/merge-guard.sh`** |
 | Only a complete run of a clean tree is evidence; two full gates on one machine never overlap | **`scripts/ci/run-local.sh`**: the receipt, and the panel's gate lease (`lock-run` or `lease.sh`); **`checks/gate.sh`** |
-| Any merge needs `test (ubuntu-latest)` green | **Nothing** until the owner sets it (owner queue); then GitHub's `main` ruleset requiring it; unchecked locally |
+| Any merge needs `test (ubuntu-latest)` green | GitHub's `main` ruleset `main requires test`, with no bypass actor; unchecked locally |
 | Every change PR states its slice | **`pr-merge-guard.sh`** rule 3 (blocking) |
 | Only a daily close adds a `## Session N`, never one claimed twice; a row's records go to its fragment, `docs/journal.d/<row id>.md` | **`pr-merge-guard.sh`** rule 7 (blocking); **`checks/journal.sh`** (the fragment's shape); `session-close/fold.sh`; **`checks/fold.sh`**; writing the fragment: **Nothing. You.** |
 | A PR that changes the journal or insights log lands on top of `origin/main`, never on a picture main has moved past | **`pr-merge-guard.sh`** rule 8 (blocking, any branch); **`checks/merge-guard.sh`** |

@@ -35,7 +35,9 @@ do one group alone. The loop is the same, and so are its stops.
 - Branch prefixes (`.claude/project.conf`; a branch is named by its key, never a literal): !`sh .claude/project-config.sh prefixes`
 - The change is approved: `changes/<id>/proposal.md` has its `**Approved:**` line, on `main`.
 - You are on `<BRANCH_CHANGE><id>` in its OWN worktree, never the main checkout (hooks run from there), with
-  a clean tree.
+  a clean tree for a fresh group. A group a `build-change` run stopped in at its gate keeps its work
+  on disk, uncommitted: pick it up at the step the playbook's stops table names (*When it stops, and
+  your move*).
 - **The models follow the proposal's `**Risk:**` tier**: a role with a variant for that tier in
   `.claude/model-roles.json` (`roles.<role>.tiers`) runs on it; pass its `model` and `effort` when
   you spawn the agent. In economy mode (`~/.stridal/panel/economy.json` says `"economy": true`)
@@ -54,7 +56,8 @@ do one group alone. The loop is the same, and so are its stops.
    `git ls-files --others --exclude-standard`, `git add -N -- <path>` (intent-to-add); for each
    from `git ls-files --deleted`, `git rm -q --cached -- <path>`.
 3. **Gate.** `scripts/ci/gate.sh --quick` (the project's `GATE` with its `GATE_QUICK_FLAGS`, from
-   `.claude/project.conf`, when they differ). Red: the builder fixes it at its source (at most two
+   `.claude/project.conf`, when they differ), with the sandbox off until Stridal's OPS-216 (`merge-pr`
+   step 2 says who runs it). Red: the builder fixes it at its source (at most two
    attempts); an environment fault or a gate still red is a STOP. If the tool moves the gate to
    the background, call `scripts/ci/gate-wait.sh` in the foreground (timeout 600000): exit 3
    means call it again; any other exit is the answer (0 PASS, 1 FAIL; 4 or 2: no result, run the
@@ -70,15 +73,17 @@ do one group alone. The loop is the same, and so are its stops.
    split the work, or send it back to design. Do not put those findings under `KNOWN LIMITS` or
    merge. With `known-limits`, what is left goes to the PR's `KNOWN LIMITS`, each with the issue or
    row that owns it. Lows still merge either way, each under `KNOWN LIMITS` with its owner.
-5. **Commit** the group once a round finds nothing medium or worse: add one line under
-   `## Progress` in `tasks.md` (`- <date> group N (<title>) built and reviewed: converged in <n>
+5. **Commit** the group once a round finds nothing medium or worse: tick a task under this group's
+   own heading that asks for its review, add one line under `## Progress` in `tasks.md` (`- <date> group N (<title>) built and reviewed: converged in <n>
    round(s), peak <sev>`), check `git diff HEAD --name-status` for anything secret-looking,
    `git add -u`, and commit `<id>: task group N — <title>`, ending with the provenance trailers
    (`Change:`, `Agent-Role: builder`, `Model:`, `Session:`) and the attribution trailer when
    `.claude/model-roles.json` enables them. Do not push yet.
 
 ## Then
-- The full gate on the committed HEAD: `scripts/ci/gate.sh` (no flags). It writes the receipt.
+- The full gate on the committed HEAD: `scripts/ci/gate.sh` (no flags), with the sandbox off until
+  Stridal's OPS-216 (`merge-pr` step 2 says who runs it). It writes the receipt. If a task asks for
+  a full gate, tick it and commit first; untick and commit if the gate fails.
   If the tool moves the gate to the background, call `scripts/ci/gate-wait.sh` in the foreground
   (timeout 600000): exit 3 means call it again; any other exit is the answer (0 PASS, 1 FAIL; 4 or
   2: no result, run the gate again).

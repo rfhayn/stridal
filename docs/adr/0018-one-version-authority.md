@@ -39,7 +39,8 @@ authorities**:
    is read from `origin/<main>`, so every worktree of a repo is guarded by the same release: main's.
    A repo with no `origin` (a fork, or a new project not yet pushed) reads its own `<main>`.
 3. **Resolve once, never on the hot path.**
-   - **Where the binaries live is the owner's choice** (OPS-184). The plugin is served from this
+   - **Where the binaries live: option (b), the owner's decision of 2026-11-02** (see the amendment
+     below; OPS-218 builds it). The plugin is served from this
      repo (`.claude-plugin/marketplace.json`, `"source": "./plugin"`), so binaries inside the plugin
      are binaries committed to git: about 5 platforms × ~10 MB on every release. The options:
      - **(a) Committed in `plugin/engine/`.** No download, but the repo grows by about 50 MB per
@@ -48,7 +49,7 @@ authorities**:
        the lock names, verified against the lock's sha256 (and, from OPS-213, its signature) before the first exec. The
        repo stays small; the first session after an update needs network access.
      - **(c) Git LFS.**
-     **Recommended: (b).** A missing or unverified binary then blocks through decision 5, and a
+     **Chosen: (b).** A missing or unverified binary then blocks through decision 5, and a
      cached one works offline.
    - A pin that differs from the installed plugin is a mismatch (decision 5), and its fix line names
      the plugin update.
@@ -83,7 +84,7 @@ authorities**:
    - **Both registration paths read the same lock:** the plugin's `hooks.json`, and, until OPS-145
      retires the copy install, a `stridal install` project's `settings.json`.
    - **A disabled plugin:** a plugin-installed repo's `.claude/settings.json` sets `enabledPlugins`
-     true for the plugin. Nothing sets it today: OPS-184 builds it, through `/stridal:init` and its
+     true for the plugin. Nothing sets it today: OPS-218 builds it, through `/stridal:init` and its
      scaffold. A `stridal install` repo keeps today's `false` (`plugin/scaffold.sh`,
      `plugin-session.sh`) until OPS-145 retires that path, so the two installs never both fire.
      Project settings outrank a user's `false`, so only a deliberate opt-out in
@@ -124,13 +125,15 @@ authorities**:
 - **Windows stays WSL2** while the launcher is sh and the settings' `cmd.exe` denies remain.
 
 ## Enforcement
-Built by OPS-183 and OPS-184, each shown failing first:
+Built by OPS-183, OPS-184 and OPS-218, each shown failing first:
 - **Engine tests**, one per case: a repo with no marker stands aside, payload unread; a missing engine, a mismatched sha256 and an unsigned engine each
   refuse a guarded decision and allow a recovery command; `STRIDAL_ENGINE` is ignored outside a
   fixture HOME; a worktree whose own lock differs from `origin/<main>`'s still resolves main's.
 - **A release check:** rebuilding a tagged release reproduces its sha256s.
 - **The per-call budget:** a dispatcher latency test with a 10 ms ceiling, built in OPS-185. S4
   measured the launcher plus the engine at 3.87 ms median, against 3.64 ms for a bare `sh -c`.
+  OPS-184's resolved path measured more; the owner accepted that on 2026-11-02 until the port out
+  of shell (see the amendment below), and OPS-185 re-measures it.
 - **Every control hook carries `onFailure: "block"`:** the OPS-185 registration check, with S1's
   cases as its fixtures (a missing, a hung and an exit-2 engine).
 
@@ -138,12 +141,29 @@ Built by OPS-183 and OPS-184, each shown failing first:
 These are the assumptions; each is accepted only on the cited result (PRAC-0023).
 - A failed or hung hook blocks only with `onFailure: "block"`: S1a to S1e, **passed**.
 - Latency: S4, **passed**.
+- The launcher's resolved path within the 10 ms ceiling: **pending** — accepted at risk by the owner
+  (2026-11-02); tested by OPS-185 (about 11 ms over a bare control in OPS-184).
 - Hooks can write `CLAUDE_PLUGIN_DATA` and a `GOCACHE` outside the sandbox: S5a, **passed**.
 - A SessionStart command hook's `CLAUDE_ENV_FILE` reaches the session's Bash, headless and
   interactive, as decision 3's engine path needs: S5d and S5j, **passed**.
 - Project `enabledPlugins` outranks a user's `false`: S5c, **passed**.
 - Binaries committed under the plugin's `engine/` keep their mode and run, installed from a git
   marketplace or loaded from a release-style zip: S5f, **passed**.
+
+## Amendment — 2026-11-02: where the binaries live, and the latency accepted
+
+**Decision 3: option (b).** The owner chose (b): the engine is fetched at SessionStart into
+`CLAUDE_PLUGIN_DATA/engine/<sha256>/`. That replaces leaving the place open as the owner's choice.
+
+**The row split.** The owner split OPS-184 the same day: it builds resolve-once, the release
+workflow and the trust roots, inactive. OPS-218 packages and fetches the engines, builds the
+`enabledPlugins` setting and the canary, and switches both registration paths to the launcher.
+
+**The per-call budget.** The owner accepted about 11 ms of launcher overhead against the 10 ms
+ceiling and S4's 3.87 ms: 14.68 ms median, 21.61 ms p95, 11.28 ms over a bare control, over 40 runs
+outside the sandbox (`TestLauncherLatency`). The acceptance holds until the port out of shell
+(OPS-185 onward). OPS-185's latency test re-measures it, and a number still over the ceiling goes
+to the owner.
 
 ## Related
 - ADR-0016, ADR-0017, ADR-0019. Amends ADR-0007 and ADR-0011. OPS-165 (server-side check).

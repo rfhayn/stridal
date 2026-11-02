@@ -96,7 +96,7 @@ the same route.
 | **B. One named merge command, read as text** | the hook allows a merge only as `sh .claude/merge.sh <n>`, whole, and refuses any other command whose text holds `gh` and `merg` | the three listed limits, when their text names gh and merge | an all-computed or encoded program, as A | more false refusals than A: no grammar, so `gh pr view 5 --json mergedAt` and `gh help pr merge` are refused |
 | **C. Standing Tee's wrapper (PRAC-0041)** | `.claude/bin/gh` applies every rule to the argv; the hook keeps a route check and the ways past the wrapper | every spelling through gh on PATH, aliases and functions included; the moving head | a gh reached without PATH (a computed path, a script that rebuilds PATH); other clients; the web | a PATH route that must hold in every session kind; the rules live in a wrapper on every gh call; ST's PR 2 did not converge on its grammar |
 | **D. One merge path, refused everywhere else at the argv** (recommended) | `.claude/merge.sh` holds the rules and is the only thing that merges; `.claude/bin/gh` refuses every merge route, with no exceptions and no rules; the hook keeps a route check and coarse refusals of the ways past the wrapper | as C | as C | as C's route; three PRs at high risk |
-| **E. Server-side required check** (a complement) | a ruleset on `main` requiring the remote `test` check, with no bypass actor | a click on the website, curl, another client, a Cursor agent | the local gate receipt and rules 3 and 7–14, which no server check sees | every PR, the owner's included, waits for Actions; possible only once Actions run (OPS-98, or public at REL-1) |
+| **E. Server-side required check** (a complement) | a ruleset on `main` requiring the remote `test (ubuntu-latest)` check, with no bypass actor | a click on the website, curl, another client, a Cursor agent | the local gate receipt and rules 3 and 7–14, which no server check sees | every PR, the owner's included, waits for Actions; possible only once Actions run (OPS-98, or public at REL-1) |
 
 **Why D over C.** Both judge where the argv is final, and both close the listed limits by
 construction. D splits C's wrapper in two:
@@ -184,7 +184,7 @@ roadmap's merge-guard section. PR 1 comes before OPS-77 and OPS-78, so each writ
 Each PR moves AGENTS.md's What-executes rows for the executors it moves, in the same PR.
 
 **D7. A server-side required check, as a complement (E).** **OPS-165**: a ruleset on `main` that
-requires the remote `test` check, with no bypass actor, built after CI is back (Deps OPS-98). It
+requires the remote `test (ubuntu-latest)` check, with no bypass actor, built after CI is back (Deps OPS-98). It
 covers what no client-side control can (a click on the website, another client, a Cursor lane) and
 replaces none of D1–D6. Configuring the ruleset in GitHub is the owner's step: it goes to the owner
 queue when OPS-165 starts (the owner, 2026-10-29).
@@ -292,6 +292,14 @@ D1 to D7 stand as decisions. What builds them changes:
 `stridal gh` wrapper for the refusal of every other merge, and ADR-0019's parity receipt for the
 reader's deletion, which the merge guard checks (OPS-185). Until OPS-162 to OPS-164 merge, the
 guard keeps the limits its header lists, as above.
+
+## Amendment — 2026-11-02: D7 names the check's leg
+
+The owner approved naming the required check `test (ubuntu-latest)` in D7 and option E, in place of
+"the remote `test` check". A pull request runs only the Ubuntu leg, so `test (macos-latest)` would
+never report and would block every merge; the bare `test` is what a draft's skipped run reports, and
+GitHub counts that as passing. The ruleset `main requires test` has required that leg since
+2026-11-02 (OPS-165).
 
 ## Related
 - PRAC-0010 (close the class, not the instance): this record applies it to the merge guard.
