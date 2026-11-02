@@ -23,9 +23,17 @@ marked merged with it.
 - **No stacked PRs.** If B depends on A, merge A first, then branch B from `main`.
 - **Merge only through `merge-pr`**, which wants gate evidence for the head commit and converged
   review before it runs `gh pr merge --squash`. `pr-merge-guard` refuses `--auto`, `--admin`,
-  a merge of a PR that is not open, and a merge without evidence. A merge clicked on the website
-  runs no hook: that is an accepted residual, not a gap to paper over with branch protection rules
-  the agents cannot satisfy.
+  a merge of a PR that is not open, and a merge without evidence. A merge clicked on the website,
+  run from another client or made by a Cursor lane runs no hook. Here a GitHub ruleset on `main`
+  (OPS-165, ADR-0012's D7) requires the `test (ubuntu-latest)` check from GitHub Actions, with no
+  bypass actor, so no merge by any road lands without the remote check green on the PR's head.
+  It judges nothing else (not the local gate receipt, not review, no other guard rule), and the
+  rest stays an accepted residual, not a gap to paper over with branch protection rules the agents
+  cannot satisfy. The owner sets the ruleset (owner queue, 2026-11-01); until then it does not
+  exist, and nothing local checks that it is set or stays set. Only the Ubuntu leg is required because a PR runs Ubuntu alone (`test.yml`): a macOS
+  leg would never report and would block every merge. The bare `test` is never required: a draft's
+  skipped run reports it, and GitHub counts a skipped check as passing. The settings and the `gh api`
+  reads that verify them: `docs/playbook.md`, *A required check on the server*.
 - **The main checkout stays on `main`.** Every hook is read from it; work happens in worktrees
   under `.claude/worktrees/<lane>`, one per lane, each cut from `origin/main`.
 - **Propose just in time, at most ONE change proposed ahead** (`docs/principles.md`). To capture

@@ -178,6 +178,52 @@ per machine, so what the other person needs goes in the repo. The optional `peop
 session start (last merged, open now, next owned row), a lane table, and a rule that every roadmap
 owner is a person in the registry.
 
+## A required check on the server
+
+The merge guard runs only inside Claude Code. A merge clicked on the website, run from another
+client, or made by an agent that runs no Claude Code hook (a Cursor lane) meets none of its rules.
+When the project has a CI job that runs on every pull request (the one `GATE_PR_CHECKS` names),
+the owner can close part of that gap on GitHub's side: a **ruleset on the main branch that requires
+that job's check, with no bypass actor**. It complements the client-side rules and replaces none:
+GitHub judges only that the remote check passed on the PR's head, never the local gate receipt, the
+review, or any other rule the guard holds. Setting it up is the owner's step (repository settings
+are outward), it goes in the owner queue, and nothing in the model checks that it stays set.
+
+- **Require the name the check reports.** A matrix job reports one check per leg, such as
+  `test (ubuntu-latest)`, never the bare `test`. Read the names off a PR's head:
+  `gh api repos/<owner>/<repo>/commits/<sha>/check-runs --jq '.check_runs[] | [.name, .conclusion, .app.id] | @tsv'`.
+- **Require only the legs every PR runs.** A leg the workflow starts only for pushes to main never
+  reports on a PR, stays *expected*, and blocks every merge.
+- **Never require a name a skipped job reports.** A job its `if:` skips (a draft's run) reports the
+  bare job name as `skipped`, and GitHub counts a skipped required check as passing; that check
+  stays on the commit after the PR is marked ready. A skipped run never reports a matrix leg's name.
+- **Pin the source.** Set the check's integration to GitHub Actions (`integration_id` 15368), so a
+  commit status another token posts under the same name does not satisfy it.
+- **Leave "require branches to be up to date" off**, unless every PR should re-run CI after each
+  merge to main: the merge guard already says which PRs must sit on top of `origin/<main>`.
+- **Turn it on only once the check is green on main.** With no bypass actor nobody, the owner
+  included, merges past a red check, so a flaky test holds every PR it fails until its job is
+  re-run (`gh run rerun <run id> --failed`).
+
+The ruleset, created from a terminal (an admin's token), then read back:
+
+```bash
+gh api -X POST repos/<owner>/<repo>/rulesets --input - <<'EOF'
+{"name": "main requires test", "target": "branch", "enforcement": "active",
+ "conditions": {"ref_name": {"include": ["refs/heads/main"], "exclude": []}},
+ "bypass_actors": [],
+ "rules": [{"type": "required_status_checks", "parameters": {
+   "strict_required_status_checks_policy": false,
+   "required_status_checks": [{"context": "test (ubuntu-latest)", "integration_id": 15368}]}}]}
+EOF
+gh api repos/<owner>/<repo>/rules/branches/main --jq '.[] | select(.type == "required_status_checks") | .parameters'
+gh api repos/<owner>/<repo>/rulesets --jq '.[] | [.id, .name, .enforcement] | @tsv'
+gh api repos/<owner>/<repo>/rulesets/<id> --jq '{enforcement, bypass_actors, conditions, rules}'
+```
+
+The first read names the required check and its integration; the last shows `"bypass_actors": []`
+and `"enforcement": "active"`.
+
 ## Setting up a machine
 
 The model is POSIX sh, git and jq, so it runs the same on **macOS**, **Linux** and **Windows
