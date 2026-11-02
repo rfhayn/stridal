@@ -197,26 +197,29 @@ are outward), it goes in the owner queue, and nothing in the model checks that i
 - **Never require a name a skipped job reports.** A job its `if:` skips (a draft's run) reports the
   bare job name as `skipped`, and GitHub counts a skipped required check as passing; that check
   stays on the commit after the PR is marked ready. A skipped run never reports a matrix leg's name.
+  A PR job with no matrix reports the bare name both ways, so give it a one-leg matrix, or drop
+  its draft `if:`, before you require it.
 - **Pin the source.** Set the check's integration to GitHub Actions (`integration_id` 15368), so a
   commit status another token posts under the same name does not satisfy it.
 - **Leave "require branches to be up to date" off**, unless every PR should re-run CI after each
   merge to main: the merge guard already says which PRs must sit on top of `origin/<main>`.
-- **Turn it on only once the check is green on main.** With no bypass actor nobody, the owner
-  included, merges past a red check, so a flaky test holds every PR it fails until its job is
-  re-run (`gh run rerun <run id> --failed`).
+- **Turn it on only once the required check is green on main.** With no bypass actor nobody, the
+  owner included, merges past a red check, so a flaky test holds every PR it fails until its job
+  is re-run (`gh run rerun <run id> --failed`).
 
-The ruleset, created from a terminal (an admin's token), then read back:
+The ruleset, created from a terminal (an admin's token), then read back. `<main>` is the main
+branch's name and `<job> (<leg>)` the check's reported name, such as `test (ubuntu-latest)`:
 
 ```bash
 gh api -X POST repos/<owner>/<repo>/rulesets --input - <<'EOF'
-{"name": "main requires test", "target": "branch", "enforcement": "active",
- "conditions": {"ref_name": {"include": ["refs/heads/main"], "exclude": []}},
+{"name": "<main> requires <job>", "target": "branch", "enforcement": "active",
+ "conditions": {"ref_name": {"include": ["refs/heads/<main>"], "exclude": []}},
  "bypass_actors": [],
  "rules": [{"type": "required_status_checks", "parameters": {
    "strict_required_status_checks_policy": false,
-   "required_status_checks": [{"context": "test (ubuntu-latest)", "integration_id": 15368}]}}]}
+   "required_status_checks": [{"context": "<job> (<leg>)", "integration_id": 15368}]}}]}
 EOF
-gh api repos/<owner>/<repo>/rules/branches/main --jq '.[] | select(.type == "required_status_checks") | .parameters'
+gh api repos/<owner>/<repo>/rules/branches/<main> --jq '.[] | select(.type == "required_status_checks") | .parameters'
 gh api repos/<owner>/<repo>/rulesets --jq '.[] | [.id, .name, .enforcement] | @tsv'
 gh api repos/<owner>/<repo>/rulesets/<id> --jq '{enforcement, bypass_actors, conditions, rules}'
 ```
