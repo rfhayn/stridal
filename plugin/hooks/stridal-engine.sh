@@ -16,14 +16,17 @@ STRIDAL_FW=$(cd "$(dirname "$0")/.." && pwd) # stridal plugin: the plugin root (
 # command that clears it. That allowlist is here, not in the engine, because it must run when no
 # engine can be trusted; engine.IsRecovery is its Go twin (framework/internal/engine).
 #
-# The pin is read from origin/<main> (or <main> with no origin), through git, never from the
-# working tree: every worktree of a repository shares its refs, so each is guarded by main's pin.
-# Both registration paths call this one file (the plugin's hooks.json, and a `stridal install`
-# project's settings.json, until OPS-145), so both read the one lock.
+# The pin is read through git from origin's main (or, with no origin, the main worktree's
+# branch), never from the working tree: every worktree of a repository shares its refs, so each
+# is guarded by main's pin. Which branch is main comes from git's own record, never from the
+# lane's project.conf, which the lane can edit. Both registration paths call this one file (the
+# plugin's hooks.json, and a `stridal install` project's settings.json, until OPS-145), so both
+# read the one lock.
 #
 # Not yet registered: no release carries an engine until OPS-184, and a marked repository with
-# no engine refuses every guarded call, so OPS-184 registers it when it ships the first one.
-# STRIDAL_ENGINE names an engine only under a check's fixture HOME (decision 6).
+# no engine refuses every guarded call, so OPS-184 switches both paths to it. STRIDAL_ENGINE
+# names an engine only under a check's fixture HOME (decision 6). Known limits (refs and remote
+# config a lane can rewrite; hash then exec by path) are OPS-184's: docs/journal.d/OPS-183.md.
 set -f
 
 proj=${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}
@@ -34,60 +37,72 @@ case $hook in
 esac
 dir=$(cd "$(dirname "$0")" && pwd)
 
-# recovery: the payload ($1) is a Bash call to one command that repairs a refusal. Only these
-# characters, so no operator, quote, substitution or newline can carry a second command; git
-# fetch takes operands and a few flags, so no option (--upload-pack, -c) can run a program.
+# recovery: the payload ($1) is a Bash call to one command that repairs a refusal, and nothing
+# that could repoint what the launcher trusts. Only these characters, so no operator, quote,
+# substitution, refspec (: +) or transport (::) can appear; git fetch takes only the listed
+# flags and the one operand origin, so it can neither run a program (--upload-pack, -c) nor
+# write a ref of its choosing (git fetch . +HEAD:refs/remotes/origin/main).
 recovery() {
-  command -v jq >/dev/null 2>&1 || return 1
+  command -v jq >/dev/null 2>&1 || { nojq=1; return 1; }
   cmd=$(printf '%s' "$1" | jq -r 'if .tool_name == "Bash" and (.tool_input.command | type) == "string" then .tool_input.command else empty end' 2>/dev/null) || return 1
-  [ -n "$cmd" ] || return 1
-  case $cmd in *[!A-Za-z0-9@:/._=+,\ -]*) return 1 ;; esac
+  case $cmd in "" | *[!A-Za-z0-9@._\ -]*) return 1 ;; esac
   # shellcheck disable=SC2086 # split on purpose; -f is set
   set -- $cmd
   case "$*" in
-    "claude plugin update stridal@stridal" | "claude plugin install stridal@stridal" | "claude plugin marketplace update stridal") return 0 ;;
+    "stridal doctor" | "git remote set-head origin --auto" | "claude plugin update stridal@stridal" | "claude plugin install stridal@stridal" | "claude plugin marketplace update stridal") return 0 ;;
   esac
-  [ $# -ge 2 ] || return 1
-  case "$1 $2" in
-    "git fetch")
-      shift 2
-      for a; do
-        case $a in --prune | -p | --all | --quiet | -q | --tags | --no-tags) ;; -*) return 1 ;; esac
-      done
-      return 0 ;;
-    "stridal doctor") return 0 ;;
-  esac
-  return 1
+  [ $# -ge 2 ] && [ "$1 $2" = "git fetch" ] || return 1
+  shift 2
+  operand=
+  for a; do
+    case $a in
+      --prune | -p | --quiet | -q | --tags | --no-tags) ;;
+      origin) [ -z "$operand" ] || return 1; operand=1 ;;
+      *) return 1 ;;
+    esac
+  done
+  return 0
 }
 
 refuse() {
   payload=$(cat)
   recovery "$payload" && exit 0
   printf 'stridal: refused: %s\nfix: %s\n' "$1" "$2" >&2
+  [ -z "${nojq:-}" ] || printf 'stridal: jq is not on PATH, so no recovery command is recognized, the fix above included: install jq\n' >&2
   exit 2
+}
+
+# good_branch: a plain branch name. git already refuses an invalid symbolic ref (origin/HEAD
+# pointing at main~1 or x/.hidden reads as no HEAD at all), and this is stricter than git
+# check-ref-format --branch, which would cost a process and could never refuse what this passes.
+good_branch() {
+  case $1 in "" | -* | /* | */ | *..* | *.lock | *[!A-Za-z0-9/._-]*) return 1 ;; esac
 }
 
 # verified_engine: resolve main's pin and verify this platform's engine against it. On success,
 # $engine is the verified path and $release the pinned release; on failure, $why and $fix say
 # why. It reads no payload and refuses nothing itself, so it is the one seam a SessionStart hook
-# can call once per session to cache the verified path (resolve once, ADR-0018 decision 3; that
-# rests on OPS-199's CLAUDE_ENV_FILE spike, so nothing caches it yet).
+# can call once per session to cache the verified path (resolve once, ADR-0018 decision 3: OPS-184,
+# once OPS-199's spike decides the mechanism).
 unverified() { why=$1 fix=$2; }
 verified_engine() {
-  # Each process costs a few milliseconds on every guarded call, so the common path forks as few
-  # as it can: one sed for MAIN_BRANCH (the last assignment wins), one git for the lock.
-  nl='
-'
-  main=$(sed -n 's/^MAIN_BRANCH="\{0,1\}\([^" 	]*\)"\{0,1\}[ 	]*$/\1/p' "$proj/.claude/project.conf" 2>/dev/null)
-  main=${main##*"$nl"}
-  main=${main:-main}
-  # Full ref names, so a local branch named origin/main cannot stand in for the remote's.
-  ref=refs/remotes/origin/$main
-  if ! lock=$(read_lock "$ref"); then
-    # Only a repository with no origin at all reads its own main (a fork, a project not yet pushed).
-    if git -C "$proj" config --get remote.origin.url >/dev/null 2>&1; then
-      unverified "no .claude/stridal.lock at $ref" "git fetch origin"; return 1
-    fi
+  # Which branch is main: origin's HEAD (set by clone; git remote set-head origin --auto sets it
+  # again), or with no origin the main worktree's branch. Never the lane's project.conf, which a
+  # lane can point at a branch it pushed. Full ref names, so a local branch named origin/main
+  # cannot stand in for the remote's.
+  if head=$(git -C "$proj" symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null); then
+    main=${head#refs/remotes/origin/}
+    [ "$main" != "$head" ] && good_branch "$main" ||
+      { unverified "origin's HEAD names $head, not a branch of origin" "git remote set-head origin --auto"; return 1; }
+    ref=refs/remotes/origin/$main
+    lock=$(read_lock "$ref") || { unverified "no .claude/stridal.lock at $ref" "git fetch origin"; return 1; }
+  elif git -C "$proj" config --get remote.origin.url >/dev/null 2>&1; then
+    unverified "origin has no HEAD, so which of its branches is main is unknown" "git remote set-head origin --auto"; return 1
+  else
+    # No origin (a fork, a project not yet pushed): the branch the main worktree has checked out,
+    # the first entry git worktree list prints, which a lane's own worktree does not change.
+    main=$(git -C "$proj" worktree list --porcelain 2>/dev/null | sed -n '1,/^$/s/^branch refs\/heads\///p')
+    good_branch "$main" || { unverified "with no origin, the main worktree has no branch to read the lock from" "stridal doctor"; return 1; }
     ref=refs/heads/$main
     lock=$(read_lock "$ref") || { unverified "no .claude/stridal.lock at $ref" "stridal doctor"; return 1; }
   fi

@@ -6,18 +6,22 @@ import (
 )
 
 // The recovery allowlist: the commands a refused repository may still run, because they repair
-// what it was refused for (ADR-0018 decision 5): fetch main's lock, update the plugin, ask doctor.
-// It is the launcher's (recovery() in stridal-engine.sh), because it must run when no engine can
-// be trusted; this is its Go twin, held equal to it by TestRecoveryAllowlistMatchesTheLauncher.
+// what it was refused for (ADR-0018 decision 5): fetch main's lock, set origin's HEAD again,
+// update the plugin, ask doctor. It is the launcher's (recovery() in stridal-engine.sh), because it
+// must run when no engine can be trusted; this is its Go twin, held equal to it by the recovery
+// corpus (TestIsRecoveryMatchesTheCorpus and the launcher's "recovery" cases).
 //
-// The match is exact and coarse on purpose. Only these characters may appear, so no shell
-// operator, quote, substitution or newline can carry a second command; git fetch takes only
-// operands and a few flags, so no option (--upload-pack, -c) can run a program.
-const recoveryChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@:/._=+,- "
+// It allows nothing that could repoint what the launcher trusts. Only these characters, so no
+// shell operator, quote, substitution, refspec (: +) or transport (::) can appear; git fetch takes
+// only the listed flags and the one operand origin, so it can neither run a program
+// (--upload-pack, -c) nor write a ref of its choosing (git fetch . +HEAD:refs/remotes/origin/main).
+const recoveryChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@._- "
 
-var fetchFlags = map[string]bool{"--prune": true, "-p": true, "--all": true, "--quiet": true, "-q": true, "--tags": true, "--no-tags": true}
+var fetchFlags = map[string]bool{"--prune": true, "-p": true, "--quiet": true, "-q": true, "--tags": true, "--no-tags": true}
 
-var pluginCommands = map[string]bool{
+var exactRecovery = map[string]bool{
+	"stridal doctor":                           true,
+	FixSetHead:                                 true,
 	"claude plugin update stridal@stridal":     true,
 	"claude plugin install stridal@stridal":    true,
 	"claude plugin marketplace update stridal": true,
@@ -36,24 +40,23 @@ func IsRecovery(command string) bool {
 		}
 	}
 	w := strings.Fields(command)
-	if pluginCommands[strings.Join(w, " ")] {
+	if exactRecovery[strings.Join(w, " ")] {
 		return true
 	}
-	if len(w) < 2 {
+	if len(w) < 2 || w[0] != "git" || w[1] != "fetch" {
 		return false
 	}
-	switch w[0] + " " + w[1] {
-	case "git fetch":
-		for _, a := range w[2:] {
-			if strings.HasPrefix(a, "-") && !fetchFlags[a] {
-				return false
-			}
+	operand := false
+	for _, a := range w[2:] {
+		switch {
+		case fetchFlags[a]:
+		case a == "origin" && !operand:
+			operand = true
+		default:
+			return false
 		}
-		return true
-	case "stridal doctor":
-		return true
 	}
-	return false
+	return true
 }
 
 // PayloadIsRecovery reads a hook payload: a Bash call whose command IsRecovery.

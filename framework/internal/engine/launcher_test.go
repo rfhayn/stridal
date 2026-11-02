@@ -3,7 +3,9 @@ package engine
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -19,8 +21,11 @@ type launcherCase struct {
 	// setup changes the fixture and returns the directory to run in ("" is the clone).
 	setup func(f *fixture) string
 	check func(f *fixture, r result) error
-	// verdict is what the Go twin (Decide) must say about the same fixture.
+	// verdict is what the Go twin (Decide) must say about the same fixture. Decide does not read
+	// the control's name, so a bad name is still Run to it.
 	verdict Verdict
+	// control is the control name the launcher is given: "" is guard.sh, "-" is none.
+	control string
 }
 
 func standAside(_ *fixture, r result) error {
@@ -212,35 +217,140 @@ var launcherCases = []launcherCase{
 			return ""
 		},
 		check: refused("no .claude/stridal.lock at refs/remotes/origin/main", "git fetch origin")},
-	{name: "a repository with no origin reads its own main", verdict: Run,
-		setup: func(f *fixture) string { f.git(f.proj, "remote", "remove", "origin"); return "" },
-		check: ranControl(pluginGuard, 0)},
-	{name: "with no origin, a lock on another branch does not count", verdict: Refuse,
+	{name: "with no origin, a missing lock refuses", verdict: Refuse,
 		setup: func(f *fixture) string {
-			good := f.lockFor(f.engineSum())
 			f.git(f.proj, "remote", "remove", "origin")
 			f.commitLock(f.proj, "")
-			f.git(f.proj, "checkout", "-q", "-b", "side")
-			f.commitLock(f.proj, good)
+			must(f.t, os.WriteFile(filepath.Join(f.proj, ".claude", "stridal.lock"), []byte(f.lockFor(f.engineSum())), 0o644))
 			return ""
 		},
 		check: refused("no .claude/stridal.lock at refs/heads/main", "stridal doctor")},
-	{name: "the last MAIN_BRANCH assignment wins", verdict: Run,
+	{name: "a repository with no origin reads its own main", verdict: Run,
+		setup: func(f *fixture) string { f.git(f.proj, "remote", "remove", "origin"); return "" },
+		check: ranControl(pluginGuard, 0)},
+	{name: "with no origin, a lane's own branch does not count", verdict: Refuse,
 		setup: func(f *fixture) string {
-			must(f.t, os.WriteFile(filepath.Join(f.proj, ".claude", "project.conf"), []byte("MAIN_BRANCH=\"trunk\"\nMAIN_BRANCH=main\n"), 0o644))
+			good := f.lockFor(f.engineSum())
+			f.git(f.proj, "remote", "remove", "origin")
+			f.commitLock(f.proj, f.lockFor(garbage))
+			wt := worktree(f, good)
+			laneConf(f, wt, "lane")
+			return wt
+		},
+		check: refused("is not the one the lock pins", "claude plugin update stridal@stridal")},
+	{name: "with no origin, a main worktree on no branch refuses", verdict: Refuse,
+		setup: func(f *fixture) string {
+			f.git(f.proj, "remote", "remove", "origin")
+			f.git(f.proj, "checkout", "-q", "--detach")
 			return ""
 		},
-		check: ranControl(pluginGuard, 0)},
-	{name: "MAIN_BRANCH names the branch the lock is read from", verdict: Run,
+		check: refused("the main worktree has no branch", "stridal doctor")},
+	{name: "a lane's MAIN_BRANCH naming its own pushed branch does not choose the pin", verdict: Refuse,
+		setup: func(f *fixture) string {
+			good := f.lockFor(f.engineSum())
+			f.setOriginLock(f.lockFor(garbage))
+			wt := worktree(f, good)
+			laneConf(f, wt, "lane")
+			f.git(wt, "push", "-q", "origin", "lane")
+			f.git(f.proj, "fetch", "-q", "origin")
+			return wt
+		},
+		check: refused("is not the one the lock pins", "claude plugin update stridal@stridal")},
+	{name: "a lane's MAIN_BRANCH naming an older main does not choose the pin", verdict: Refuse,
+		setup: func(f *fixture) string {
+			f.setOriginLock(f.lockFor(garbage)) // main~1 still holds the good lock
+			wt := worktree(f, f.lockFor(garbage))
+			laneConf(f, wt, "main~1")
+			return wt
+		},
+		check: refused("is not the one the lock pins", "claude plugin update stridal@stridal")},
+	{name: "origin's HEAD names the branch the lock is read from", verdict: Run,
 		setup: func(f *fixture) string {
 			good := f.lockFor(f.engineSum())
 			f.setOriginLock("")
 			f.git(f.up, "checkout", "-q", "-b", "trunk")
 			f.setOriginLock(good)
-			must(f.t, os.WriteFile(filepath.Join(f.proj, ".claude", "project.conf"), []byte("MAIN_BRANCH=\"trunk\"\n"), 0o644))
+			f.git(f.proj, "remote", "set-head", "origin", "trunk")
 			return ""
 		},
 		check: ranControl(pluginGuard, 0)},
+	{name: "origin with no HEAD refuses", verdict: Refuse,
+		setup: func(f *fixture) string { f.git(f.proj, "remote", "set-head", "origin", "--delete"); return "" },
+		check: refused("origin has no HEAD", "git remote set-head origin --auto")},
+	{name: "origin with no HEAD still allows git remote set-head origin --auto", verdict: Refuse,
+		setup: func(f *fixture) string {
+			f.git(f.proj, "remote", "set-head", "origin", "--delete")
+			bash(f, "git remote set-head origin --auto")
+			return ""
+		},
+		check: recovered},
+	{name: "origin's HEAD naming a ref off origin refuses", verdict: Refuse,
+		setup: func(f *fixture) string {
+			f.git(f.proj, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/heads/main")
+			return ""
+		},
+		check: refused("origin's HEAD names refs/heads/main, not a branch of origin", "git remote set-head origin --auto")},
+	{name: "origin's HEAD naming a branch outside the plain characters refuses", verdict: Refuse,
+		setup: func(f *fixture) string {
+			f.git(f.up, "branch", "a+b")
+			f.git(f.proj, "fetch", "-q", "origin")
+			f.git(f.proj, "remote", "set-head", "origin", "a+b")
+			return ""
+		},
+		check: refused("not a branch of origin", "git remote set-head origin --auto")},
+	{name: "a control name with a path refuses", verdict: Run, control: "../guard.sh",
+		check: refused("registered without a control name", "claude plugin update stridal@stridal")},
+	{name: "an empty control name refuses", verdict: Run, control: "-",
+		check: refused("registered without a control name", "claude plugin update stridal@stridal")},
+	{name: "a recovery command in a Read payload is refused", verdict: Refuse,
+		setup: func(f *fixture) string {
+			f.setOriginLock("")
+			f.payload = `{"tool_name":"Read","tool_input":{"command":"git fetch origin"}}`
+			return ""
+		},
+		check: refused("no .claude/stridal.lock", "git fetch origin")},
+	{name: "a payload that is not JSON is refused", verdict: Refuse,
+		setup: func(f *fixture) string { f.setOriginLock(""); f.payload = "git fetch origin"; return "" },
+		check: refused("no .claude/stridal.lock", "git fetch origin")},
+	{name: "without jq, the refusal says jq is required", verdict: Refuse,
+		setup: func(f *fixture) string {
+			f.setOriginLock("")
+			bash(f, "git fetch origin")
+			f.env["PATH"] = pathWithout(f, "jq")
+			return ""
+		},
+		check: func(f *fixture, r result) error {
+			if err := refused("no .claude/stridal.lock", "git fetch origin")(f, r); err != nil {
+				return err
+			}
+			if !strings.Contains(r.stderr, "jq is not on PATH") {
+				return fmt.Errorf("stderr %q does not say jq is required", r.stderr)
+			}
+			return nil
+		}},
+}
+
+// laneConf commits a project.conf naming main in a lane's worktree: the steering a lane can do.
+func laneConf(f *fixture, wt, main string) {
+	must(f.t, os.WriteFile(filepath.Join(wt, ".claude", "project.conf"), []byte("MAIN_BRANCH=\""+main+"\"\n"), 0o644))
+	f.git(wt, "add", "-A")
+	f.git(wt, "commit", "-q", "-m", "steer")
+}
+
+// pathWithout is a PATH of the tools the launcher and the fixture use, links into one directory,
+// with the named ones left out.
+func pathWithout(f *fixture, drop ...string) string {
+	bin := filepath.Join(f.root, "bin")
+	must(f.t, os.MkdirAll(bin, 0o755))
+	for _, tool := range []string{"sh", "git", "sed", "awk", "uname", "dirname", "cat", "sha256sum", "shasum", "openssl", "jq", "xcrun"} {
+		if slices.Contains(drop, tool) {
+			continue
+		}
+		if p, err := exec.LookPath(tool); err == nil {
+			_ = os.Symlink(p, filepath.Join(bin, tool))
+		}
+	}
+	return bin
 }
 
 // copyInstall is a `stridal install` project's registration path: the launcher is the project's
@@ -298,7 +408,15 @@ func runCase(t *testing.T, c launcherCase, mutate func(f *fixture)) (*fixture, s
 	if dir == "" {
 		dir = f.proj
 	}
-	return f, dir, f.runIn(dir, "guard.sh")
+	control := "guard.sh"
+	switch c.control {
+	case "":
+	case "-":
+		control = ""
+	default:
+		control = c.control
+	}
+	return f, dir, f.runIn(dir, control)
 }
 
 func TestLauncherDecisionTable(t *testing.T) {
@@ -318,6 +436,7 @@ func TestLauncherDecisionTable(t *testing.T) {
 	}
 }
 
+// A control name is a plain file name beside the launcher; anything else is a registration fault.
 func TestABadControlNameRefuses(t *testing.T) {
 	f := newFixture(t)
 	for _, h := range []string{"", "../guard.sh", "a b.sh", ".hidden.sh"} {

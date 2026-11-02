@@ -78,8 +78,12 @@ func TestTheRealEngineRunsTheControl(t *testing.T) {
 // TestLauncherLatency measures one guarded call, verify plus exec, through the launcher and the
 // real engine, with each hash tool the launcher can use: the per-call cost the row asks for.
 // Resolve once, at SessionStart (ADR-0018 decision 3), would take the git read and the hash off
-// this path; it rests on OPS-199's CLAUDE_ENV_FILE spike, so this is the cost until then. It
-// reports; the 10 ms ceiling is OPS-185's latency test, on the one dispatcher per event.
+// this path; it rests on OPS-199's CLAUDE_ENV_FILE spike, so this is the cost until then.
+//
+// It asserts nothing yet, and only reports. The number that gates activation is OPS-184's: the
+// launcher is not switched on until, with resolve once in place and outside the sandbox, a
+// guarded call costs about S4's 3.87 ms median (launcher plus engine) and stays within ADR-0018's
+// 10 ms per-call ceiling, which OPS-185's latency test then holds.
 func TestLauncherLatency(t *testing.T) {
 	f := realFixture(t)
 	bash(f, "ls")

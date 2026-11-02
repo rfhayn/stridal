@@ -181,13 +181,16 @@ const (
 	FixPlugin  = "claude plugin update stridal@stridal"
 	FixInstall = "claude plugin install stridal@stridal"
 	FixDoctor  = "stridal doctor"
+	FixSetHead = "git remote set-head origin --auto"
 )
 
 // Decide is the launcher's decision table, in the launcher's order. The first failing row is
 // the answer:
 //
 //	no marker                                  stand aside, payload unread
-//	no lock at LockRef, or one that won't parse refuse: fetch main's lock
+//	origin with no HEAD, or one off origin     refuse: set origin's HEAD again
+//	no origin, main worktree on no branch      refuse: ask doctor
+//	no lock at MainRef, or one that won't parse refuse: fetch main's lock (doctor with no origin)
 //	no engine pinned for this platform         refuse: the release does not carry one
 //	no plugin root                             refuse: install the plugin
 //	plugin version != the lock's release       refuse: update the plugin (or the lock, OPS-201)
@@ -202,11 +205,7 @@ func Decide(ctx context.Context, e Env) Decision {
 	l, ref, err := ReadLock(ctx, e.ProjectDir)
 	d.LockRef = ref
 	if err != nil {
-		// With no origin there is nothing to fetch: the lock is committed to main itself.
-		d.Reason, d.Fix = err.Error(), FixFetch
-		if strings.HasPrefix(ref, "refs/heads/") {
-			d.Fix = FixDoctor
-		}
+		d.Reason, d.Fix = err.Error(), FixOf(err)
 		return d
 	}
 	d.Lock = l
