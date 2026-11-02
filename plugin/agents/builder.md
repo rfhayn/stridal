@@ -55,7 +55,7 @@ it, or code predating the change) is deleted only by returning `design-issue` th
 how many findings it has.
 
 **Context discipline.** Every line you read is re-read as cache on each later turn, so:
-- Gate with the agent-facing wrapper (`GATE` in `.claude/project.conf`), never the full runner
+- When you gate, use the agent-facing wrapper (`GATE` in `.claude/project.conf`), never the full runner
   directly: it prints the failures and a tail, and names the full log to `grep`. If the tool moves
   the gate to the background, call `scripts/ci/gate-wait.sh` in the foreground (timeout 600000):
   exit 3 means call it again; any other exit is the answer (0 PASS, 1 FAIL; 4 or 2: no result, run
