@@ -73,8 +73,8 @@ do one group alone. The loop is the same, and so are its stops.
    split the work, or send it back to design. Do not put those findings under `KNOWN LIMITS` or
    merge. With `known-limits`, what is left goes to the PR's `KNOWN LIMITS`, each with the issue or
    row that owns it. Lows still merge either way, each under `KNOWN LIMITS` with its owner.
-5. **Commit** the group once a round finds nothing medium or worse: add one line under
-   `## Progress` in `tasks.md` (`- <date> group N (<title>) built and reviewed: converged in <n>
+5. **Commit** the group once a round finds nothing medium or worse: tick a task under this group's
+   own heading that asks for its review, add one line under `## Progress` in `tasks.md` (`- <date> group N (<title>) built and reviewed: converged in <n>
    round(s), peak <sev>`), check `git diff HEAD --name-status` for anything secret-looking,
    `git add -u`, and commit `<id>: task group N — <title>`, ending with the provenance trailers
    (`Change:`, `Agent-Role: builder`, `Model:`, `Session:`) and the attribution trailer when
@@ -82,7 +82,8 @@ do one group alone. The loop is the same, and so are its stops.
 
 ## Then
 - The full gate on the committed HEAD: `scripts/ci/gate.sh` (no flags), with the sandbox off until
-  Stridal's OPS-216 (`merge-pr` step 2 says who runs it). It writes the receipt.
+  Stridal's OPS-216 (`merge-pr` step 2 says who runs it). It writes the receipt. If a task asks for
+  a full gate, tick it and commit first; untick and commit if the gate fails.
   If the tool moves the gate to the background, call `scripts/ci/gate-wait.sh` in the foreground
   (timeout 600000): exit 3 means call it again; any other exit is the answer (0 PASS, 1 FAIL; 4 or
   2: no result, run the gate again).
