@@ -98,8 +98,9 @@ started from the panel's **New lane** (or by hand), on one branch:
     process checks. A subagent lane runs only the checks its files touch, then hands back its
     worktree and head. A lane that is its own session has no orchestrator, so it runs its gates
     itself with an approved bypass. **The exception is a `build-change` run**: its gate agents run
-    sandboxed, and a process check that fails because of the sandbox stops the run as an
-    environment fault, for the session that started it.
+    sandboxed. A step that fails on a sandbox refusal stops the run as an environment fault at the
+    quick gate; at the full gate it stops at `receipt`, quoting the line. The next move is in the
+    stops table.
 - **One full gate at a time.** All lanes share one gate lease (`scripts/ci/run-local.sh`), so a
   lane's full gate may queue behind another's; the panel shows who holds it. A `--quick` run takes
   no lease and never queues.
@@ -290,6 +291,7 @@ is an earlier group lifts the group boundary for exactly that fix.
 | preflight | wrong branch, dirty tree, in the main checkout, nothing to build | fix the named precondition, re-run (a mid-group stop: `{"resume": <n>}`) |
 | design-issue | building would change a decided design or a spec | decide; the proposal or design is updated; re-run |
 | blocked / environment fault | a service down, a credential missing | fix the environment, re-run with `resume` |
+| environment fault or `receipt` stop on a sandbox refusal | a gate agent runs sandboxed until Stridal's OPS-216 | re-run that gate from the orchestrating session with the sandbox off. Red: it was the code, fix it. Green: it was the sandbox, `resume` cannot pass it until Stridal's OPS-216, finish by hand with `/apply-change` |
 | gate still red | two fix attempts failed | read the failure; fix or split the group |
 | severity rose | fixes introduced worse defects than they removed | read the rounds; usually the group is too big: split it |
 | not converged | three rounds without a clean one | rule on the builder's disputes, or split the group |

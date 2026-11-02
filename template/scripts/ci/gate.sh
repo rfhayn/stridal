@@ -17,8 +17,8 @@
 #   scripts/ci/gate.sh --docs      the docs gate, for a prose-only PR (merge-pr step 2)
 #   scripts/ci/gate.sh -C DIR …    any of these, for the checkout DIR is in (first argument only)
 #
-# -C DIR (OPS-161). A lane run as a subagent starts every Bash call in the main checkout, so it names
-# its worktree instead of changing directory, and this runs THAT checkout's own gate.sh from its top
+# -C DIR (OPS-161). A session whose Bash starts elsewhere names the worktree instead of changing
+# directory, and this runs THAT checkout's own gate.sh from its top
 # level, as if started there: the tree under test runs its own wrapper, runner, steps and config,
 # never the caller's. settings.json's sandbox.excludedCommands does not lift the sandbox for this
 # script (not honoured on Claude Code 2.1.316, spike S5h), and sandboxed, `ps`, git's caches and the

@@ -71,10 +71,10 @@ again, the receipt is stale: re-run.
 **The gate needs the sandbox off, and `settings.json` does not give it that:**
 `sandbox.excludedCommands` is not honoured on Claude Code 2.1.316 (spike S5h), and sandboxed, the
 gate's process checks fail whatever the code did. So until Stridal's OPS-216:
-- **The orchestrating session** runs this gate with `dangerouslyDisableSandbox`. For a lane's
-  branch it names the worktree rather than `cd`-ing to it: `scripts/ci/gate.sh -C <worktree>`, and
+- **The orchestrating session** runs this gate, the docs gate below and the whole-set process checks
+  with `dangerouslyDisableSandbox`. For a lane's branch it names the worktree rather than `cd`-ing to it: `scripts/ci/gate.sh -C <worktree>`, and
   `scripts/ci/gate-wait.sh -C <worktree>` if the tool backgrounds it. Run each alone, as written.
-- **A lane that is a subagent** does not run it. It stops here and hands back, naming its worktree
+- **A lane that is a subagent** does not run them. It stops here and hands back, naming its worktree
   and head commit; the orchestrating session gates that head and goes on from there.
 - **A lane that is its own session** (a panel lane, or a new terminal tab) has no orchestrator: it
   runs the gate itself from its checkout with `dangerouslyDisableSandbox`, through the permission

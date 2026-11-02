@@ -11,7 +11,7 @@
 #
 #   scripts/ci/gate-wait.sh        from the checkout whose gate is running; Bash timeout 600000
 #   scripts/ci/gate-wait.sh -C DIR the same for the checkout DIR is in, from anywhere (OPS-161): a
-#                                  lane whose Bash starts in the main checkout names its worktree,
+#                                  session whose Bash starts elsewhere names the worktree,
 #                                  as it ran its gate (scripts/ci/gate.sh -C DIR). It runs DIR's own
 #                                  copy, and every command it then names carries the same -C.
 #

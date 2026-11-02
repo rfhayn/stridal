@@ -291,7 +291,7 @@ const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor
 const WORKTREE = { gitDir: '/repo/.git/worktrees/build-demo', commonDir: '/repo/.git', toplevel: '/repo/.claude/worktrees/build-demo' }
 const OPENED = 'marker: opened https://github.com/o/r/pull/1 as a draft (session-start: S1 2026-10-01 09:00 ET row DEMO-1)'
 const BELOW = 'quota-gate: below — 7d 40% (resets Mon 2026-10-05 12:00 ET) under 90% (QUOTA_LANE_STOP_PCT)\nexit 0'
-async function run(round1, { where = WORKTREE, args = {}, cfg = {}, budget = {}, commitCost = null, groups = null, round2 = null, fixNotes = '' } = {}) {
+async function run(round1, { where = WORKTREE, args = {}, cfg = {}, budget = {}, commitCost = null, groups = null, round2 = null, fixNotes = '', gateResult = null } = {}) {
   const calls = []
   // commitCost: change-cost.sh's reading after each commit, one for every commit or a list in commit order.
   const costs = [].concat(commitCost)
@@ -304,6 +304,7 @@ async function run(round1, { where = WORKTREE, args = {}, cfg = {}, budget = {},
     if (label === 'preflight') return { branch: 'change/demo', clean: true, ...where, risk: 'normal', reviewCap: '3 — risk normal, from the test; REVIEW_AT_CAP stop', budgetUsd: null, budgetKind: 'none', costUsd: null, economy: false, today: '2026-10-01', gate: '', quickFlags: '', marker: OPENED, quotaGate: BELOW, ...budget,
       groups: groups || [{ n: 1, title: 'Substrate', openTasks: 0 }, { n: 2, title: 'Service and API', openTasks: 0 }, { n: 3, title: 'Screens', openTasks: 2 }, { n: 4, title: 'Close-out', openTasks: 0 }] }
     if (label.startsWith('build:') || label.startsWith('review-fix:') || label.startsWith('gate-fix:')) return { status: 'done', summary: 'ok', disputed: [], notes: fixNotes }
+    if (label.startsWith('gate:') && gateResult) return { diffHash: `h${++h}`, ...gateResult }
     if (label.startsWith('gate:') || label === 'receipt') return { passed: true, evidence: 'ok', diffHash: `h${++h}` }
     if (label.startsWith('review:')) return reviews.shift()
     if (label.startsWith('commit:')) return { committed: true, sha: 'abc1234', costUsd: costs.length > 1 ? costs.shift() : costs[0] }
@@ -371,6 +372,13 @@ const t = (label, cond, got) => out.push(`${cond ? 'ok  ' : 'FAIL'} driver: ${la
   const gate = later.find((c) => c.opts.label === 'gate:3#1'), receipt = later.find((c) => c.opts.label === 'receipt')
   t('the quick gate agent runs `scripts/ci/gate.sh --quick` and gate-wait as LONE commands, exempt from PIN\'s cd rule, chained nowhere', !!gate && lone(gate, 'scripts/ci/gate.sh --quick'), gate && gate.prompt)
   t('the receipt agent runs `scripts/ci/gate.sh` and gate-wait the same way', !!receipt && lone(receipt, 'scripts/ci/gate.sh'), receipt && receipt.prompt)
+  // A gate agent runs sandboxed until OPS-216: a sandbox refusal stops the run, naming the line, and
+  // no builder is sent after a failure that is not the code's (OPS-217).
+  const refused = 'go: mkdir cache: Operation not permitted'
+  const faulted = await run([], { groups: [{ n: 1, title: 'Substrate', openTasks: 1 }], gateResult: { passed: false, environmentFault: true, evidence: refused } })
+  t('a gate reporting an environment fault stops at group 1 gate, its evidence in the reason, with no gate-fix agent', faulted.report.stoppedAt === 'group 1 gate' && faulted.report.reason.includes(refused) && !faulted.calls.some((c) => c.opts.label.startsWith('gate-fix:')), [faulted.report.stoppedAt, faulted.report.reason, faulted.calls.map((c) => c.opts.label).join()])
+  const qgp = (faulted.calls.find((c) => c.opts.label === 'gate:1#1') || {}).prompt || ''
+  t('the gate agent is told that a sandbox refusal sets environmentFault, with its line in evidence', qgp.includes('sandbox refusal') && qgp.includes('Operation not permitted') && qgp.includes('set environmentFault=true') && qgp.includes('in evidence'), qgp)
   // A project whose template runner moved (GATE_RUN=ci/run-local.sh) has gate-wait at ci/ (OPS-72).
   r = await run([], { cfg: { gate: 'ci/gate.sh', gateWait: 'ci/gate-wait.sh' } })
   const g2 = r.calls.find((c) => c.opts.label === 'gate:3#1'), r2 = r.calls.find((c) => c.opts.label === 'receipt')
