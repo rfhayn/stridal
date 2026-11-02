@@ -78,14 +78,32 @@ EOF
   # The scan tree holds EVERY tracked file (#383). A list past one xargs batch (BSD: 5000 args;
   # GNU: about 128 KiB, so the names are long) once made several archives, and `tar -x` stopped
   # at the first one's end: the secret sits last in `git ls-files` order, in the last batch.
-  git -C "$L" rm -q FAIL_SECRET
+  git -C "$L" rm -q FAIL_SECRET || fail "setup: git rm FAIL_SECRET failed"
   mkdir -p "$L/bulk" "$L/zz"; i=0
   while [ "$i" -lt 6000 ]; do i=$((i + 1)); : > "$L/bulk/a-tracked-file-with-a-long-name-$i"; done
   printf 'secret\n' > "$L/zz/FAIL_SECRET"
   git -C "$L" add -A && git -C "$L" commit -qm "6000 files, then a leak"
-  [ "$(git -C "$L" ls-files | tail -1)" = zz/FAIL_SECRET ] || fail "the planted leak is not last in git ls-files order"
+  [ "$(git -C "$L" ls-files | grep FAIL_SECRET)" = zz/FAIL_SECRET ] || fail "setup: zz/FAIL_SECRET is not the one tracked FAIL_SECRET: $(git -C "$L" ls-files | grep FAIL_SECRET | tr '\n' ' ')"
+  [ "$(git -C "$L" ls-files | tail -1)" = zz/FAIL_SECRET ] || fail "setup: the planted leak is not last in git ls-files order"
   own; rc=$?
   expect_rc 1 "$rc" "...and a secret past the first xargs batch of 6000 tracked files fails it too"
+  grep -q '^==> FAIL: secrets' "$d/own.out" && grep -q 'leaks found' "$d/own.out" \
+    && ok "...at the secrets step, on the finding" || fail "6000 files: $(grep -e '^==>' -e 'secrets:' -e leaks "$d/own.out" | tr '\n' ' ')"
+  # A tar that cannot make the copy (BusyBox tar has no --null, and its error goes to /dev/null)
+  # leaves the copy short, and gitleaks passes over what is not there: the step fails instead.
+  mkdir -p "$d/tarbin"; realtar=$(command -v tar)
+  printf '#!/bin/sh\ncase " $* " in *" --null "*) echo "tar: unrecognized option: null" >&2; exit 1 ;; esac\nexec "%s" "$@"\n' "$realtar" > "$d/tarbin/tar"
+  chmod +x "$d/tarbin/tar"
+  (cd "$L" && PATH="$d/tarbin:$d/bin:$np" CI= sh infra/mine.sh) >"$d/own.out" 2>&1; rc=$?
+  expect_rc 1 "$rc" "...and a tar that cannot copy the tracked files fails it, not a scan of nothing"
+  grep -q '^==> FAIL: secrets' "$d/own.out" && grep -q 'secrets: FAIL — the scan copy holds 0 of [0-9]* tracked files' "$d/own.out" \
+    && ok "...at the secrets step, naming the short copy" || fail "short copy: $(grep -e '^==>' -e 'secrets:' "$d/own.out" | tr '\n' ' ')"
+  # A dirty tree (a --quick run) with a tracked file deleted: the copy is not short of it.
+  git -C "$L" rm -q zz/FAIL_SECRET && git -C "$L" commit -qm "no leak"
+  rm "$L/bulk/a-tracked-file-with-a-long-name-1"
+  own; rc=$?
+  expect_rc 0 "$rc" "...and a tracked file deleted in a dirty tree is not counted as missing from the copy"
+  git -C "$L" checkout -q -- bulk
 fi
 
 # ── The lease conformance kit (P1.12): shipped as stridal tests it ────────────────────

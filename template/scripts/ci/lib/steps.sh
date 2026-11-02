@@ -61,6 +61,20 @@ model_secret_scan() {
     # One archive from the whole list: through xargs, a list past one batch made several, and
     # `tar -x` stops at the first one's end, so the later files went unscanned (#383).
     git ls-files -z | tar --null -T - -cf - 2>/dev/null | tar -xf - -C "$_ss_tmp" 2>/dev/null
+    # The copy must hold every tracked path the worktree has: a tar that rejects a flag (BusyBox
+    # tar has no --null) or a list cut short leaves files out, its error is silenced above, and
+    # gitleaks passes over what is not there. Path by path, so each side counts a gitlink (a
+    # directory) and a symlink (to a directory, or dangling) once, and a file deleted in a dirty
+    # tree is not wanted. xargs batching is harmless here: each path's tally stands alone.
+    _ss_tally=$(git ls-files -z | xargs -0 sh -c 'c=$1; shift; for p; do
+      { [ -e "$p" ] || [ -h "$p" ]; } || continue; printf w
+      { [ -e "$c/$p" ] || [ -h "$c/$p" ]; } && printf c; done' sh "$_ss_tmp")
+    _ss_want=$(( $(printf %s "$_ss_tally" | tr -dc w | wc -c) ))
+    _ss_have=$(( $(printf %s "$_ss_tally" | tr -dc c | wc -c) ))
+    if [ "$_ss_have" -lt "$_ss_want" ]; then
+      echo "secrets: FAIL — the scan copy holds $_ss_have of $_ss_want tracked files"
+      rm -rf "$_ss_tmp"; return 1
+    fi
     _ss_src=$_ss_tmp
   fi
   _ss_rc=0
