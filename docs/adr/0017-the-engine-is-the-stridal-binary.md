@@ -62,7 +62,7 @@ and unit tests.
      flag.
    - **The template's settings allow both servers' tools** (`mcp__plugin_stridal_stridal-read__*`,
      `mcp__plugin_stridal_stridal-write__*`), so hands-off runs never stall on a permission prompt.
-     Who may write is decided per agent: each agent's `tools:` line names the servers it may call,
+     Who may write is decided per agent: each agent's `tools:` line names the tools it may call,
      and `checks/model-roles.sh` treats a `stridal-write` tool as a write tool. A read-only role
      (the reviewers, the researcher) can therefore never call an action.
    - **An action's invariant lives in one engine function.** The MCP action, its CLI twin and any
@@ -135,6 +135,14 @@ and unit tests.
 
 **Enforcement** (in addition to the above): the Deps cells of `docs/roadmap.md`, which
 `checks/roadmap.sh` parses; the order itself is **Nothing. You.**
+
+## Amendment — 2026-11-02: a `tools:` line names tools
+- **Source**: the owner, 2026-11-02 (OPS-203's records PR).
+
+Decision 1 said each agent's `tools:` line names the servers it may call, a form no spike tested:
+S5g showed filtering by each tool's name only. It now says tools. A read-only role lists the read
+tools by name, and `checks/model-roles.sh` still bars a `stridal-write` tool. OPS-193 may still test
+a server name or a wildcard, which would only shorten the list.
 
 ## Related
 - ADR-0016 (the five kinds), ADR-0018 (one version authority), ADR-0019 (parity ports), ADR-0020

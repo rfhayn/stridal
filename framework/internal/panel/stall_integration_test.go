@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -226,13 +227,26 @@ func stopSaveTicks() Ticks {
 type noticeLog struct {
 	mu sync.Mutex
 	ns []state.Notice
+	at []time.Time // when each of ns was sent
 }
 
 func (l *noticeLog) notify(n state.Notice) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.ns = append(l.ns, n)
+	l.ns, l.at = append(l.ns, n), append(l.at, time.Now())
 	return nil
+}
+
+// sentAt is when lane's first stalled notification was sent, zero if none was.
+func (l *noticeLog) sentAt(lane string) time.Time {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for i, n := range l.ns {
+		if slices.Contains(n.Keys, state.AlertStalled+":"+lane) {
+			return l.at[i]
+		}
+	}
+	return time.Time{}
 }
 
 // stalled lists the lanes a notification was sent for as stalled.
@@ -652,9 +666,11 @@ func TestStallNoPageLeavesTasksAndThreadsPageOnly(t *testing.T) {
 	})
 }
 
-// [STALL-1-S8] The stall time is the project's: two projects, each with an idle lane
-// and an open pull request; the one whose alerts.stall_minutes is set stalls, while
-// the attached one whose sidecar sets it to 0 shows no stall and no stalled alert.
+// [STALL-1-S8] The stall time is the project's: two projects, each with an open pull
+// request and in the end an idle lane; the one whose alerts.stall_minutes is set stalls,
+// while the attached one whose sidecar sets it to 0 shows no stall, no stalled alert and
+// sends no notice. The project's own lane starts busy so that going idle moves its clock:
+// see below.
 func TestStallTimeIsTheProjects(t *testing.T) {
 	t.Parallel()
 	root, wt := stallRepo(t, "a")
@@ -669,7 +685,7 @@ func TestStallTimeIsTheProjects(t *testing.T) {
 	sideWT := signals.ResolvePath(filepath.Join(side, ".wt-s"))
 	// A stall.json left by an earlier panel: with stalls off the runtime removes it, and
 	// with the 0 read as unset (the 30-minute default) it would keep and rewrite it, so
-	// its absence below tells the two apart where a 2 s wait cannot.
+	// its absence below tells the two apart where a wait of one stall time cannot.
 	sideStall := filepath.Join(config.ProjectDir(home, side), "stall.json")
 	if err := os.MkdirAll(filepath.Dir(sideStall), 0o700); err != nil {
 		t.Fatal(err)
@@ -677,31 +693,46 @@ func TestStallTimeIsTheProjects(t *testing.T) {
 	writeFile(t, sideStall, "{}")
 	w := newStallWorld()
 	w.set(func(w *stallWorld) {
-		w.agents = []signals.Agent{agent("own", wt["a"], "idle", ""), agent("att", sideWT, "idle", "")}
+		w.agents = []signals.Agent{agent("own", wt["a"], "busy", ""), agent("att", sideWT, "idle", "")}
 		w.open["change/a"], w.open["change/s"] = 10, 11
 	})
-	p := runStallPanel(t, root, home, w, &noticeLog{})
-	waitFor(t, "the project's lane stalled on its open pull request", func() bool {
-		s := laneStall(p.state(t, ""), wt["a"])
-		return s != nil && strings.Contains(strings.Join(s.OpenWork, ","), "#10 open")
-	})
-	waitFor(t, "the attached project's lane and its pull request read", func() bool {
-		v := p.state(t, "side")
-		listed := false
+	log := &noticeLog{}
+	p := runStallPanel(t, root, home, w, log)
+	listed := func(v state.View, path, id string) bool {
 		for _, l := range v.Lanes {
 			for _, s := range l.Sessions {
-				listed = listed || (l.Path == sideWT && s.ID == "att")
-			}
-		}
-		for _, pr := range v.PRs {
-			if listed && pr.Number == 11 {
-				return true
+				if l.Path == path && s.ID == id {
+					return true
+				}
 			}
 		}
 		return false
+	}
+	waitFor(t, "the attached project's lane and its pull request read", func() bool {
+		v := p.state(t, "side")
+		return listed(v, sideWT, "att") && listsPR(v, 11)
 	})
-	// Past the stall time again, the attached project still has none.
-	time.Sleep(2 * time.Second)
+	// Listed busy first: a session's first reading is a baseline, not movement, so an idle one
+	// first read after the change below would move no clock.
+	waitFor(t, "the project's own lane listed busy", func() bool { return listed(p.state(t, ""), wt["a"], "own") })
+	// The project's own lane goes idle only now, which moves its clock: its stall since then is
+	// the event that says a whole stall time has passed since the attached lane was read, on the
+	// rule's own clock, however loaded the machine and whatever the stall time is. An earlier
+	// since is no such event: a poll slow enough to make the reading stale lets the lane stall
+	// on its clock from the panel's start. The attached project still has none, and has sent
+	// none, at a notify tick past that.
+	flipped := time.Now().UnixMilli()
+	w.set(func(w *stallWorld) {
+		w.agents = []signals.Agent{agent("own", wt["a"], "idle", ""), agent("att", sideWT, "idle", "")}
+	})
+	waitFor(t, "the project's lane stalled on its open pull request, since it went idle", func() bool {
+		s := laneStall(p.state(t, ""), wt["a"])
+		return s != nil && s.Since >= flipped && strings.Contains(strings.Join(s.OpenWork, ","), "#10 open")
+	})
+	p.polls.more(t, p.state(t, "side").ProjectID+"/notify", 2) // 2: one may already be in flight, on a view from before
+	if slices.Contains(log.stalled(), sideWT) {
+		t.Fatalf("the attached project, stall_minutes 0, sent a stalled notice: %v", log.stalled())
+	}
 	v := p.state(t, "side")
 	if s := laneStall(v, sideWT); s != nil {
 		t.Fatalf("the attached project, stall_minutes 0, shows a stall: %+v", s)
@@ -778,13 +809,14 @@ func restartHolding(t *testing.T, p *stallPanel, root, home string, w *stallWorl
 // [STALL-3-S7] Review round 2, M1 (D1): two restarts, the second panel stopped while
 // `gh` is still held, so its saves (each tick's and the clean stop's) run before the
 // pull requests and the merged read have answered. The third panel still shows the
-// stall with the since it was notified for, exact, and sends nothing after its window:
-// a save does not write a stall it has not yet judged as ended.
+// stall with the since it was notified for, exact, and sends nothing again for lane a
+// after its window: a save does not write a stall it has not yet judged as ended. Lane b,
+// whose stall begins across the restart, is the window's end: sent once it is over.
 func TestStallSecondRestartBeforeGhAnswersSendsNothingAgain(t *testing.T) {
 	t.Parallel()
 	// The notifier's per-lane interval made short, so the first panel's push does not
 	// hold back a second one for a since the restarts moved.
-	root, wt := stallRepoAt(t, stallMinutes+`,"min_interval_seconds":0.1`, "a")
+	root, wt := stallRepoAt(t, stallMinutes+`,"min_interval_seconds":0.1`, "a", "b")
 	home := t.TempDir()
 	writeReceipt(t, wt["a"])
 	w := newStallWorld()
@@ -808,6 +840,11 @@ func TestStallSecondRestartBeforeGhAnswersSendsNothingAgain(t *testing.T) {
 	p2.stop()
 	release()
 
+	// Lane b's stall begins across this restart. stall.json carries none for it, so it stays
+	// approximate and unsent until the panel has watched for one stall time (D1): its notice is
+	// the event that says the window is over.
+	writeReceipt(t, wt["b"])
+	w.set(func(w *stallWorld) { w.agents = append(w.agents, agent("sb", wt["b"], "idle", "")) })
 	p3 := runStallPanel(t, root, home, w, again)
 	var s *state.StallView
 	waitFor(t, "the third panel shows lane a's stall, exact", func() bool {
@@ -817,11 +854,26 @@ func TestStallSecondRestartBeforeGhAnswersSendsNothingAgain(t *testing.T) {
 	if s.Since != since {
 		t.Errorf("after the second restart lane a is stalled since %d, want %d", s.Since, since)
 	}
-	// Past the third panel's window (the stall time), the notifier has ticked on.
-	time.Sleep(2 * time.Second)
+	// Past the third panel's window, the notifier has ticked on: lane b's notice alone.
+	waitFor(t, "lane b's stall sent, the window over", func() bool { return slices.Contains(again.stalled(), wt["b"]) })
+	// Sent any sooner, it says nothing about the window, and the ticks below would end inside it.
+	// From the send, not from seeing it, and from the start the window runs from (View.StartedAt, in
+	// ms and so never late): load cannot move either, so neither a pass nor a failure depends on it.
+	minutes, err := strconv.ParseFloat(stallMinutes, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	window := time.Duration(minutes * float64(time.Minute))
+	if d := again.sentAt(wt["b"]).Sub(time.UnixMilli(p3.state(t, "").StartedAt)); d < window {
+		t.Fatalf("lane b's stall, begun across the restart, sent %v after the third panel started, inside its window of %v", d, window)
+	}
 	p3.polls.more(t, p3.state(t, "").ProjectID+"/notify", 3)
-	if got := again.stalled(); len(got) != 0 {
-		t.Fatalf("the second restart sent the stall again: %v", got)
+	got := again.stalled()
+	if slices.Contains(got, wt["a"]) {
+		t.Fatalf("the second restart sent lane a's stall again: %v", got)
+	}
+	if !slices.Equal(got, []string{wt["b"]}) {
+		t.Fatalf("the third panel sent %v, want lane b's new stall once", got)
 	}
 	if got, ok := notifierMark(t, home, root, wt["a"]); !ok || got != since {
 		t.Fatalf("after the second restart notifier.json's mark is %d (held %v), want %d", got, ok, since)

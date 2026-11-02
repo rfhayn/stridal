@@ -55,12 +55,13 @@ If those lines show as literal text, run the commands yourself.
    Then run `scripts/ci/gate.sh --quick`, with the sandbox off (step 4b), and show the result.
 4. **The formatter** (`FORMAT_CMD`, `FORMAT_EXT`), if the project has one.
 4b. **Least privilege** (`.claude/settings.json`, kept current by `stridal install`): Claude may
-   not read `.env` files, keys, `~/.ssh` or `~/.aws`, force-push, or kill a tmux server, and Bash
-   runs in the sandbox with a network allowlist. `settings.json` lists git, gh, tmux, stridal,
-   docker and the gate in `sandbox.excludedCommands`, but that list is not honoured on Claude Code
-   2.1.316 (spike S5h): until Stridal's OPS-216, the gate and the full process checks run from the
-   orchestrating session with the sandbox off. Keep `sandbox.allowUnsandboxedCommands` true until
-   then: the gate needs that bypass. Tell the user. If one of the project's tools needs a
+   not read `.env` files, keys, `~/.ssh`, `~/.aws`, `~/.git-credentials`, `~/.netrc` or `~/.npmrc`,
+   force-push, or kill a tmux server, and Bash runs in the sandbox with a network allowlist.
+   `settings.json` names only the gate in `sandbox.excludedCommands`, and that list is not honoured
+   on Claude Code 2.1.316 (spike S5h): until Stridal's OPS-216, the gate and the full process checks
+   run from the orchestrating session with the sandbox off. Keep `sandbox.allowUnsandboxedCommands`
+   true until then: the gate needs that bypass. Tell the user. If
+   one of the project's tools needs a
    host, add it in **`.claude/settings.local.json`** (`sandbox.network.allowedDomains`: this list
    merges with the project's, and an install never overwrites the local file), not in
    `settings.json`. A tool that fails in the sandbox for another reason runs from that session with
