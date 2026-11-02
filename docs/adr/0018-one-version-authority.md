@@ -138,11 +138,12 @@ Built by OPS-183 and OPS-184, each shown failing first:
 These are the assumptions; each is accepted only on the cited result (PRAC-0023).
 - A failed or hung hook blocks only with `onFailure: "block"`: S1a to S1e, **passed**.
 - Latency: S4, **passed**.
-- Hooks can write `CLAUDE_PLUGIN_DATA` outside the sandbox, and a SessionStart command hook works
-  unsandboxed: **untested** — accepted at risk by the owner (2026-10-31); tested by OPS-199 (Gate
-  A, on the Mac).
-- Project `enabledPlugins` outranks a user's `false`: documented, **untested** — accepted at risk
-  by the owner (2026-10-31); tested by OPS-199.
+- Hooks can write `CLAUDE_PLUGIN_DATA` and a `GOCACHE` outside the sandbox: S5a, **passed**.
+- A SessionStart command hook's `CLAUDE_ENV_FILE` reaches the session's Bash, headless and
+  interactive, as decision 3's engine path needs: S5d and S5j, **passed**.
+- Project `enabledPlugins` outranks a user's `false`: S5c, **passed**.
+- Binaries committed under the plugin's `engine/` keep their mode and run, installed from a git
+  marketplace or loaded from a release-style zip: S5f, **passed**.
 
 ## Related
 - ADR-0016, ADR-0017, ADR-0019. Amends ADR-0007 and ADR-0011. OPS-165 (server-side check).
