@@ -11,10 +11,9 @@
 #
 #   scripts/ci/gate-wait.sh        from the checkout whose gate is running; Bash timeout 600000
 #   scripts/ci/gate-wait.sh -C DIR the same for the checkout DIR is in, from anywhere (OPS-161): a
-#                                  lane whose Bash starts in the main checkout names its worktree,
-#                                  as it ran its gate (scripts/ci/gate.sh -C DIR), since the sandbox
-#                                  exclusion holds only for the script alone. It runs DIR's own copy,
-#                                  and every command it then names carries the same -C.
+#                                  session whose Bash starts elsewhere names the worktree,
+#                                  as it ran its gate (scripts/ci/gate.sh -C DIR). It runs DIR's own
+#                                  copy, and every command it then names carries the same -C.
 #
 # Exit codes:
 #   0  PASS  the latest gate here exited 0 on this tree (or, with no state at all, the tree is clean

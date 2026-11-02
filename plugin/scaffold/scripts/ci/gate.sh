@@ -17,15 +17,15 @@
 #   scripts/ci/gate.sh --docs      the docs gate, for a prose-only PR (merge-pr step 2)
 #   scripts/ci/gate.sh -C DIR …    any of these, for the checkout DIR is in (first argument only)
 #
-# -C DIR (OPS-161). settings.json's sandbox.excludedCommands lifts the sandbox for this script only
-# when the command IS the script (`scripts/ci/gate.sh *`), and a lane run as a subagent starts every
-# Bash call in the main checkout: its `cd <worktree> && scripts/ci/gate.sh` ran sandboxed, where `ps`,
-# git's caches and the loopback name fail whatever the code does. So a lane names its worktree
-# instead, and this runs THAT checkout's own gate.sh from its top level, as if started there: the
-# tree under test runs its own wrapper, runner, steps and config, never the caller's. Only a checkout
-# of THIS repository (one git common dir) is accepted: the exclusion is the main checkout's, and -C
-# must not stretch it to run any other tree outside the sandbox (another project, or a repository
-# an agent made in $TMPDIR).
+# -C DIR (OPS-161). A session whose Bash starts elsewhere names the worktree instead of changing
+# directory, and this runs THAT checkout's own gate.sh from its top
+# level, as if started there: the tree under test runs its own wrapper, runner, steps and config,
+# never the caller's. settings.json's sandbox.excludedCommands does not lift the sandbox for this
+# script (not honoured on Claude Code 2.1.316, spike S5h), and sandboxed, `ps`, git's caches and the
+# loopback name fail whatever the code does: until Stridal's OPS-216 the gate runs from the
+# orchestrating session with the sandbox off. Only a checkout of THIS repository (one git common dir) is accepted:
+# -C must not stretch that run to any other tree outside the sandbox (another project, or a
+# repository an agent made in $TMPDIR).
 #
 # GATE_FAIL_PATTERN (project.conf) is the extended regex of failure lines for YOUR tools; it is
 # matched against a colour-stripped copy, and never anchored at line start, because many runners
