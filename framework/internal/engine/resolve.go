@@ -48,16 +48,19 @@ func FixOf(err error) string {
 }
 
 // MainRef is the ref a repository's lock is read from, the launcher's way. Which branch is main
-// comes from the git common dir, never from a checkout's HEAD or the working tree, which are
-// what a lane changes in its normal work (its project.conf could name a branch it pushed, or
-// main~1, an older pin; `git checkout -b side` in the main checkout moves HEAD):
+// comes from the git common dir, never from a checkout's HEAD or a file a lane edits as content,
+// which are what a lane changes in its normal work (its project.conf could name a branch it
+// pushed, or main~1, an older pin; `git checkout -b side` in the main checkout moves HEAD):
 //   - with an origin, origin's HEAD (set by clone; `git remote set-head origin --auto` sets it
 //     again), and a repository whose origin has no HEAD is refused;
 //   - with no origin, MainBranchKey in the common dir's config, else DefaultMain.
 //
 // Full ref names, so a local branch named "origin/main" cannot stand in for the remote's. The
-// trust root is the git common dir and the plugin root: a lane that can write those can choose
-// its pin (OPS-184 makes them not lane-writable before the launcher is switched on).
+// trust roots are the git common dir (refs/remotes/origin/*, origin's HEAD, remote.origin.*,
+// MainBranchKey, packed-refs), the plugin root, and two working-tree files read on every call:
+// the worktree's .git pointer file and the model marker (HasMarker). A lane that can write any
+// of those can choose its pin, or none; OPS-184 verifies them at resolve-once against an
+// authority lanes cannot write, before the launcher is switched on.
 func MainRef(ctx context.Context, projectDir string) (string, error) {
 	if out, err := gitOut(ctx, projectDir, "symbolic-ref", "-q", "refs/remotes/origin/HEAD"); err == nil {
 		head := strings.TrimSpace(string(out))
@@ -82,7 +85,7 @@ func MainRef(ctx context.Context, projectDir string) (string, error) {
 
 // MainBranchKey is the git config key (the common dir's own config, --local) that names main in
 // a repository with no origin; DefaultMain is main when it is unset. Never a checkout's HEAD and
-// never a working-tree file: those are what a lane changes in its normal work.
+// never a file a lane edits as content: those are what a lane changes in its normal work.
 const (
 	MainBranchKey = "stridal.mainBranch"
 	DefaultMain   = "main"
