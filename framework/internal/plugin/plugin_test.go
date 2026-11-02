@@ -946,10 +946,22 @@ func TestScaffoldMergesSettings(t *testing.T) {
 	os.WriteFile(filepath.Join(p, ".claude", "project.conf"), []byte("GATE_RUN=\"tools/ci/run-local.sh\"\nGATE=\"tools/ci/gate.sh\"\n"), 0o644)
 	os.WriteFile(filepath.Join(p, ".claude", "settings.json"), []byte(`{"model": "sonnet", "env": {"X": "1"},
   "statusLine": {"type": "command", "command": "sh .claude/statusline.sh"},
-  "permissions": {"allow": ["Bash(npm test)"], "deny": ["Read(./secrets/**)"]},
-  "sandbox": {"excludedCommands": ["make *"]}}`), 0o644)
-	if out, code := run(t, p, e, "", "sh", filepath.Join(plug, "scaffold.sh"), "--force"); code != 0 {
-		t.Fatalf("scaffold: exit %d\n%s", code, out)
+  "permissions": {"allow": ["Bash(npm test)"], "deny": ["Read(./secrets/**)", "Read(~/.config/gh/**)"]},
+  "sandbox": {"excludedCommands": ["make *", "git *", "gh *", "tmux *", "stridal *", "docker *"],
+    "credentials": {"files": [{"path": "~/.ssh", "mode": "deny"}, {"path": "~/.mytool", "mode": "deny"}]}}}`), 0o644)
+	scaffolded, code := run(t, p, e, "", "sh", filepath.Join(plug, "scaffold.sh"), "--force")
+	if code != 0 {
+		t.Fatalf("scaffold: exit %d\n%s", code, scaffolded)
+	}
+	// OPS-220: as `stridal update` does, this road says what it removed and why.
+	for _, want := range []string{
+		"removed git * from sandbox.excludedCommands: retired by the template (OPS-220)",
+		"removed docker * from sandbox.excludedCommands: retired by the template (OPS-220)",
+		"removed Read(~/.config/gh/**) from permissions.deny: retired by the template (OPS-75)",
+	} {
+		if !strings.Contains(scaffolded, want) {
+			t.Errorf("the scaffold did not report %q:\n%s", want, scaffolded)
+		}
 	}
 	raw, _ := os.ReadFile(filepath.Join(p, ".claude", "settings.json"))
 	var s struct {
@@ -960,6 +972,9 @@ func TestScaffoldMergesSettings(t *testing.T) {
 		Sandbox     struct {
 			Enabled          bool     `json:"enabled"`
 			ExcludedCommands []string `json:"excludedCommands"`
+			Credentials      struct {
+				Files []struct{ Path, Mode string } `json:"files"`
+			} `json:"credentials"`
 		} `json:"sandbox"`
 		EnabledPlugins map[string]bool `json:"enabledPlugins"`
 	}
@@ -985,6 +1000,25 @@ func TestScaffoldMergesSettings(t *testing.T) {
 	}
 	if !s.Sandbox.Enabled || !has(s.Sandbox.ExcludedCommands, "make *") || !has(s.Sandbox.ExcludedCommands, "tools/ci/gate.sh *") || has(s.Sandbox.ExcludedCommands, "scripts/ci/gate.sh *") {
 		t.Errorf("sandbox not merged or gate paths not rendered: %+v", s.Sandbox)
+	}
+	// OPS-220: this merge is a second road to the same file as MergeSettings, so it retires the same
+	// five exclusions, and a project that already lists credentials still gains the new ones.
+	for _, gone := range []string{"git *", "gh *", "tmux *", "stridal *", "docker *"} {
+		if has(s.Sandbox.ExcludedCommands, gone) {
+			t.Errorf("the merge kept the retired exclusion %q: %v", gone, s.Sandbox.ExcludedCommands)
+		}
+	}
+	if has(s.Permissions.Deny, "Read(~/.config/gh/**)") {
+		t.Errorf("the merge kept the retired gh deny, which checks/settings.sh fails: %v", s.Permissions.Deny)
+	}
+	creds := map[string]string{}
+	for _, f := range s.Sandbox.Credentials.Files {
+		creds[f.Path] = f.Mode
+	}
+	for _, want := range []string{"~/.ssh", "~/.aws", "~/.git-credentials", "~/.netrc", "~/.npmrc", "~/.mytool"} {
+		if creds[want] != "deny" {
+			t.Errorf("sandbox.credentials lacks a deny of %s: %v", want, s.Sandbox.Credentials.Files)
+		}
 	}
 	if !has(s.Permissions.Allow, "Bash(tools/ci/gate.sh)") || has(s.Permissions.Allow, "Bash(scripts/ci/gate.sh)") {
 		t.Errorf("allow rules do not follow GATE: %v", s.Permissions.Allow)
@@ -1042,6 +1076,88 @@ func TestScaffoldOverTheOldModel(t *testing.T) {
 	}
 	if !exists(filepath.Join(p, ".claude", "skills", "ours", "SKILL.md")) || !exists(filepath.Join(p, ".claude", "hooks", "mine.sh")) {
 		t.Error("--prune removed a project file")
+	}
+}
+
+// OPS-220: the model's two health lines reach a plugin project through the plugin's own extensions.sh,
+// with nothing in the project's .claude/health/: a new file there would never reach an updated one.
+func TestPluginProjectGetsTheModelsHealthLines(t *testing.T) {
+	need(t, "git", "sh", "jq")
+	plug, _ := build(t)
+	home := t.TempDir()
+	e := env(t, home)
+	p := newProject(t, e)
+	if out, code := run(t, p, e, "", "sh", filepath.Join(plug, "scaffold.sh")); code != 0 {
+		t.Fatalf("scaffold: exit %d\n%s", code, out)
+	}
+	if exists(filepath.Join(p, ".claude", "health", "gh-token-file.sh")) {
+		t.Error("the scaffold created a project file for a line the model runs itself")
+	}
+	gh := t.TempDir()
+	const fixture = "gho_FIXTUREnotAtoken0123456789"
+	if err := os.WriteFile(filepath.Join(gh, "hosts.yml"), []byte("github.com:\n    oauth_token: "+fixture+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := run(t, p, append(e, "GH_CONFIG_DIR="+gh), "", "sh", filepath.Join(plug, "extensions.sh"), "health")
+	for _, want := range []string{"- Health: gh-token-file", "FAILED " + filepath.Join(gh, "hosts.yml"), "- Health: sandbox-writes", "NOT PROVEN " + home} {
+		if !strings.Contains(out, want) {
+			t.Errorf("extensions.sh health lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, fixture) {
+		t.Errorf("extensions.sh health printed the token:\n%s", out)
+	}
+
+	// A fresh plugin project has no .claude/hooks, so the line says that path is not there. The stub
+	// refuses what exists, and takes a write for what does not: what answering for a missing path's
+	// writable parent did, which read as FAILED at every session start in a main checkout.
+	if exists(filepath.Join(p, ".claude", "hooks")) {
+		t.Fatal("the scaffold created .claude/hooks: this case no longer tests a plugin project")
+	}
+	line := `. "$1/lib/health.sh"; HOME=$2; ROOT=$3; TMPDIR=/nonexistent/tmp; unset CLAUDE_CONFIG_DIR CLAUDE_CODE_PLUGIN_CACHE_DIR
+health_probe_write() { if [ -e "$1" ]; then echo refused; else echo wrote; fi; }
+health_sandbox_writes`
+	out, code := run(t, p, e, "", "sh", "-c", line, "line", plug, home, p)
+	if code != 0 {
+		t.Fatalf("the line: exit %d\n%s", code, out)
+	}
+	if strings.Contains(out, "FAILED") || !strings.Contains(out, "not there: ") || !strings.Contains(out, "the main checkout's hooks") {
+		t.Errorf("a fresh plugin project's line reads:\n%s", out)
+	}
+}
+
+// OPS-220: settings.sh's FAIL lines send a plugin project to /stridal:init, so re-running it on a
+// marked project, with no --force, must apply what those lines ask for.
+func TestScaffoldReRunMergesAMarkedProject(t *testing.T) {
+	need(t, "git", "sh", "jq")
+	plug, _ := build(t)
+	e := env(t, t.TempDir())
+	p := newProject(t, e)
+	if out, code := run(t, p, e, "", "sh", filepath.Join(plug, "scaffold.sh")); code != 0 {
+		t.Fatalf("scaffold: exit %d\n%s", code, out)
+	}
+	settings := filepath.Join(p, ".claude", "settings.json")
+	if err := os.WriteFile(settings, []byte(`{"permissions": {"deny": ["Read(~/.config/gh/**)"]}, "sandbox": {"excludedCommands": ["git *"]}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, code := run(t, p, e, "", "sh", filepath.Join(plug, "scaffold.sh"))
+	if code != 0 || strings.Contains(out, "REFUSED") {
+		t.Fatalf("a re-run on a marked project: exit %d\n%s", code, out)
+	}
+	raw, err := os.ReadFile(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	merged := string(raw)
+	for _, gone := range []string{`"git *"`, `.config/gh`} {
+		if strings.Contains(merged, gone) {
+			t.Errorf("the re-run kept %s:\n%s", gone, merged)
+		}
+	}
+	for _, want := range []string{`"Read(~/.netrc)"`, `"~/.netrc"`} {
+		if !strings.Contains(merged, want) {
+			t.Errorf("the re-run did not add %s:\n%s", want, merged)
+		}
 	}
 }
 

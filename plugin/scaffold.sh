@@ -13,8 +13,9 @@
 #       CLAUDE.md              `@AGENTS.md` appended when absent
 #       .claude/settings.json  merged as `stridal install` merges it (needs jq): the project's
 #                              keys and values kept, missing keys added, the allow/deny lists and
-#                              the sandbox's excluded commands and domains unioned, the status
-#                              line the plugin's
+#                              the sandbox's excluded commands, credentials and domains unioned,
+#                              what the template retired removed and named, the status line the
+#                              plugin's
 #     and settings.json's gate paths follow GATE_RUN and GATE in .claude/project.conf; a hook
 #     registration that runs a .claude/hooks/ script that does not exist, or one of stridal's
 #     old model's hooks, is dropped from it (and named).
@@ -213,14 +214,37 @@ for f in $merge; do
       grep -qxF '@AGENTS.md' CLAUDE.md || printf '\n@AGENTS.md\n' >> CLAUDE.md ;;
     .claude/settings.json)
       if command -v jq >/dev/null 2>&1 && jq -e . .claude/settings.json >/dev/null 2>&1; then
+        # Entries the template once shipped and has dropped on purpose, with why, reported as they
+        # go. A copy of retiredEntries in settings.go: TestRetiredEntriesAgreeOnEveryRoad holds the two.
+        retired=$(cat <<'RETIRED'
+{
+  "permissions.deny": {
+    "Read(~/.config/gh/**)": "retired by the template (OPS-75): a sandboxed script's gh must read hosts.yml to find its keyring account"
+  },
+  "sandbox.excludedCommands": {
+    "git *": "retired by the template (OPS-220): sandbox.excludedCommands is not honoured on Claude Code 2.1.316 (spike S5h), and where it is honoured this entry would run the command outside the sandbox",
+    "gh *": "retired by the template (OPS-220): sandbox.excludedCommands is not honoured on Claude Code 2.1.316 (spike S5h), and where it is honoured this entry would run the command outside the sandbox",
+    "tmux *": "retired by the template (OPS-220): sandbox.excludedCommands is not honoured on Claude Code 2.1.316 (spike S5h), and where it is honoured this entry would run the command outside the sandbox",
+    "stridal *": "retired by the template (OPS-220): sandbox.excludedCommands is not honoured on Claude Code 2.1.316 (spike S5h), and where it is honoured this entry would run the command outside the sandbox",
+    "docker *": "retired by the template (OPS-220): sandbox.excludedCommands is not honoured on Claude Code 2.1.316 (spike S5h), and where it is honoured this entry would run the command outside the sandbox"
+  }
+}
+RETIRED
+)
+        jq -r --argjson retired "$retired" '. as $have
+          | $retired | to_entries[] | .key as $p | .value | to_entries[] | .key as $e | .value as $why
+          | select(($have | getpath($p | split("."))? // []) | index($e))
+          | "  settings.json: removed \($e) from \($p): \($why)"' .claude/settings.json
         render_settings > .claude/settings.json.want &&
-        jq -s '.[0] as $have | .[1] as $want
+        jq -s --argjson retired "$retired" '.[0] as $have | .[1] as $want
           | def u($a; $b): ($a // []) + (($b // []) - ($a // []));
+            def kept($p; $a): ($a // []) - (($retired[$p] // {}) | keys);
           ($want * $have)
           | .statusLine = $want.statusLine
           | .permissions.allow = u($have.permissions.allow; $want.permissions.allow)
-          | .permissions.deny = u($have.permissions.deny; $want.permissions.deny)
-          | .sandbox.excludedCommands = u($have.sandbox.excludedCommands; $want.sandbox.excludedCommands)
+          | .permissions.deny = u(kept("permissions.deny"; $have.permissions.deny); $want.permissions.deny)
+          | .sandbox.excludedCommands = u(kept("sandbox.excludedCommands"; $have.sandbox.excludedCommands); $want.sandbox.excludedCommands)
+          | .sandbox.credentials.files = u($have.sandbox.credentials.files; $want.sandbox.credentials.files)
           | .sandbox.network.allowedDomains = u($have.sandbox.network.allowedDomains; $want.sandbox.network.allowedDomains)' \
           .claude/settings.json .claude/settings.json.want > .claude/settings.json.tmp &&
           mv .claude/settings.json.tmp .claude/settings.json

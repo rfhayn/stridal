@@ -23,6 +23,9 @@ fi
 . "$STRIDAL_FW/lib/conf.sh"
 # Context scripts run by a check must not fetch or call gh (fetch_main in conf.sh).
 CONTEXT_OFFLINE=1; export CONTEXT_OFFLINE
+# Nor read this machine's gh credential file: the token health line reads it only where GH_CONFIG_DIR
+# names it, so a check sets that for its own fixture, never takes the caller's.
+unset GH_CONFIG_DIR
 
 _fails=0
 ok() { echo "ok   $*"; }

@@ -160,8 +160,8 @@ what exists:
   `scripts/ci/stridal-model.sh`; when created, its lanes and branch patterns follow the
   project's `BRANCH_CHANGE`, `BRANCH_FIX`, `BRANCH_OPS` and `MAIN_BRANCH`, with jq)
 - `.claude/settings.json` (merged with jq when it exists, as `stridal install` merges it: the
-  project's keys and values kept, the allow and deny lists and the sandbox's excluded commands and
-  domains unioned): the template's model, effort, env and skill overrides; the status line
+  project's keys and values kept, the allow and deny lists and the sandbox's excluded commands,
+  credentials and domains unioned, and what the template retired removed and named): the template's model, effort, env and skill overrides; the status line
   through the plugin's shim; allow rules for `stridal-model ...` and the gate, at the paths
   `GATE_RUN` and `GATE` give; the plugin enabled for the repository. No hooks: the plugin
   registers them.
