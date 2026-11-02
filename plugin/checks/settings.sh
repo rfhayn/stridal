@@ -12,7 +12,7 @@ STRIDAL_FW=$(cd "$(dirname "$0")/.." && pwd) # stridal plugin: the plugin root (
 # the required set only by editing this list in a PR that says why. A tool that needs a host gets it
 # per machine in .claude/settings.local.json (sandbox.network.allowedDomains merges across scopes),
 # never by turning the sandbox off here. sandbox.excludedCommands is not honoured on Claude Code
-# 2.1.316 (spike S5h), so until OPS-216 a tool that fails in the sandbox for another reason, the gate
+# 2.1.316 (spike S5h), so until Stridal's OPS-216 a tool that fails in the sandbox for another reason, the gate
 # included, runs from the orchestrating session with the sandbox off. This still holds the list's
 # shape, so the instructions and install's entries do not part.
 # `~/.config/gh` is deliberately not denied: a sandboxed script's gh must read hosts.yml to find
@@ -43,8 +43,9 @@ Bash(/mnt/c/*)'
 # filter blocks that socket (code.claude.com/docs/en/sandboxing, WSL2 notes; checked 2026-10-01),
 # and sandbox.autoAllowBashIfSandboxed would approve it without a prompt. The deny rules above stop
 # the forms Claude writes (a deny rule is respected even in auto-allow mode); the seccomp filter,
-# which docs/playbook.md makes required on WSL2, is the boundary for the rest. Listing any of them in
-# sandbox.excludedCommands would run them unsandboxed by design, so that fails.
+# which docs/playbook.md makes required on WSL2, is the boundary for the rest. Where
+# sandbox.excludedCommands is honoured (not on Claude Code 2.1.316, S5h), listing any of them would
+# run them unsandboxed, so that fails.
 # /mnt/c/ only, not /mnt/: a rule has no character class for "a drive letter", a deny rule cannot
 # be undone by a narrower allow, and /mnt/ also holds ordinary Linux mounts. C: holds Windows
 # itself; programs on other drives are left to the seccomp filter. `code` (VS Code's WSL shim) is
@@ -80,12 +81,12 @@ check_settings() {  # check_settings FILE: prints ok/FAIL lines
       && echo "ok   sandbox.allowUnsandboxedCommands is set ($(jq .sandbox.allowUnsandboxedCommands "$f"))" \
       || echo "FAIL sandbox.allowUnsandboxedCommands is not set: say whether a command that fails in the sandbox may retry outside it (through the permission flow)"
     _x=$(jq -r '(.sandbox.excludedCommands // [])[]' "$f" | grep -E "$INTEROP_RE")
-    [ -z "$_x" ] && echo "ok   no Windows interop command (cmd.exe, powershell.exe, pwsh.exe, wsl.exe, /mnt/...) is excluded from the sandbox" \
-      || echo "FAIL sandbox.excludedCommands runs Windows interop outside the sandbox: $(printf '%s' "$_x" | tr '\n' ' ')"
+    [ -z "$_x" ] && echo "ok   no Windows interop command (cmd.exe, powershell.exe, pwsh.exe, wsl.exe, /mnt/...) is listed in sandbox.excludedCommands" \
+      || echo "FAIL sandbox.excludedCommands lists Windows interop: where the list is honoured it would run outside the sandbox (not on Claude Code 2.1.316): $(printf '%s' "$_x" | tr '\n' ' ')"
     # The gate and gate-wait need the sandbox off (OPS-72): their process checks use `ps`, tmux and
     # loopback, which the sandbox refuses. These entries do not give them that: the list is not
-    # honoured on Claude Code 2.1.316 (S5h), so until OPS-216 the orchestrating session runs them with
-    # the sandbox off. An entry names the script run ALONE, bare or with arguments, so both forms are
+    # honoured on Claude Code 2.1.316 (S5h), so until Stridal's OPS-216 the orchestrating session runs
+    # them with the sandbox off. An entry names the script run ALONE, bare or with arguments, so both forms are
     # listed: the receipt runs the gate bare, and a lane's is named with `-C <worktree>` (OPS-161). gate-wait.sh is where install put it (gate_wait_path, conf.sh):
     # beside the template's runner, but at scripts/ci/ beside a project's own runner.
     # Both as install writes them: the gate as a command (gate_cmd), gate-wait where it put it.
@@ -106,8 +107,8 @@ check_settings() {  # check_settings FILE: prints ok/FAIL lines
 # ── Every gate command an instruction gives matches the list (OPS-161) ───────────────────────
 # An exclusion names a command that IS the script: `P` exactly, `P *` with arguments, and nothing
 # chained, piped or redirected around it. It does not lift the sandbox: the list is not honoured on
-# Claude Code 2.1.316 (S5h), so until OPS-216 the orchestrating session runs the gate with the sandbox
-# off, and this holds the one form it names a worktree in. A subagent lane's Bash starts in the
+# Claude Code 2.1.316 (S5h), so until Stridal's OPS-216 the orchestrating session runs the gate with
+# the sandbox off, and this holds the one form it names a worktree in. A subagent lane's Bash starts in the
 # main checkout, so `cd <worktree> && <gate>` was the natural instruction, and it ran the gate
 # sandboxed, where `ps`, git's caches and the loopback name fail whatever the code does. The lane
 # form is `<gate> -C <worktree>`. This reads the Markdown instructions (AGENTS.md, CLAUDE.md, the

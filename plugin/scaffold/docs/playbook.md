@@ -73,7 +73,8 @@ started from the panel's **New lane** (or by hand), on one branch:
   `.git/config` and `.git/hooks` are denied to every sandboxed command.
   - **A lane that is an agent of the main session** brings its own hooks and skills along
     (`stridal update`, a rebase, a merge) inside the sandbox. That was seen to work on
-    2026-10-28. The `git *` and `stridal *` entries below did not lift it (spike S5h).
+    2026-10-28. No entry in `sandbox.excludedCommands` lifted it: S5h found the list not honoured,
+    probing `git *`.
   - **A lane that is its own session** (a panel lane, or a new terminal tab) cannot: the session
     that opens it syncs them (Stridal's ST-15). Until that exists, the owner syncs such a lane
     by hand.
@@ -88,11 +89,18 @@ started from the panel's **New lane** (or by hand), on one branch:
     `sandbox.excludedCommands` in `settings.json` is not honoured on Claude Code 2.1.316 (spike
     S5h: all four shapes tried, in the main session and in a subagent). The gate is such a command,
     since its process checks need `ps`, tmux and loopback, so a lane's gate runs the lane's own
-    checks and tests. The controls are review before the gate and the approval itself (Stridal's
-    #307). Until Stridal's OPS-216, the orchestrating session runs every gate and the full process
-    checks with the sandbox off, naming the lane's worktree: `scripts/ci/gate.sh -C <worktree>` (and
-    `scripts/ci/gate-wait.sh -C <worktree>`), the form `checks/settings.sh` holds. A lane runs only
-    the checks its files touch.
+    checks and tests. What holds that today is the approval of the bypass (Stridal's #307). Review
+    before the gate is intended but unenforced: `merge-pr` gates at step 2 and reviews at step 3,
+    and `build-change` reviews after its quick gate.
+  - **Who runs a gate, until Stridal's OPS-216.** The orchestrating session runs every full gate,
+    docs gate and `--quick` pre-PR pass, and the whole-set process checks, with the sandbox off,
+    naming the lane's worktree: `scripts/ci/gate.sh -C <worktree>` (and
+    `scripts/ci/gate-wait.sh -C <worktree>`), the form `checks/settings.sh` holds. `--quick` is
+    no exception: it runs the same process checks. A subagent lane runs only the checks its files
+    touch, then hands back its worktree and head. A lane that is its own session has no
+    orchestrator, so it runs its gates itself with an approved bypass. **The exception is a
+    `build-change` run**: its gate agents run sandboxed, and a process check that fails because of
+    the sandbox stops the run as an environment fault, for the session that started it.
   - A plugin install takes its hooks, skills and agents from the plugin cache, so their sync does
     not apply there.
 - **A request is priced before it is relayed to a running lane.** The orchestrator tells the owner
@@ -142,8 +150,9 @@ started from the panel's **New lane** (or by hand), on one branch:
 
 When several reviewed lanes are ready, they can land as one batch with one gate instead of one gate
 each (PRAC-0013 in this repo; adopt it as a practice of your own if it fits). Before its PR, every
-lane runs the **pre-PR pass**, the quick gate over its worktree, `scripts/ci/gate.sh -C <worktree>
---quick`, so the batch gate is not the first run of a repo-wide check. Review stays per lane PR.
+lane gets the **pre-PR pass**, the quick gate over its worktree, run by the orchestrating session
+with the sandbox off until Stridal's OPS-216: `scripts/ci/gate.sh -C <worktree> --quick`, so the
+batch gate is not the first run of a repo-wide check. Review stays per lane PR.
 Then, on an integration branch in its own worktree, cut from `origin/<main>`:
 
 1. `scripts/ci/batch.sh merge <first row id> <lane branch>…` merges the lanes `--no-ff` in the order given (a row

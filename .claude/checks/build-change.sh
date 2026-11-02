@@ -361,7 +361,7 @@ const t = (label, cond, got) => out.push(`${cond ? 'ok  ' : 'FAIL'} driver: ${la
   t('every agent after preflight is pinned to the recorded root', r.report.stoppedAt === null && later.length > 3 && later.every((c) => /^Repo root: \/repo\/\.claude\/worktrees\/build-demo\./.test(c.prompt)), [r.report.stoppedAt, later.map((c) => c.prompt.slice(0, 60))])
   // The gate runs as a LONE command (OPS-72): the form settings.json's sandbox exclusion names and
   // checks/settings.sh holds. It does not lift the sandbox on Claude Code 2.1.316 (S5h): the gate
-  // agents run sandboxed until OPS-216, where process checks can fail whatever the code did.
+  // agents run sandboxed until Stridal's OPS-216, where process checks can fail whatever the code did.
   const chained = /(&&|;|\|)\s*(\S*\/)?gate(-wait)?\.sh|gate(-wait)?\.sh[^`\n]*(&&|;|\||>)/
   // gate-wait is named, as a LONE command and in the backgrounded-gate note, at the path the
   // project's settings give (gateWait), and at no other.

@@ -171,9 +171,9 @@ The entries below are for what it does not cover.
   that asserts it, or add a `(manual: <reason>)` line naming it to the change's `tasks.md`.
 - **A command fails inside the Bash sandbox**: if it needs a host, add the host to
   `sandbox.network.allowedDomains` in `.claude/settings.local.json`: this list merges with the
-  project's, and an install never overwrites the local file. Otherwise run it from the main session
-  with the sandbox off, as the gate and the full process checks run: `sandbox.excludedCommands` is
-  not honoured on Claude Code 2.1.316 (spike S5h), until OPS-216.
+  project's, and an install never overwrites the local file. Otherwise, until OPS-216 removes the
+  need, run it from the orchestrating session with the sandbox off, as the gate and the full process
+  checks run: `sandbox.excludedCommands` is not honoured on Claude Code 2.1.316 (spike S5h).
 - **A worktree agent is refused by worktree-hook-drift**: put the main checkout back on `main`
   and pull.
 - **The panel's cards and suggestions show nothing**: `stridal panel trust`, and see

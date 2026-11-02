@@ -47,14 +47,15 @@ If those lines show as literal text, run the commands yourself.
    and have it source `scripts/ci/lib/steps.sh` and call `model_steps` (the scenario trace and the
    secret scan); set `GATE_QUICK_FLAGS` to its quick-run flags. A lease of its own is tested with
    `sh scripts/ci/lease-conformance/run.sh <impl>`.
-   Then run `scripts/ci/gate.sh --quick` and show the result.
+   Then run `scripts/ci/gate.sh --quick`, with the sandbox off (step 4b), and show the result.
 4. **The formatter** (`FORMAT_CMD`, `FORMAT_EXT`), if the project has one.
 4b. **Least privilege** (`.claude/settings.json`, kept current by `stridal install`): Claude may
    not read `.env` files, keys, `~/.ssh` or `~/.aws`, force-push, or kill a tmux server, and Bash
    runs in the sandbox with a network allowlist. `settings.json` lists git, gh, tmux, stridal,
    docker and the gate in `sandbox.excludedCommands`, but that list is not honoured on Claude Code
    2.1.316 (spike S5h): until Stridal's OPS-216, the gate and the full process checks run from the
-   orchestrating session with the sandbox off. Tell the user. If one of the project's tools needs a
+   orchestrating session with the sandbox off. Keep `sandbox.allowUnsandboxedCommands` true until
+   then: the gate needs that bypass. Tell the user. If one of the project's tools needs a
    host, add it in **`.claude/settings.local.json`** (`sandbox.network.allowedDomains`: this list
    merges with the project's, and an install never overwrites the local file), not in
    `settings.json`. A tool that fails in the sandbox for another reason runs from that session with
@@ -88,8 +89,9 @@ If those lines show as literal text, run the commands yourself.
    (an extra guard rule, a context section, a health line, a skill step, a conflict row) goes in
    `.claude/local/` (its README has each contract), never in a framework file the next
    `stridal update` overwrites. `sh .claude/extensions.sh list` shows what is on.
-10. **Verify**: `sh .claude/checks/run.sh` must pass. Then commit, open the PR, and land it with
-    `merge-pr` (the gate must pass in full first: `scripts/ci/gate.sh`).
+10. **Verify**: `sh .claude/checks/run.sh` must pass, with the sandbox off (step 4b). Then commit,
+    open the PR, and land it with `merge-pr` (the gate must pass in full first:
+    `scripts/ci/gate.sh`).
 
 ## Rules
 - Ask; do not invent. A placeholder left in place is better than a guessed command.

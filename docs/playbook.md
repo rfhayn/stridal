@@ -65,8 +65,8 @@ started from the panel's **New lane** (or by hand), on one branch:
     the sandbox: a rebase, a merge, or `STRIDAL_FRAMEWORK=$PWD framework/stridal update` with
     the binary built from the lane's checkout (the owner's shell sets that variable to the MAIN
     checkout, and it outranks the binary's own checkout in the template search). That was seen to
-    work on 2026-10-28. The `git *` and `stridal *` entries below did not lift it (S5h,
-    `docs/plans/s19-spikes.md`).
+    work on 2026-10-28. No entry in `sandbox.excludedCommands` lifted it: S5h found the list not
+    honoured, probing `git *` (`docs/plans/s19-spikes.md`).
   - **A lane that is its own session** cannot: ST-15's launcher will have the opening session sync
     it. Until that exists, the owner syncs such a lane by hand, as before for a panel lane (the
     panel is uninstalled here and removed in PANEL-64).
@@ -87,11 +87,19 @@ started from the panel's **New lane** (or by hand), on one branch:
     `dangerouslyDisableSandbox`. `sandbox.excludedCommands` in `.claude/settings.json` is not
     honoured on Claude Code 2.1.316 (S5h, `docs/plans/s19-spikes.md`: all four shapes tried, in the
     main session and in a subagent). The gate is such a command, since its process checks need
-    `ps`, tmux and loopback, so a lane's gate runs the lane's own checks and tests. The controls are
-    review before the gate and the approval itself (#307). Until OPS-216, the orchestrating session
-    runs every gate and the full process checks with the sandbox off, naming the lane's worktree:
-    `scripts/ci/gate.sh -C <worktree>` (and `scripts/ci/gate-wait.sh -C <worktree>`), the form
-    `checks/settings.sh` holds (OPS-161). A lane runs only the checks its files touch.
+    `ps`, tmux and loopback, so a lane's gate runs the lane's own checks and tests. What holds that
+    today is the approval of the bypass (#307). Review before the gate is intended but unenforced:
+    `merge-pr` gates at step 2 and reviews at step 3, and `build-change` reviews after its quick
+    gate.
+  - **Who runs a gate, until OPS-216.** The orchestrating session runs every full gate, docs gate
+    and `--quick` pre-PR pass, and the whole-set process checks, with the sandbox off, naming the
+    lane's worktree: `scripts/ci/gate.sh -C <worktree>` (and `scripts/ci/gate-wait.sh -C <worktree>`),
+    the form `checks/settings.sh` holds (OPS-161). `--quick` is no exception: it runs the same
+    process checks. A subagent lane runs only the checks its files touch, then hands back its
+    worktree and head. A lane that is its own session has no orchestrator, so it runs its gates
+    itself with an approved bypass. **The exception is a `build-change` run**: its gate agents run
+    sandboxed, and a process check that fails because of the sandbox stops the run as an
+    environment fault, for the session that started it.
 - **One full gate at a time.** All lanes share one gate lease (`scripts/ci/run-local.sh`), so a
   lane's full gate may queue behind another's; the panel shows who holds it. A `--quick` run takes
   no lease and never queues.
@@ -119,8 +127,8 @@ started from the panel's **New lane** (or by hand), on one branch:
 
 When several reviewed lanes are ready, they can land as one batch with one gate instead of one gate
 each (PRAC-0013 in this repo; adopt it as a practice of your own if it fits). Before its PR, every
-lane runs the **pre-PR pass**, the quick gate over its worktree, `scripts/ci/gate.sh -C <worktree>
---quick`, so the batch gate is not the first run of a repo-wide check. Review stays per lane PR.
+lane gets the **pre-PR pass**, the quick gate over its worktree, run by the orchestrating session
+with the sandbox off until OPS-216: `scripts/ci/gate.sh -C <worktree> --quick`, so the batch gate is not the first run of a repo-wide check. Review stays per lane PR.
 Then, on an integration branch in its own worktree, cut from `origin/<main>`:
 
 1. `scripts/ci/batch.sh merge <first row id> <lane branch>…` merges the lanes `--no-ff` in the order given (a row

@@ -54,7 +54,8 @@ do one group alone. The loop is the same, and so are its stops.
    `git ls-files --others --exclude-standard`, `git add -N -- <path>` (intent-to-add); for each
    from `git ls-files --deleted`, `git rm -q --cached -- <path>`.
 3. **Gate.** `scripts/ci/gate.sh --quick` (the project's `GATE` with its `GATE_QUICK_FLAGS`, from
-   `.claude/project.conf`, when they differ). Red: the builder fixes it at its source (at most two
+   `.claude/project.conf`, when they differ), with the sandbox off until Stridal's OPS-216 (`merge-pr`
+   step 2 says who runs it). Red: the builder fixes it at its source (at most two
    attempts); an environment fault or a gate still red is a STOP. If the tool moves the gate to
    the background, call `scripts/ci/gate-wait.sh` in the foreground (timeout 600000): exit 3
    means call it again; any other exit is the answer (0 PASS, 1 FAIL; 4 or 2: no result, run the
@@ -78,7 +79,8 @@ do one group alone. The loop is the same, and so are its stops.
    `.claude/model-roles.json` enables them. Do not push yet.
 
 ## Then
-- The full gate on the committed HEAD: `scripts/ci/gate.sh` (no flags). It writes the receipt.
+- The full gate on the committed HEAD: `scripts/ci/gate.sh` (no flags), with the sandbox off until
+  Stridal's OPS-216 (`merge-pr` step 2 says who runs it). It writes the receipt.
   If the tool moves the gate to the background, call `scripts/ci/gate-wait.sh` in the foreground
   (timeout 600000): exit 3 means call it again; any other exit is the answer (0 PASS, 1 FAIL; 4 or
   2: no result, run the gate again).

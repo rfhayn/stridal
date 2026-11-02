@@ -22,8 +22,8 @@
 # level, as if started there: the tree under test runs its own wrapper, runner, steps and config,
 # never the caller's. settings.json's sandbox.excludedCommands does not lift the sandbox for this
 # script (not honoured on Claude Code 2.1.316, spike S5h), and sandboxed, `ps`, git's caches and the
-# loopback name fail whatever the code does: until OPS-216 the gate runs from the orchestrating
-# session with the sandbox off. Only a checkout of THIS repository (one git common dir) is accepted:
+# loopback name fail whatever the code does: until Stridal's OPS-216 the gate runs from the
+# orchestrating session with the sandbox off. Only a checkout of THIS repository (one git common dir) is accepted:
 # -C must not stretch that run to any other tree outside the sandbox (another project, or a
 # repository an agent made in $TMPDIR).
 #
