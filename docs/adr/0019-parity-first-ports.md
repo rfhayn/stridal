@@ -55,5 +55,17 @@ same rule.
   that extraction for one hook. If more than 20% of its cases cannot be expressed as data, this
   ADR is amended before any port.
 
+## Amendment — 2026-11-02: reason codes, and a frozen reader
+- **Source**: the three reviews of 2026-11-02 (`docs/plans/s22-review-mapping.md`); the owner's decision.
+
+- **Decision 3.** Parity compares reason codes, not byte-exact stderr. A case's data file names the
+  reason a control refuses for; the words may change.
+- **A frozen reader is not ported.** `merge-reader.awk` (ADR-0017's amendment) takes no new case and
+  needs no parity receipt, because nothing replaces it rule for rule: `stridal merge` is judged on
+  its own cases.
+
+**Enforcement** (in addition to the above): OPS-185's `stridal check parity`. Until it merges,
+**Nothing. You.**
+
 ## Related
 - ADR-0017 (the port order), AGENTS.md rule 2, PRAC-0010 (close the class).

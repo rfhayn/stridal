@@ -1,10 +1,9 @@
 # Mapping the three reviews of 2026-11-02 onto the roadmap
 
-A proposal for the owner, not a decision. Three read-only reviews of `main` (architecture and plan,
+The owner decided this on 2026-11-02: see *The owner's answers*, and `docs/roadmap.md` for the rows as they landed. Three read-only reviews of `main` (architecture and plan,
 security, code quality) ran on 2026-11-02, and the owner turned them into nine work items. This
 page checks their claims against the repository, says where this session disagrees, and maps each
-item onto roadmap rows. Nothing here changes a row. Rows and ADR amendments follow in a normal PR
-once the owner has decided the questions below.
+item onto roadmap rows. This page changes no row itself.
 
 The reviews read `main` at `01571ef9`. S22's Batch B was unmerged at the time, so they did not see
 it. Row ids from OPS-219 on assume `ops/s22-records` lands first (it adds OPS-217 and OPS-218).
@@ -75,13 +74,13 @@ it. Row ids from OPS-219 on assume `ops/s22-records` lands first (it adds OPS-21
 5. OPS-185's harness. OPS-187, OPS-209, OPS-162.
 6. Tag v0.1.0 (REL-1), with the hook switch-on complete. OPS-188, OPS-190, OPS-195 and the rest of the port go on to v0.2.
 
-## Questions for the owner
+## The owner's answers (2026-11-02)
 
-1. **OPS-184's launcher.** It is 475 lines on an unmerged branch, and you want a shim. Hold the branch and move `--resolve` into OPS-218 with a design that keeps the launcher small; or land it inactive and shrink it later. Recommended: hold it. Land the release workflow, the `tar` fix and the marker change, and keep the branch for reference.
-2. **Batch B while this is open.** You asked for no code changes until this merges. Recommended: land `ops/s22-records` and OPS-217 first, as one batch, because this page's ids and the corrected sandbox statements rest on them, and hold OPS-184 and OPS-201.
-3. **Phase 3's MCP server and the JSON roadmap.** Your floor leaves them out, and items 1 and 6 do not say where they go. Recommended: v0.2, with OPS-195 after the libraries as item 6 says.
-4. **Order.** Accept the release's delivery half ahead of the ports (disagreement 1), or say how the ports reach adopters without it.
-5. **Lanes without the panel.** Moving the terminal UI leaves the browser panel frozen and shipped, and you do not run it. Recommended: v0.1.0 documents lanes through `stridal lane` and git worktrees, and leaves the browser panel undocumented.
+1. **OPS-184's launcher:** hold the branch; land the release workflow, the `tar` fix and the marker change, and OPS-218 keeps the launcher a shim.
+2. **Batch B:** `ops/s22-records` and OPS-217 landed first, as one batch (#388); OPS-184 and OPS-201 held.
+3. **Phase 3's MCP server and the JSON roadmap:** v0.2, with OPS-195 after the libraries.
+4. **Order:** the release's delivery half comes ahead of the ports.
+5. **Lanes without the panel:** v0.1.0 documents lanes through `stridal lane` and git worktrees, and leaves the browser panel undocumented.
 
 ## Publishing note
 
