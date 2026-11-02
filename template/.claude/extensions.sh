@@ -2,8 +2,9 @@
 # extensions.sh: run or print what the enabled modules and the local layer add to the operating
 # model (lib/modules.sh names the points). The template's hosts call it; nothing else needs to.
 #
-#   sh .claude/extensions.sh health              every health line: .claude/health/, then each
-#                                                enabled module's health/, then .claude/local/health/
+#   sh .claude/extensions.sh health              every health line: .claude/health/, then the model's
+#                                                own two, then each enabled module's health/, then
+#                                                .claude/local/health/
 #   sh .claude/extensions.sh context <skill>     every context.d/<skill>/*.sh, each under a heading
 #   sh .claude/extensions.sh fragments <skill>   every skills/<skill>/*.md fragment, for the skill's
 #                                                "Project steps" include line
@@ -36,6 +37,20 @@ section() {
   elif [ "$_rc" -ne 0 ]; then echo "    CANNOT CHECK — ${2#"$ROOT"/} exited $_rc; this learned NOTHING, do not read it as healthy"
   elif [ -z "$_out" ]; then echo "    CANNOT CHECK — ${2#"$ROOT"/} printed nothing"; fi
 }
+# model_line NAME FUNCTION: a health line the model runs itself, from lib/health.sh. A file in
+# .claude/health/ is the project's, created once, so a new one would miss an updated project and every
+# plugin update; these two answer for the machine and the sandbox, so every project gets them (OPS-220).
+model_line() {
+  echo "- Health: $1"
+  if [ ! -f "$ROOT/.claude/lib/health.sh" ]; then
+    echo "    CANNOT CHECK — .claude/lib/health.sh is missing; $1 is UNKNOWN, not healthy"; return 0
+  fi
+  # shellcheck disable=SC1091
+  _out=$( (. "$ROOT/.claude/lib/health.sh" && command -v "$2" >/dev/null && "$2") 2>&1 </dev/null ); _rc=$?
+  [ -n "$_out" ] && printf '%s\n' "$_out" | ind
+  if [ "$_rc" -ne 0 ]; then echo "    CANNOT CHECK — $2 exited $_rc (an older lib/health.sh? stridal update); this learned NOTHING, do not read it as healthy"
+  elif [ -z "$_out" ]; then echo "    CANNOT CHECK — $2 printed nothing"; fi
+}
 # conflict_rows: every conflicts.tsv row as a table row, its layer named. A function, not inline in
 # $(…): a case pattern's lone `)` inside a command substitution trips bash's parser.
 conflict_rows() {
@@ -57,6 +72,8 @@ case ${1:-} in
     for h in .claude/health/*.sh; do
       [ -f "$h" ] && section "- Health: $(basename "$h" .sh)" "$ROOT/$h"
     done
+    model_line gh-token-file health_gh_token
+    model_line sandbox-writes health_sandbox_writes
     ext_files health .sh | while IFS="$TAB" read -r label f; do
       section "- Health: $(basename "$f" .sh)$(where "$label")" "$f"
     done

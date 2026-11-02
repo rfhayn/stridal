@@ -258,7 +258,9 @@ machine needs Claude Code, then:
 **Why gh's token belongs in a keyring.** The session-start context and the health lines run `gh`
 inside the sandbox, and there `gh` must read `~/.config/gh/` to find its account, so
 `settings.json` does not deny that folder (OPS-75). With a keyring the folder holds no secret.
-Without one, `gh` writes the token into `hosts.yml` in plain text, where an agent could read it.
+Without one, `gh` writes the token into `hosts.yml` in plain text, where an agent could read it:
+the health line `gh-token-file` reads that file at each session start and says `FAILED` if a token
+sits there, never printing it.
 
 Add whatever else your gate's steps call. **The panel is macOS-only and optional**: it runs on
 tmux, launchd and Terminal.app. Nothing needs it (`checks/no-stridal.sh`): lanes are plain git
@@ -587,7 +589,7 @@ Haiku for the reviewer or the planner: economy mode never drops them either.
 | `focus-staleness.sh` | every prompt | nudges when the status-line focus is stale |
 | `format.sh` | every Write/Edit | runs the project's formatter, when configured |
 | `run-local.sh` | every gate | takes the gate lease; runs the scenario trace and the secret scan (gitleaks) before your steps; writes the receipt only for a complete, clean run; records every run in the worktree's state file and the repository's run log |
-| `settings.json` | every tool call | denies reads of `.env` files and keys and a few commands (force-push, `tmux kill-server`); runs Bash in the sandbox with a network allowlist. Add a host per machine in `.claude/settings.local.json` (`sandbox.network.allowedDomains`); `sandbox.excludedCommands` is not honoured on Claude Code 2.1.316 (spike S5h) |
+| `settings.json` | every tool call | denies reads of `.env` files, keys and credential files (`~/.git-credentials`, `~/.netrc`, `~/.npmrc`) and a few commands (force-push, `tmux kill-server`); runs Bash in the sandbox with a network allowlist. Add a host per machine in `.claude/settings.local.json` (`sandbox.network.allowedDomains`); `sandbox.excludedCommands` names only the gate and is not honoured on Claude Code 2.1.316 (spike S5h) |
 | `.claude/checks/run.sh` | every gate (a step) | the process checks: hook tables, the roadmap parser, ADR numbering, model roles, the budget |
 
 AGENTS.md's *What executes each rule* table is the full list, including the honest last row: what

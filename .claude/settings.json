@@ -231,6 +231,9 @@
       "Read(*.key)",
       "Read(~/.ssh/**)",
       "Read(~/.aws/**)",
+      "Read(~/.git-credentials)",
+      "Read(~/.netrc)",
+      "Read(~/.npmrc)",
       "Bash(git push --force *)",
       "Bash(git push -f *)",
       "Bash(sudo *)",
@@ -253,11 +256,6 @@
     "allowUnsandboxedCommands": true,
     "enableWeakerNetworkIsolation": true,
     "excludedCommands": [
-      "git *",
-      "gh *",
-      "tmux *",
-      "stridal *",
-      "docker *",
       "scripts/ci/run-local.sh *",
       "scripts/ci/gate.sh",
       "scripts/ci/gate.sh *",
@@ -284,6 +282,18 @@
         },
         {
           "path": "~/.aws",
+          "mode": "deny"
+        },
+        {
+          "path": "~/.git-credentials",
+          "mode": "deny"
+        },
+        {
+          "path": "~/.netrc",
+          "mode": "deny"
+        },
+        {
+          "path": "~/.npmrc",
           "mode": "deny"
         }
       ]
