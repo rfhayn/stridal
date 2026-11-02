@@ -77,8 +77,7 @@ gate's process checks fail whatever the code did. So until Stridal's OPS-216:
 - **A lane that is a subagent** does not run them. It stops here and hands back, naming its worktree
   and head commit; the orchestrating session gates that head and goes on from there.
 - **A lane that is its own session** (a panel lane, or a new terminal tab) has no orchestrator: it
-  runs the gate itself from its checkout with `dangerouslyDisableSandbox`, through the permission
-  flow.
+  runs them itself from its checkout with `dangerouslyDisableSandbox`, through the permission flow.
 
 **A prose-only PR** (Markdown outside `.claude/`, `agents/`, `commands/`, the specs, and the files
 agents load, AGENTS.md, CLAUDE.md, CLAUDE.local.md and SKILL.md, in any case: a record, a roadmap

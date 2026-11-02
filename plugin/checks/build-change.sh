@@ -378,6 +378,8 @@ const t = (label, cond, got) => out.push(`${cond ? 'ok  ' : 'FAIL'} driver: ${la
   const refused = 'go: mkdir cache: Operation not permitted'
   const faulted = await run([], { groups: [{ n: 1, title: 'Substrate', openTasks: 1 }], gateResult: { passed: false, environmentFault: true, evidence: refused } })
   t('a gate reporting an environment fault stops at group 1 gate, its evidence in the reason, with no gate-fix agent', faulted.report.stoppedAt === 'group 1 gate' && faulted.report.reason.includes(refused) && !faulted.calls.some((c) => c.opts.label.startsWith('gate-fix:')), [faulted.report.stoppedAt, faulted.report.reason, faulted.calls.map((c) => c.opts.label).join()])
+  const red = await run([], { groups: [{ n: 1, title: 'Substrate', openTasks: 1 }], gateResult: { passed: false, evidence: 'FAIL demo' } })
+  t('...and an ordinary red gate still reaches a builder, and stops only once still red', red.calls.some((c) => c.opts.label.startsWith('gate-fix:')) && /gate still red/.test(red.report.reason), [red.report.stoppedAt, red.report.reason, red.calls.map((c) => c.opts.label).join()])
   const qgp = (faulted.calls.find((c) => c.opts.label === 'gate:1#1') || {}).prompt || ''
   t('the gate agent is told that a sandbox refusal sets environmentFault, with its line in evidence', qgp.includes('sandbox refusal') && qgp.includes('Operation not permitted') && qgp.includes('set environmentFault=true') && qgp.includes('in evidence'), qgp)
   // A project whose template runner moved (GATE_RUN=ci/run-local.sh) has gate-wait at ci/ (OPS-72).

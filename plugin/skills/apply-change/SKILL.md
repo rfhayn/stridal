@@ -35,7 +35,9 @@ do one group alone. The loop is the same, and so are its stops.
 - Branch prefixes (`.claude/project.conf`; a branch is named by its key, never a literal): !`sh ${CLAUDE_PLUGIN_ROOT}/project-config.sh prefixes`
 - The change is approved: `changes/<id>/proposal.md` has its `**Approved:**` line, on `main`.
 - You are on `<BRANCH_CHANGE><id>` in its OWN worktree, never the main checkout (hooks run from there), with
-  a clean tree.
+  a clean tree for a fresh group. A group a `build-change` run stopped in at its gate keeps its work
+  on disk, uncommitted: pick it up at the step the playbook's stops table names (*When it stops, and
+  your move*).
 - **The models follow the proposal's `**Risk:**` tier**: a role with a variant for that tier in
   `.claude/model-roles.json` (`roles.<role>.tiers`) runs on it; pass its `model` and `effort` when
   you spawn the agent. In economy mode (`~/.stridal/panel/economy.json` says `"economy": true`)
