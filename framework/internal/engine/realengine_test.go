@@ -51,7 +51,7 @@ func realFixture(t *testing.T) *fixture {
 	f := newFixture(t)
 	data, err := os.ReadFile(bin)
 	must(t, err)
-	must(t, os.WriteFile(f.enginePath(), data, 0o755))
+	testbin.Write(t, f.enginePath(), string(data))
 	f.setOriginLock(f.lockFor(f.engineSum()))
 	return f
 }
