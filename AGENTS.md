@@ -70,7 +70,7 @@ One row a line; the last row last.
 | Review a change PER TASK GROUP, not per PR | **`.claude/workflows/build-change.js`** when built through it; **Nothing. You.** by hand (`/apply-change`) |
 | The panel offers only what the roadmap allows next | **`.claude/panel-suggest.sh`** over the one parser; **`checks/panel-suggest.sh`** |
 | Claude merges only once review has CONVERGED; a proposal converges before the owner reads it | **`merge-pr`** step 3, **`propose`** step 2b: skill steps, **no hook checks them**; **`checks/change-process.sh`** holds the steps in place |
-| No scripted find-replace against tracked source | **`.claude/hooks/no-blind-source-rewrite.sh`** (blocking) |
+| A few in-place forms on tracked source are refused | **`no-blind-source-rewrite.sh`** (blocking; limits: its header) |
 | No whole read of a file over 400 lines | **`.claude/hooks/read-by-range.sh`** (blocking; fails open) |
 | No forced worktree removal, no pattern kill | **`.claude/hooks/no-worktree-force-remove.sh`**, **`.claude/hooks/no-pattern-kill.sh`** (blocking); **`pattern-kill-path.sh`** puts **`.claude/bin/pkill`** first |
 | No gate ends where nobody hears it; a subagent waits for its gate in the foreground | **`.claude/hooks/no-background-gate.sh`** (blocking); **`scripts/ci/gate-wait.sh`**; **`checks/hooks.sh`**, **`checks/gate.sh`** |

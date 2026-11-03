@@ -215,6 +215,101 @@ nb 2 "a script whose cds compose under the cap once .. collapses" "sh compose.sh
 rc=0; printf '' | sh "$H/no-blind-source-rewrite.sh" >/dev/null 2>&1 || rc=$?
 expect_rc 0 "$rc" "no-blind-source-rewrite allows an empty payload rather than breaking every Bash call"
 
+# What it holds, said truly (OPS-225). It refuses a few in-place forms by their words. These rows
+# show each class that passes, in this throwaway repository: most run the edit and see a tracked file
+# change, and the recognised find-replace on an unnamed target is a payload only, so needing no
+# interpreter. The text rows after them hold the words stating the limit. So a row failing means the hook and
+# its statement came apart. They do not prove the classes are all there are. The S22 form, a script
+# outside the repository and a temp dir, has no row: a check's scratch is always in a temp dir, so
+# it cannot be a fixture here. It was shown once, as a payload and a run, in OPS-225's record.
+L="$d/limit"; new_repo "$L"
+mkdir -p "$L/src" "$L/dist"
+echo 'export const x = 1;' > "$L/src/app.ts"
+echo 'dist/' > "$L/.gitignore"
+echo 'sed -i.bak s/x/y/ src/app.ts' > "$L/fix.sh"
+cp "$L/fix.sh" "$L/dist/fix.sh"
+cp "$L/fix.sh" "$L/kept.sh"
+git -C "$L" add src .gitignore kept.sh && git -C "$L" commit -qm seed
+echo 'sed s/x/y/ src/app.ts > t && mv t src/app.ts' > "$L/form.sh"
+echo 'F=src/app.ts; sed -i.bak s/x/y/ "$F"' > "$L/var.sh"
+nb 2 "a script file it reads" "sh fix.sh" "$L"
+# HEAD decides what is committed, not the index: staging a script does not make it reviewed code.
+git -C "$L" add fix.sh
+nb 2 "a staged script file" "sh fix.sh" "$L"
+git -C "$L" rm -q --cached fix.sh
+git -C "$L" add -N fix.sh
+nb 2 "an intent-to-add script file" "sh fix.sh" "$L"
+git -C "$L" rm -q --cached fix.sh
+nb_limit() {  # nb_limit LABEL COMMAND: the hook allows it, and running it edits a tracked file
+  nb 0 "$1 (the stated limit)" "$2" "$L"
+  (cd "$L" && sh -c "$2") >/dev/null 2>&1
+  if git -C "$L" diff --quiet -- src/app.ts; then fail "the stated limit: $1 edited nothing, so this row proves nothing"
+  else ok "the stated limit: $1 does edit tracked source"; fi
+  git -C "$L" checkout -q -- src/app.ts
+}
+nb_limit "a write in the command's words that is no in-place form" 'sed s/x/y/ src/app.ts > t && mv t src/app.ts'
+nb_limit "a script it reads, with a write form it does not know" "sh form.sh"
+nb_limit "a script it reads, with a target it cannot resolve" "sh var.sh"
+nb_limit "a script in an ignored directory" "sh dist/fix.sh"
+nb_limit "a script named by a variable" 'S=fix.sh; sh "$S"'
+nb_limit "a committed script" "sh kept.sh"
+# Each refusal says what to do next, true for a search and a clone too: all an agent reads then.
+nb_says() {  # nb_says LABEL COMMAND: refused, and the message gives each road
+  out=$(payload "$2" "$R" | (cd "$R" && sh "$H/no-blind-source-rewrite.sh") 2>&1 >/dev/null) || :
+  case "$out" in
+    *"this rewrites TRACKED"*) fail "no-blind-source-rewrite: $1 says it rewrites source, which it may only name" ;;
+    *"Grep tool"*|*"there with the Edit tool"*) fail "no-blind-source-rewrite: $1 names a road that is a tool a refused role may not hold" ;;
+    *"only mentions these words"*"drop the flag"*"put the text in a file"*"throwaway clone"*"report this refusal"*)
+      ok "no-blind-source-rewrite: $1 gives the road for a mention, a clone and real source" ;;
+    *) fail "no-blind-source-rewrite: $1 does not give the road for a mention, a clone and real source" ;;
+  esac
+}
+# The roads it names work: a narrower search, a body in a file, and for a mutant in a clone a patch
+# or a new file.
+nb 2 "a read-only search naming an editor's flag" "grep -n 'sed -i' src/app.ts" "$L"
+nb 0 "the road a refused search is given" "grep -n sed src/app.ts" "$L"
+nb 2 "a body naming an editor's flag beside a tracked path" "gh pr create --title t --body 'sed -i on src/app.ts'" "$L"
+nb 0 "the road a refused body is given" "gh pr create --title t --body-file body.md" "$L"
+echo 'export const y = 1;' > "$L/src/app.ts"
+git -C "$L" diff > "$d/mutant.patch"
+git -C "$L" checkout -q -- src/app.ts
+nb_limit "a patch, the road a mutant in a clone is given" "git apply '$d/mutant.patch'"
+nb 0 "a new file, the other road a mutant in a clone is given" "sed s/x/y/ src/app.ts > src/mutant.ts" "$L"
+nb 0 "a find-replace it recognises on a target the command does not name (the stated limit)" \
+  "python3 -c \"import glob; [open(n, 'w').write(open(n).read().replace('x', 'y')) for n in glob.glob('src/*')]\"" "$L"
+nb_says "a refusal of tracked source" "sed -i '' s/a/b/ $T"
+nb_says "a refusal of what it cannot resolve" "F=$T; sed -i '' s/a/b/ \"\$F\""
+nb_says "a refusal of a read-only search" "grep -n 'sed -i' $T"
+# The words stating the limit. The hook is a model file update replaces, so its header holds
+# everywhere. AGENTS.md and builder.md can be a project's own, so they hold only in the framework's
+# own repository, which framework/internal/template marks (a project may own a template/.claude/):
+# an older row or a customised agent never turns a project's gate red.
+for m in "A few in-place forms" "not an in-place form it knows" "a target the command does not name" \
+  "a script file it reads" "a script file it does not read" "not exhaustive" "NO CHECK ON THE DIFF"; do
+  stale_copy "$H/no-blind-source-rewrite.sh" "$m" || ok "the hook's header states: $m"
+done
+if [ -d "$ROOT/framework/internal/template" ]; then
+  for f in "$ROOT/AGENTS.md" "$ROOT/template/AGENTS.md"; do
+    row=$(grep -F 'no-blind-source-rewrite' "$f" 2>/dev/null)
+    case "$row" in
+      "| A few in-place forms on tracked source are refused |"*"limits: its header"*)
+        ok "$f's no-blind-source-rewrite row claims a few forms and points at its limits" ;;
+      *) fail "$f's no-blind-source-rewrite row must claim only a few in-place forms and point at its limits" ;;
+    esac
+  done
+  for m in "a refused edit or write" "a few in-place forms" "throwaway clone" "real tracked source"; do
+    if grep -qF -- "$m" "$ROOT/template/.claude/agents/builder.md" 2>/dev/null; then
+      ok "the template's builder.md states: $m"
+    else fail "the template's builder.md does not state: $m"; fi
+  done
+  # A sync of this copy failed twice under the sandbox, and update still said it was complete.
+  if cmp -s "$ROOT/template/.claude/agents/builder.md" "$ROOT/.claude/agents/builder.md"; then
+    ok "this repository's builder.md matches the template's"
+  else fail "this repository's .claude/agents/builder.md differs from the template's: sync it, by stridal update outside the sandbox"; fi
+else
+  ok "not the framework's own repository, so AGENTS.md's row and builder.md are this project's own to word"
+fi
+
 # Without jq it must fail CLOSED for a command it polices, and stay open for anything else.
 mkdir -p "$d/nojq"
 for t in sh cat git awk sed grep tr sort cut xargs mktemp dirname basename wc head tail pwd printf; do  # mktemp-in-tmpdir: a list of tools, not a call

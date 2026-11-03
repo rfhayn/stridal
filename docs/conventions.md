@@ -105,6 +105,14 @@ renumbers, the insights log keeps both rows, ADRs take the next number).
 fragment, a PR body or a journal entry names the class of an unfixed finding; the steps stay in a
 local file. Nothing checks this: it is **Nothing. You.**, and text once merged stays in history.
 
+**A refused edit or write of real tracked source is reported, not rerouted.** A hook's refusal names
+its road: take it. A sandbox refusal is only the OS error (`operation not permitted`) and names none.
+With no road, stop that step and report the path and the error; never make that write another way.
+Passing `no-blind-source-rewrite` is not permission: it holds a few in-place forms by their words
+(limits: its header), so most of what it does not recognise passes. The rule protects real tracked
+source, so a mutant goes only in a throwaway clone under `$TMPDIR`, applied as a patch or written as
+a new file; the hook refuses an in-place edit there too. Nothing checks this either: **Nothing. You.**
+
 ## Testing (yours)
 
 What a test must prove in this project, what runs against real services, and what a reviewer
