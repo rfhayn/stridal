@@ -75,9 +75,10 @@ A phase is several changes. Decompose as you go, phase by phase.
 ## Plugging in your own parser
 
 A project whose roadmap already has its own grammar keeps it, and its own parser: set
-`ROADMAP_PARSER` in `.claude/project.conf` to the command (run from the repo root, the mode
-appended, an explicit roadmap path after it when given; `ROOT` and `ROADMAP` are in its
-environment). Every reader goes through `roadmap_queue` in `.claude/lib/conf.sh`, and
+`ROADMAP_PARSER` in `.claude/project.conf` to the command (one command and its arguments, run with
+no shell from the repo root, the mode appended, an explicit roadmap path after it when given; `ROOT`
+and `ROADMAP` are in its environment; a value with shell syntax makes the queue UNKNOWN, so a pipe
+goes in a script). Every reader goes through `roadmap_queue` in `.claude/lib/conf.sh`, and
 `sh .claude/roadmap-queue.sh` hands every call to it, so the skills, the panel and the checks all
 follow the one key. `checks/roadmap.sh` fails a script that reads the queue any other way.
 
@@ -118,8 +119,8 @@ The contract a parser meets:
 Every `--tsv` row is held to this table before any reader sees it: a row that breaks it makes the
 queue UNKNOWN, never a shorter queue. A parser whose own words differ (a status such as
 `⬜ planned` or `❌ retired`, a richer phase id) does not have to change: `ROADMAP_NORMALIZER` is a
-filter command from its `--tsv` to the contract's (`awk -F'\t' -v OFS='\t' '$7 == "planned" { $7 =
-"queued" } { print }'`, say).
+filter command from its `--tsv` to the contract's, also with no shell: `sh infra/normalize.sh`, say,
+a script holding `awk -F'\t' -v OFS='\t' '$7 == "planned" { $7 = "queued" } { print }'`.
 
 ## Phase 1 — First slice
 **Owner:** <owner name>

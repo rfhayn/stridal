@@ -51,13 +51,16 @@ case $cmd in
     row=$1; shift
     printf '%s' "$row" | grep -qE '^[A-Za-z0-9][A-Za-z0-9._-]*$' || usage
     clean
+    # Before any merge: a regenerate that cannot run would otherwise leave them unregenerated.
+    if conf_bad BATCH_REGENERATE; then stop "project.conf cannot say what to regenerate: $(conf_why BATCH_REGENERATE)"; fi
     for b in "$@"; do
       git -C "$ROOT" rev-parse -q --verify "$b^{commit}" >/dev/null || stop "$b is not a branch or commit here (fetch it first)"
     done
     for b in "$@"; do merge_one "$b"; echo "batch: merged $b"; done
     # Every lane built its generated files from its own sources; build them once from the merge.
+    # One command and its arguments, with no shell (conf_exec, lib/conf.sh).
     if [ -n "${BATCH_REGENERATE:-}" ]; then
-      (cd "$ROOT" && sh -c "$BATCH_REGENERATE") >/dev/null || stop "BATCH_REGENERATE ($BATCH_REGENERATE) failed"
+      (cd "$ROOT" && conf_exec "$BATCH_REGENERATE") >/dev/null || stop "BATCH_REGENERATE ($BATCH_REGENERATE) failed"
       if [ -n "$(git -C "$ROOT" status --porcelain)" ]; then
         git -C "$ROOT" add -A && git -C "$ROOT" commit -qm "$row: Regenerate after merging $(printf '%s ' "$@" | sed 's/ $//')" \
           || stop "could not commit what BATCH_REGENERATE changed"

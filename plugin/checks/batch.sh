@@ -47,6 +47,26 @@ out=$(run merge A-1 ops/a ops/b); rc=$?
   && ok "batch merge: BATCH_REGENERATE runs after the merges, committed under the first row's id" \
   || fail "batch merge: regenerate: $(cat "$F/gen.out" 2>/dev/null); status: $(g status --porcelain)"
 
+# BATCH_REGENERATE runs as an argv with no shell (OPS-219). `eval touch …` holds no shell character and
+# any shell would run it; only exec, no shell, does not. A value that needs a shell fails by name,
+# before any merge, since a regenerate that cannot run would leave the merges unregenerated.
+if ! stale_copy "$B" conf_exec; then
+  setup; printf 'BATCH_REGENERATE="eval touch %s/regen-ran"\n' "$S" > "$F/.claude/project.conf"; g add -A; g commit -qm conf
+  rm -f "$S/regen-ran"
+  out=$(run merge A-1 ops/a); rc=$?
+  [ $rc -ne 0 ] && [ ! -e "$S/regen-ran" ] && printf '%s' "$out" | grep -q 'BATCH_REGENERATE' \
+    && ok "batch merge: BATCH_REGENERATE runs with no shell, and one that cannot start stops it by name" \
+    || fail "batch merge: no shell: exit $rc, ran=$( [ -e "$S/regen-ran" ] && echo yes || echo no ): $out"
+  for v in "touch $S/regen-ran | cat" "touch $S/regen-ran; touch $S/regen-ran" "cd docs && touch $S/regen-ran"; do
+    setup; printf "BATCH_REGENERATE='%s'\n" "$v" > "$F/.claude/project.conf"; g add -A; g commit -qm conf
+    rm -f "$S/regen-ran"
+    out=$(run merge A-1 ops/a); rc=$?
+    [ $rc -ne 0 ] && [ ! -e "$S/regen-ran" ] && printf '%s' "$out" | grep -q 'BATCH_REGENERATE' && [ -z "$(g log --merges --format=%s main..HEAD)" ] \
+      && ok "batch merge: a BATCH_REGENERATE that needs a shell stops before any merge, by name: $v" \
+      || fail "batch merge: '$v': exit $rc, ran=$( [ -e "$S/regen-ran" ] && echo yes || echo no ), merges $(g log --merges --format=%s main..HEAD | wc -l | tr -d ' '): $out"
+  done
+fi
+
 setup
 out=$(run merge A-1 ops/a ops/c ops/b); rc=$?
 [ $rc -ne 0 ] && printf '%s' "$out" | grep -q 'ops/c' && [ "$(g log --merges --format=%s main..HEAD | wc -l | tr -d ' ')" = 1 ] \

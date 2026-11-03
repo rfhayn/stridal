@@ -496,9 +496,24 @@ grep -q 'guarded path.*\.claude/hooks/pr-merge-guard.sh' "$d/out" && ok "...and 
 rm -r "$R/.claude/hooks"
 # With origin/main, the key and the list come from it: the branch cannot turn the key on for itself.
 git -C "$R" update-ref refs/remotes/origin/main main
+# A CI checkout: origin/main there, no origin HEAD, as actions/checkout leaves it. Refused, naming the fix.
+git -C "$R" remote add origin "$d/no-such-origin.git" 2>/dev/null
+fresh
+A --delegate Ana; expect_rc 1 $? "change-approval --delegate with origin/main and no origin HEAD"
+grep -q 'no origin HEAD to say.*set-head origin' "$d/out" && ok "...says origin's HEAD is what is missing, and names the fix" || fail "no origin HEAD named: $(cat "$d/out")"
+git -C "$R" remote remove origin 2>/dev/null
+git -C "$R" update-ref refs/remotes/origin/main main
+git -C "$R" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
 fresh
 A --delegate Ana; expect_rc 1 $? "change-approval --delegate refuses when origin/main has the key off, whatever the branch says"
 grep -q 'on origin/main' "$d/out" && ok "...and says it read origin/main" || fail "no origin/main in: $(cat "$d/out")"
+# Main is origin's HEAD, never a branch the branch's own MAIN_BRANCH names.
+git -C "$R" update-ref refs/remotes/origin/sidekey main
+cp "$R/.claude/project.conf" "$d/conf.side"; echo 'MAIN_BRANCH="sidekey"' >> "$R/.claude/project.conf"
+fresh
+A --delegate Ana; expect_rc 1 $? "change-approval --delegate with a branch's MAIN_BRANCH naming another ref"
+grep -q 'on origin/main' "$d/out" && ok "...still reads origin's HEAD" || fail "the branch's MAIN_BRANCH chose the ref: $(cat "$d/out")"
+cp "$d/conf.side" "$R/.claude/project.conf"; git -C "$R" update-ref -d refs/remotes/origin/sidekey
 # Main turns the key on and ships the list: a delegation passes, read from origin/main.
 base0=$(git -C "$R" rev-parse HEAD)
 (cd "$R" && git add -f .claude/project.conf .claude/lib/approval-guarded.txt && git commit -qm "main: delegation on")

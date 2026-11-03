@@ -182,13 +182,14 @@ printf '# Journal\n\n## Session 1 — 2026-01-01 — a — start\n' > "$G/docs/d
 git -C "$G" add -A && git -C "$G" commit -qm base
 git init -q --bare "$G/acme/app.git"; echo "acme/" >> "$G/.git/info/exclude"
 git -C "$G" remote add origin acme/app.git
-(cd "$G" && git push -q origin HEAD:main 2>/dev/null && git fetch -q origin)
+(cd "$G" && git push -q origin HEAD:main 2>/dev/null && git fetch -q origin && git remote set-head origin main)
 GH=$(git -C "$G" rev-parse HEAD)
 printf '%s\tfull\tclean\tall\n' "$GH" > "$G/.git/ci-receipt"
 cat > "$d/bin/gh" <<'EOF'
 #!/bin/sh
 case "$1 $2" in
   "pr checks") echo '[]' ;;
+  "api repos/"*) case "$*" in *.default_branch) git symbolic-ref -q refs/remotes/origin/HEAD | sed -e 's|^refs/remotes/origin/||' -e 's/^conf-on-main$/conf-forge/' ;; *) exit 1 ;; esac ;;
   "pr view")
     case "$*" in
       # Named (-R or a URL): FAKE_PR. Bare: gh's default repository's PR, FAKE_PR_DEFAULT if set,
@@ -218,6 +219,7 @@ merge() {
   _w=$1 _l=$2 _b=$3 _c=${4-239} _t=${5:-Fix the closed card} _br=${6:-fix/card}
   _pr=$(prjson "$_b" "$_c" "$_t")
   _def=${DEFBODY+$(prjson "$DEFBODY" "$_c" "$_t")}
+  conf_on_main "$G"
   rc=0
   out=$(payload "${MCMD:-gh pr merge 290 --squash}" "$G" | (cd "$G" && env PATH="$d/bin:$PATH" GH_HEAD="$GH" GH_BRANCH="$_br" FAKE_PR="$_pr" ${_def:+FAKE_PR_DEFAULT="$_def"} sh "$G/.claude/hooks/pr-merge-guard.sh" 2>"$d/err")) || rc=$?
   expect_rc "$_w" "$rc" "guard rule: $( [ "$_w" = 2 ] && echo blocks || echo allows ) $_l"

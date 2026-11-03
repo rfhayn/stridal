@@ -89,6 +89,7 @@ rather than hidden. One line per row. Add your project's own controls; keep the 
 | A module adds only while `MODULES` names it; a broken extension guard rule blocks, never allows | **`lib/modules.sh`** for every host; **`pr-merge-guard.sh`** extension rules; **`checks/modules.sh`** |
 | Orphans and clean lane worktrees do not outlive a session; tmux lanes are never killed | **`.claude/machine-quiet.sh`** via `session-close`; **`checks/machine-quiet.sh`** |
 | Work that needs the owner at the computer is seen | **`.claude/owner-queue.sh`** via `session-start` and the panel card |
+| `project.conf` is data: no line runs, a command key has no shell, a bad line fails the gate; the merge guard reads its keys, `model-roles.json` and `guard.d` rules from `origin/<main>` (copy installs: until OPS-145) | **`lib/conf.sh`**; **`pr-merge-guard.sh`**; **`run-local.sh`**; **`checks/project-conf.sh`** |
 | The change queue is read ONE way; a malformed row is an error, not a shorter queue | **`roadmap_queue`** (`lib/conf.sh`) over `.claude/roadmap-queue.sh` or `ROADMAP_PARSER`; **`checks/roadmap.sh`** fails a bypass and a row planned twice |
 | A project's history is never reformatted; records since adoption meet the format | `RECORDS_BASELINE`, `CHANGES_LEGACY` (`lib/records.sh`); **`checks/journal.sh`**, **`adr-numbering.sh`**, **`changes.sh`** |
 | ADRs, PRACs: unique numbers (one space), indexed, naming enforcement and evidence | **`checks/adr-numbering.sh`**, **`adr-evidence.sh`**; `new-adr` numbers from `origin/main`, open PRs |

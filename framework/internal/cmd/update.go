@@ -123,6 +123,9 @@ missing, so new guidance is found; ` + "`stridal diff`" + ` notes them too.`,
 			fmt.Fprintln(out, "--dry-run: no changes made.")
 			return nil
 		}
+		// Here, before the review, so a clone that predates the guard reading main gets it on every way
+		// out, a cancelled review included.
+		setOriginHead(out, targetDir)
 		if err := attrs.apply(targetDir); err != nil {
 			return err
 		}

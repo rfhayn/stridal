@@ -36,11 +36,12 @@ echo "top" > "$G/apps/web/app/top-page.tsx"
 git -C "$G" add -A && git -C "$G" commit -qm base
 git init -q --bare "$G/acme/app.git"; echo "acme/" >> "$G/.git/info/exclude"
 git -C "$G" remote add origin acme/app.git
-(cd "$G" && git push -q origin HEAD:main 2>/dev/null && git fetch -q origin)
+(cd "$G" && git push -q origin HEAD:main 2>/dev/null && git fetch -q origin && git remote set-head origin main)
 cat > "$d/bin/gh" <<'EOF'
 #!/bin/sh
 case "$1 $2" in
   "pr checks") echo '[]' ;;
+  "api repos/"*) case "$*" in *.default_branch) git symbolic-ref -q refs/remotes/origin/HEAD | sed -e 's|^refs/remotes/origin/||' -e 's/^conf-on-main$/conf-forge/' ;; *) exit 1 ;; esac ;;
   "pr view")
     case "$*" in
       *"--json state "*) echo OPEN ;;
@@ -68,6 +69,7 @@ screens() { for s in "$@"; do mkdir -p "apps/web/app/$s"; echo "export default f
 # merge LABEL WANT(yes|no) [TEXT] [BRANCH]: the merge is allowed; the advisory reaches Claude or not.
 merge() {
   _l=$1 _w=$2 _t=${3:-write surfaces (WRITE_SURFACE_GLOBS} _b=${4:-change/x}
+  conf_on_main "$G"
   rc=0
   out=$(payload "gh pr merge 7 --squash" "$G" | (cd "$G" && env PATH="$d/bin:$PATH" GH_HEAD="$HEAD_PR" GH_BRANCH="$_b" sh "$G/.claude/hooks/pr-merge-guard.sh" 2>"$d/err")) || rc=$?
   [ "$rc" = 0 ] || { fail "write surfaces: $_l: the merge was BLOCKED (exit $rc); the rule is advisory: $(head -3 "$d/err")"; return; }

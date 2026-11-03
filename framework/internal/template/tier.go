@@ -31,6 +31,9 @@ var FrameworkScripts = map[string]bool{
 	// The gate's run state and run log, and the foreground wait that reads them (OPS-41).
 	"scripts/ci/gate-wait.sh":      true,
 	"scripts/ci/lib/gate-state.sh": true,
+	// The batch steps (OPS-176): the project names what to regenerate in project.conf, and how that
+	// runs is the model's (OPS-219), so an old copy must not outlive an update.
+	"scripts/ci/batch.sh": true,
 }
 
 // isModelScript: a shell script directly under .claude/.

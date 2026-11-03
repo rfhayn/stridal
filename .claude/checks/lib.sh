@@ -39,6 +39,51 @@ need() {
     command -v "$_t" >/dev/null 2>&1 || { fail "cannot run: $_t is not installed"; finish; }
   done
 }
+# stale_copy FILE MARK: 0, with a FAIL saying so, when the repository's copy of a model file does not
+# hold MARK: the checks that come after it test a behaviour this copy predates, and failing them one
+# by one would say nothing about why. A copy install gets it from `stridal update`, which asks file by
+# file, so at a terminal. The plugin never overwrites what it scaffolded, so there the copy goes first,
+# and scaffolding puts it back.
+stale_copy() {
+  grep -qF -- "$2" "$1" 2>/dev/null && return 1
+  fail "$1 is an old copy, or a runner of your own, without what this check tests ($2). Refresh it: stridal update, at a terminal, as it asks file by file (with no terminal it cancels); with the plugin, remove the file and run /stridal:init, which puts back what is missing (a runner of your own: have it do the same)"
+  return 0
+}
+# conf_on_main REPO: make REPO's project.conf what origin's main holds, as a hook reads a key from
+# there (lib/conf.sh), without moving origin/main itself, which other rules compare heads with: origin's
+# HEAD names a side ref, origin/main's tree with this one file changed. Run again only when one moved.
+conf_on_main() {
+  _om_base=$(git -C "$1" rev-parse -q --verify refs/remotes/origin/main^{commit}) || return 0
+  _om_key="$_om_base $(cat "$1/.claude/project.conf" "$1/.claude/model-roles.json" 2>/dev/null | cksum)"
+  [ "$_om_key" != "$(cat "$1/.git/conf-on-main" 2>/dev/null)" ] || return 0
+  _om_index="$1/.git/conf-on-main.index"
+  GIT_INDEX_FILE=$_om_index git -C "$1" read-tree "$_om_base"
+  if [ -f "$1/.claude/project.conf" ]; then
+    # Naming MAIN_BRANCH, as origin's HEAD names the side ref and the other rules compare with origin/main.
+    _om_blob=$( { cat "$1/.claude/project.conf"; grep -q '^MAIN_BRANCH=' "$1/.claude/project.conf" || printf '\nMAIN_BRANCH="main"\n'; } | git -C "$1" hash-object -w --stdin)
+    GIT_INDEX_FILE=$_om_index git -C "$1" update-index --add --cacheinfo "100644,$_om_blob,.claude/project.conf"
+  else
+    GIT_INDEX_FILE=$_om_index git -C "$1" update-index --force-remove .claude/project.conf
+  fi
+  # A roles file or a module the fixture copied in, which the guard holds to main as well.
+  for _om_m in "$1/.claude/model-roles.json" "$1"/.claude/modules/*/module.conf; do
+    [ -f "$_om_m" ] || continue
+    _om_blob=$(git -C "$1" hash-object -w --no-filters -- "$_om_m")
+    GIT_INDEX_FILE=$_om_index git -C "$1" update-index --add --cacheinfo "100644,$_om_blob,${_om_m#"$1"/}"
+  done
+  _om_c=$(GIT_INDEX_FILE=$_om_index git -C "$1" write-tree | xargs -I{} git -C "$1" commit-tree {} -p "$_om_base" -m "project.conf as main holds it")
+  git -C "$1" update-ref refs/remotes/origin/conf-on-main "$_om_c"
+  git -C "$1" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/conf-on-main
+  # The guard's chain: the forge's default branch must say the side ref is main. The checks' gh stubs
+  # answer conf-forge while origin's HEAD names the side ref. Both pushed, so its fetches find them.
+  _om_blob=$(printf 'MAIN_BRANCH="conf-on-main"\n' | git -C "$1" hash-object -w --stdin)
+  GIT_INDEX_FILE=$_om_index git -C "$1" update-index --add --cacheinfo "100644,$_om_blob,.claude/project.conf"
+  _om_f=$(GIT_INDEX_FILE=$_om_index git -C "$1" write-tree | xargs -I{} git -C "$1" commit-tree {} -p "$_om_base" -m "the forge's default branch")
+  git -C "$1" update-ref refs/remotes/origin/conf-forge "$_om_f"
+  git -C "$1" push -q --force origin "$_om_c:refs/heads/conf-on-main" "$_om_f:refs/heads/conf-forge" 2>/dev/null || :
+  rm -f "$_om_index"
+  printf '%s\n' "$_om_key" > "$1/.git/conf-on-main"
+}
 
 # Created here, in the check's own shell, not inside `$(scratch)`: a trap set in a command
 # substitution's subshell fires when that subshell exits, deleting the directory at once.
