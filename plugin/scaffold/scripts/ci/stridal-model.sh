@@ -9,7 +9,7 @@
 #   3. the path the plugin recorded at its last session start, in its data directory
 #   4. in CI ($CI set, as GitHub Actions and most CI services do) or with STRIDAL_FETCH=1:
 #      the plugin at its pinned version, cloned once into a cache directory:
-#        STRIDAL_REF       the tag or branch to clone      (default v0.1.0, the version
+#        STRIDAL_REF       the tag or branch to clone      (default v0.1.0-rc.1, the version
 #                                                              /stridal:init scaffolded from)
 #        STRIDAL_REPO_URL  where from                      (default github.com/rfhayn/stridal)
 #        STRIDAL_CACHE     where to keep it                (default ~/.cache/stridal; cache
@@ -27,7 +27,7 @@ if [ -z "$root" ]; then
   [ -f "$rec" ] && root=$(cat "$rec")
 fi
 if [ -z "$root" ] && { [ -n "${CI:-}" ] || [ "${STRIDAL_FETCH:-}" = 1 ]; }; then
-  ref=${STRIDAL_REF:-v0.1.0}
+  ref=${STRIDAL_REF:-v0.1.0-rc.1}
   url=${STRIDAL_REPO_URL:-https://github.com/rfhayn/stridal.git}
   dir="${STRIDAL_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/stridal}/$(printf '%s' "$ref" | tr '/' '-')"
   if [ ! -f "$dir/plugin/.claude-plugin/plugin.json" ]; then
@@ -39,7 +39,7 @@ if [ -z "$root" ] && { [ -n "${CI:-}" ] || [ "${STRIDAL_FETCH:-}" = 1 ]; }; then
   [ -f "$dir/plugin/.claude-plugin/plugin.json" ] && root="$dir/plugin"
 fi
 if [ -z "$root" ] || [ ! -f "$root/${1:-}" ]; then
-  echo "FAIL stridal-model.sh: cannot find the stridal plugin's ${1:-<script>} (tried \$STRIDAL_PLUGIN_ROOT, stridal-model on PATH, the plugin's recorded root$( { [ -n "${CI:-}" ] || [ "${STRIDAL_FETCH:-}" = 1 ]; } && echo ", a clone at ${STRIDAL_REF:-v0.1.0}")). In CI it clones github.com/rfhayn/stridal at STRIDAL_REF; locally, start one Claude Code session with the plugin enabled, or set STRIDAL_FETCH=1." >&2
+  echo "FAIL stridal-model.sh: cannot find the stridal plugin's ${1:-<script>} (tried \$STRIDAL_PLUGIN_ROOT, stridal-model on PATH, the plugin's recorded root$( { [ -n "${CI:-}" ] || [ "${STRIDAL_FETCH:-}" = 1 ]; } && echo ", a clone at ${STRIDAL_REF:-v0.1.0-rc.1}")). In CI it clones github.com/rfhayn/stridal at STRIDAL_REF; locally, start one Claude Code session with the plugin enabled, or set STRIDAL_FETCH=1." >&2
   exit 1
 fi
 s=$1; shift
