@@ -35,9 +35,11 @@ func withVersion(t *testing.T, v string) {
 // ~/Development/stridal, a checkout on whatever branch. Now that guess is never consulted: a
 // HOME holding a decoy checkout there does not decide the template.
 func TestResolveNeverGuessesFromHome(t *testing.T) {
-	withVersion(t, "0.1.0")
+	// The checkout's own version, so a version bump does not break a test about where a template comes from.
+	version := readVersion(filepath.Join(repoRoot(t), "template"))
+	withVersion(t, version)
 	home := t.TempDir()
-	decoy := fakeTemplate(t, filepath.Join(home, "Development", "stridal", "template"), "0.1.0")
+	decoy := fakeTemplate(t, filepath.Join(home, "Development", "stridal", "template"), version)
 	t.Setenv("HOME", home)
 	t.Setenv("STRIDAL_FRAMEWORK", "")
 	t.Setenv("STRIDAL_SHARE", filepath.Join(home, "share"))

@@ -119,6 +119,8 @@ func TestUpdateOutlivesAnOriginThatHangs(t *testing.T) {
 // origin's HEAD unset.
 func repoWithUnsetOriginHead(t *testing.T) string {
 	t.Helper()
+	// A caller's own STRIDAL_FRAMEWORK would pick another checkout's template, of another version.
+	t.Setenv("STRIDAL_FRAMEWORK", "")
 	dir := newRepo(t)
 	if err := writeInstallMarker(dir); err != nil {
 		t.Fatal(err)
