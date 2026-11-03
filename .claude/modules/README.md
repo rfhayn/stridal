@@ -8,7 +8,8 @@ session-close's conflict table) find its parts by where they sit, and run them o
 .claude/modules/<name>/
   module.conf                       name, requires, enables; UPPERCASE default keys
   README.md                         what it is and how to switch it on
-  guard.d/*.sh                      extra pr-merge-guard rules
+  guard.d/*.sh                      extra pr-merge-guard rules (in the repository: run only while
+                                    the directory is what origin/<main> holds, .claude/local/README.md)
   context.d/session-start/*.sh      extra sections in session-start's context
   context.d/session-close/*.sh      extra sections in session-close's context
   health/*.sh                       extra session-start health lines
@@ -37,7 +38,7 @@ contributes nothing, whatever it contains. The two older switches still work:
 | `name` | the module's name; must equal its directory |
 | `requires` | other modules that must be on too (space-separated); one that is not fails `checks/modules.sh` and the merge guard |
 | `enables` | the points it contributes, from `guard.d context.d health checks skills conflicts.tsv roadmap.d`; a part on disk it does not declare, or a declared one that is missing, fails `checks/modules.sh` |
-| `UPPERCASE="value"` | a default for that project.conf key, applied only where the project sets nothing (no `$`, backtick or backslash) |
+| `UPPERCASE="value"` | a default for that project.conf key, applied only where the project sets nothing (no `$`, backtick or backslash). A shipped module's keys are on `_conf_known` (`lib/conf.sh`); a project's own module names its keys `PROJECT_…`, and any other is refused by name |
 
 **The contract of each point** is the local layer's (`.claude/local/README.md`): the same points,
 the same rules. A module's parts run before the local layer's, in `MODULES` order, and within a

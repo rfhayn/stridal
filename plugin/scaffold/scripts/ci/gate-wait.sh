@@ -75,7 +75,7 @@ case $LIMIT in ''|*[!0-9]*) echo "gate-wait: GATE_WAIT_SECONDS=$LIMIT is not who
 POLL=${GATE_WAIT_POLL:-5}
 case $POLL in ''|*[!0-9]*|0) echo "gate-wait: GATE_WAIT_POLL=$POLL is not whole seconds; using 5" >&2; POLL=5 ;; esac
 TOP=$(git rev-parse --show-toplevel)
-GATE_CMD=$( [ -f "$TOP/.claude/project.conf" ] && . "$TOP/.claude/project.conf" >/dev/null 2>&1; printf '%s' "${GATE:-scripts/ci/gate.sh}")
+GATE_CMD=$( ROOT=$TOP; [ -f "$TOP/.claude/lib/conf.sh" ] && . "$TOP/.claude/lib/conf.sh" >/dev/null 2>&1; printf '%s' "${GATE:-scripts/ci/gate.sh}")
 GATE_HINT=$GATE_CMD
 if [ -n "$ON" ]; then
   case $GATE_CMD in /*) _gp=$GATE_CMD ;; *) _gp=$TOP/$GATE_CMD ;; esac

@@ -801,6 +801,82 @@ case "$pr_arg/$gh_repo" in
       || block "this merge names no repository and runs in $pcwd, which is not a worktree of the repository this guard reads PR #$pr in ($(pwd -P)), so gh may resolve another repository's PR #$pr. $pin_hint" ;;
 esac
 
+# The file CONF_ERRORS's first line is about: a module's module.conf says so itself (modules_defaults).
+conf_err_file() {
+  case $CONF_ERRORS in
+    "module "*"'s module.conf"*) _cef=${CONF_ERRORS#module }; printf '.claude/modules/%s/module.conf' "${_cef%%\'s*}" ;;
+    *) printf '.claude/project.conf' ;;
+  esac
+}
+# A line of this checkout's project.conf or module.conf that is not data leaves a default in its key's
+# place, and a default can be a rule turned off, so nothing merges from here while one stands (lib/conf.sh).
+command -v conf_nul_check >/dev/null 2>&1 && conf_nul_check 2>/dev/null
+[ -z "${CONF_ERRORS:-}" ] || block "$ROOT_HOOK/$(conf_err_file) holds a line that is not data, so the keys this guard reads may be defaults it was not asked for: $(printf '%s\n' "$CONF_ERRORS" | head -n 3 | tr '\n' ' ')"
+
+# FROM HERE ON THE KEYS AND model-roles.json ARE origin/<main>'s, not the branch's this merge is judged
+# on: the whole file, not a list of keys, for this guard and every script it starts (GUARD_CONF is
+# exported), so deleting or emptying them on a branch changes nothing here, and a PR that changes one
+# takes effect once it lands. Main with no project.conf is the defaults, so a project adopting the
+# model can land. A line main's own copy refuses must not stop the PR that fixes it, or an adopter
+# whose old line predates this grammar: the checkout's copy, read clean just above, stands in, with a
+# note. A branch cannot use that: every error such a read records is main's own text (lib/modules.sh
+# reads a repository's module.conf from main too), so main must already be broken. Main unknown, or a
+# git error reading it, blocks, naming the fix.
+#
+# origin's HEAD is a trust root a lane can re-point, so here where it decides it is held to an authority
+# chain: the forge's default branch (gh), that branch's MAIN_BRANCH (its own name when it names none),
+# and origin's HEAD must name the result. A branch can change neither, and a git-flow project sets the
+# key once on its default branch. gh failing to answer refuses. origin's HEAD stays a trust root for
+# every reader that does not decide, and asking origin only moves the floor to the remote's url: OPS-218.
+# An ssh alias with a dot (git@github.com-work:o/n) reads as an Enterprise host, so a --hostname read
+# that fails asks gh's own host once; that answer must still agree with origin's HEAD below.
+main_head=$(git -C "$ROOT_HOOK" symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null) || block "$(conf_main_fix)"
+main_copy=$(mktemp -d "${TMPDIR:-/tmp}/guard-main.XXXXXX") || block "cannot make a temp directory for origin's main's project.conf"
+trap 'rm -rf "$main_copy"' EXIT
+forge_read() { forge_main=$(gh api "$@" "repos/$this_repo" --jq .default_branch 2>>"$main_copy/gh.err") && [ -n "$forge_main" ]; }
+if ! forge_read ${this_host:+--hostname "$this_host"} && { [ -z "$this_host" ] || ! forge_read; }; then
+  forge_said=$(grep . "$main_copy/gh.err" | head -n 2 | tr '\n' ' ')
+  block "cannot read $this_repo's default branch from gh (gh: ${forge_said:-no answer}), so whether origin's HEAD here (${main_head#refs/remotes/origin/}) names main cannot be checked. Fix what gh reports, then retry."
+fi
+git -C "$ROOT_HOOK" fetch -q origin "refs/heads/$forge_main" 2>/dev/null \
+  || say "could not fetch $forge_main from origin, so this is judged on the copy of it fetched last."
+conf_main_blob "refs/remotes/origin/$forge_main" .claude/project.conf "$main_copy/forge.conf"
+case $? in
+  0) main_named=$(GUARD_CONF="$main_copy/forge.conf"; . "$STRIDAL_FW/lib/conf.sh" 2>/dev/null; printf '%s' "${_conf_main_named:+$MAIN_BRANCH}") ;;
+  2) main_named="" ;;
+  *) block "git could not read .claude/project.conf from origin/$forge_main, $this_repo's default branch, so which branch is main cannot be checked. Run: git -C \"$ROOT_HOOK\" fetch origin" ;;
+esac
+main_named=${main_named:-$forge_main}
+[ "$main_head" = "refs/remotes/origin/$main_named" ] \
+  || block "origin's HEAD here names ${main_head#refs/remotes/origin/}, and $this_repo's default branch ($forge_main) says main is $main_named, so what main says cannot be trusted here (if that branch is wrong, correct MAIN_BRANCH on $forge_main). Run: git -C \"$ROOT_HOOK\" remote set-head origin $main_named"
+if [ "$main_named" != "$forge_main" ]; then
+  git -C "$ROOT_HOOK" fetch -q origin "refs/heads/$main_named" 2>/dev/null \
+    || say "could not fetch $main_named from origin, so this is judged on the copy of it fetched last."
+fi
+main_ref=$(conf_main_ref) || block "$(conf_main_fix)"
+conf_main_blob "$main_ref" .claude/project.conf "$main_copy/project.conf"
+case $? in
+  0) ;;
+  2) : > "$main_copy/project.conf" ;;
+  *) block "git could not read .claude/project.conf from ${main_ref#refs/remotes/}, so this merge has no keys to be judged on." ;;
+esac
+GUARD_CONF="$main_copy/project.conf"
+export GUARD_CONF
+# shellcheck disable=SC1091
+. "$STRIDAL_FW/lib/conf.sh" 2>/dev/null
+conf_nul_check "$GUARD_CONF" 2>/dev/null
+if [ -n "${CONF_ERRORS:-}" ]; then
+  say "${main_ref#refs/remotes/}'s $(conf_err_file) holds a line that is not data, so this merge is judged on this checkout's copy until it is fixed: $(printf '%s\n' "$CONF_ERRORS" | head -n 1)"
+  # Main's modules stay on, beside the checkout's: a branch cannot drop one to skip its rules while it
+  # is judged on its own keys. modules_enabled lists a module named twice once.
+  main_modules=${MODULES:-}
+  unset GUARD_CONF
+  # shellcheck disable=SC1091
+  . "$STRIDAL_FW/lib/conf.sh" 2>/dev/null
+  MODULES="$main_modules${main_modules:+ }${MODULES:-}"
+fi
+REMOTE_WF=${GATE_REMOTE_WORKFLOW:-}
+
 # Rule 14 — only an OPEN PR merges (OPS-132). A close is how one session tells another "do not land
 # this", and the lane that opened the PR is not told: #215, closed as a duplicate, landed twelve
 # minutes later through its own lane's merge. First, before any evidence is read: none of it matters
@@ -1106,7 +1182,14 @@ why=$(cg_trace "$head_sha")
 [ -z "$why" ] || block "rule 10: $why"
 why=$(cg_archives "$base9" "$head_sha")
 [ -z "$why" ] || block "rule 11: $why"
-roles_json="$ROOT_HOOK/.claude/model-roles.json"
+# Rules 12 and 15 switch on what main's model-roles.json says, as a branch could turn them off (above).
+roles_json="$main_copy/model-roles.json"
+conf_main_blob "$main_ref" .claude/model-roles.json "$roles_json"
+case $? in
+  0) ;;
+  2) rm -f "$roles_json" ;;
+  *) block "git could not read .claude/model-roles.json from ${main_ref#refs/remotes/}, so rules 12 and 15 cannot be judged." ;;
+esac
 if jq -e '.provenance.enabled == true' "$roles_json" >/dev/null 2>&1; then
   why=$(cg_trailers "$cmd" "$(printf '%s' "$payload" | jq -r '.cwd // empty')" "$(printf '%s' "$payload" | jq -r '.session_id // empty')" "$roles_json")
   [ -z "$why" ] || block "rule 12: $why"
@@ -1195,6 +1278,68 @@ fi
 # Anything else blocks, FAIL CLOSED: a rule that does not parse, cannot start, crashes (exit 1),
 # or outlives GUARD_RULE_TIMEOUT seconds (default 60) never reads as "no reason to block". The
 # loader is tested for, not sourced blind; if it is missing while a guard.d exists, block.
+#
+# THE guard.d DIRECTORIES IN THE REPOSITORY MUST BE origin/<main>'s (OPS-219), and so must a project's
+# own module.conf, or every rule is refused before any runs: a branch's copy of a rule must not judge
+# its own merge. The comparison is of what is on disk with main's tree, mode, blob and path, through
+# no index, no stat cache and no attribute, as each of those can make a changed file read as unchanged.
+# A non-rule file or a chmod there refuses too. guard_rules_refusal prints why, or nothing, and its
+# message is the fix the caller can run.
+#
+# Main is conf_main_ref's; with no answer, and a rule in the repository, it blocks: nothing can vouch
+# for the rule, and the merge does not go on without it. A rule outside the repository is the plugin's
+# own, no branch's, and is never compared, on any path. What a rule sources from elsewhere is not read.
+guard_rules_disk() {  # guard_rules_disk PATH...: "<mode> <blob>\t<path>" per file on disk
+  for _gr_p in "$@"; do
+    { [ -e "$ROOT_HOOK/$_gr_p" ] || [ -L "$ROOT_HOOK/$_gr_p" ]; } && find "$ROOT_HOOK/$_gr_p" ! -type d
+  done | while IFS= read -r _gr_f; do
+    if [ -L "$_gr_f" ]; then
+      _gr_mo=120000; _gr_h=$(printf '%s' "$(readlink "$_gr_f")" | git -C "$ROOT_HOOK" hash-object --stdin)
+    elif [ -f "$_gr_f" ]; then
+      _gr_mo=100644; [ -x "$_gr_f" ] && _gr_mo=100755
+      _gr_h=$(git -C "$ROOT_HOOK" hash-object --no-filters -- "$_gr_f")
+    else
+      _gr_mo=0; _gr_h=0
+    fi
+    printf '%s %s\t%s\n' "$_gr_mo" "$_gr_h" "${_gr_f#"$ROOT_HOOK"/}"
+  done
+}
+guard_rules_refusal() {
+  if ! _gr_ref=$(conf_main_ref); then
+    [ -n "$1" ] || return 0
+    echo "origin's main cannot be read here, so the extension rules (guard.d) in this repository cannot be vouched for and none of them runs. Run: git -C \"$ROOT_HOOK\" fetch origin && git -C \"$ROOT_HOOK\" remote set-head origin <this project's main branch>"
+    return 0
+  fi
+  _gr_main=origin/${_gr_ref#refs/remotes/origin/}
+  _gr_paths=".claude/local/guard.d"
+  for _gr_m in $(modules_enabled); do
+    _gr_d=$(module_dir "$_gr_m") || continue
+    # module.conf too, except while main's own copy is refused and the checkout's keys stand in (GUARD_CONF
+    # unset, as only main's text can do): the PR that fixes that line must differ from main there. Its
+    # rules stay held to main.
+    case $_gr_d in "$ROOT_HOOK"/*) _gr_paths="$_gr_paths ${_gr_d#"$ROOT_HOOK"/}/guard.d${GUARD_CONF:+ ${_gr_d#"$ROOT_HOOK"/}/module.conf}" ;; esac
+  done
+  # shellcheck disable=SC2086
+  _gr_on_main=$(git -C "$ROOT_HOOK" -c core.quotePath=false ls-tree -r "$_gr_ref" -- $_gr_paths 2>/dev/null) \
+    || { echo "git cannot read $_gr_paths from $_gr_main, so the extension rules (guard.d) cannot be vouched for and none of them runs."; return 0; }
+  _gr_on_main=$(printf '%s\n' "$_gr_on_main" | sed '/^$/d; s/ blob / /' | LC_ALL=C sort)
+  # shellcheck disable=SC2086
+  _gr_on_disk=$(guard_rules_disk $_gr_paths | LC_ALL=C sort)
+  [ "$_gr_on_main" != "$_gr_on_disk" ] || return 0
+  _gr_names=$(printf '%s\n%s\n' "$_gr_on_main" "$_gr_on_disk" | LC_ALL=C sort | uniq -u | cut -f2 | LC_ALL=C sort -u | tr '\n' ' ')
+  _gr_why="the extension rules here are not what $_gr_main holds ($_gr_names), so they are refused and not run: a branch's copy of a rule must not judge its own merge."
+  # shellcheck disable=SC2086
+  if [ -n "$(git -C "$ROOT_HOOK" status --porcelain --ignored -- $_gr_paths 2>/dev/null)" ]; then
+    echo "$_gr_why This checkout has uncommitted changes there, which the fix would lose: commit them first, then merge again to be told the fix."
+    return 0
+  fi
+  _gr_off=""
+  for _gr_p in $_gr_paths; do
+    case " $_gr_names" in *" $_gr_p"*) _gr_off="$_gr_off $_gr_p" ;; esac
+  done
+  echo "$_gr_why If this PR changes a rule, for the merge run: git -C \"$ROOT_HOOK\" restore --source=$_gr_main --$_gr_off (the branch's commits stay as they are; git -C \"$ROOT_HOOK\" restore --$_gr_off puts its copy back). If this checkout is only behind: git -C \"$ROOT_HOOK\" merge $_gr_main."
+  return 0
+}
 mod_lib="$STRIDAL_FW/lib/modules.sh"
 if [ -f "$mod_lib" ]; then
   sh -n "$mod_lib" 2>/dev/null || block "$mod_lib does not parse, so the extension rules (guard.d) cannot be found. Run: sh -n $mod_lib"
@@ -1203,8 +1348,10 @@ if [ -f "$mod_lib" ]; then
     command -v "$f" >/dev/null 2>&1 || block "$mod_lib did not define $f, so the extension rules (guard.d) cannot be run."
   done
   probs=$(modules_problems)
-  [ -z "$probs" ] || block "a module in MODULES (.claude/project.conf) cannot load, so its guard rules cannot run: $(printf '%s' "$probs" | head -n 1)"
+  [ -z "$probs" ] || block "a module in MODULES (.claude/project.conf) cannot load, so its guard rules cannot run: $(printf '%s' "$probs" | head -n 1). If main enabled it and this checkout is behind: git -C \"$ROOT_HOOK\" merge ${main_ref#refs/remotes/}"
   rules=$(ext_files guard.d .sh)
+  why=$(guard_rules_refusal "$rules")
+  [ -z "$why" ] || block "$why"
 elif [ -d "$ROOT_HOOK/.claude/local/guard.d" ] || [ -n "${MODULES:-}" ]; then
   block "cannot find $mod_lib, so the extension rules (MODULES, .claude/local/guard.d) cannot run. Restore it."
 else

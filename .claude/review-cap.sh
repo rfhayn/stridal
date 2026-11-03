@@ -25,6 +25,10 @@ ROOT=$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)
 . "$ROOT/.claude/lib/conf.sh"
 # shellcheck disable=SC1091
 . "$ROOT/.claude/lib/change.sh"
+# How many rounds a PR gets is main's to say, not the PR's (lib/conf.sh); unreadable, the defaults.
+conf_keys_from_main "$ROOT/.claude/lib/conf.sh" REVIEW_CAPS REVIEW_AT_CAP
+capnote=""
+[ -z "$CONF_MAIN_NOTE" ] || capnote=" (the default caps: $CONF_MAIN_NOTE)"
 
 [ -n "${1:-}" ] || { echo "usage: sh .claude/review-cap.sh <row id | change id | branch> [--why]" >&2; exit 1; }
 arg=$1; why=""; [ "${2:-}" = --why ] && why=1
@@ -37,7 +41,8 @@ esac
 say() {  # say RISK SOURCE: the cap for RISK, and on --why where it came from and REVIEW_AT_CAP
   cap=$(printf '%s\n' $REVIEW_CAPS | sed -n "s/^$1:\([0-9][0-9]*\)$/\1/p" | head -1)
   [ -n "$cap" ] || { echo "ERROR: REVIEW_CAPS ($REVIEW_CAPS) has no '$1:<rounds>', so the review cap is UNKNOWN" >&2; exit 1; }
-  if [ -n "$why" ]; then echo "$cap — risk $1, from $2; REVIEW_AT_CAP $REVIEW_AT_CAP"; else echo "$cap"; fi
+  # One line on --why, which build-change matches whole, so main unreadable is said inside it.
+  if [ -n "$why" ]; then echo "$cap — risk $1, from $2$capnote; REVIEW_AT_CAP $REVIEW_AT_CAP"; else echo "$cap"; fi
   exit 0
 }
 

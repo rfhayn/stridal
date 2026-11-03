@@ -76,7 +76,7 @@
 payload=$(cat)
 
 root=$(cd "$(dirname "$0")/../.." 2>/dev/null && pwd) || root=""
-[ -n "${CLAUDE_PROJECT_DIR:-}" ] && [ -f "$CLAUDE_PROJECT_DIR/.claude/project.conf" ] && root=$CLAUDE_PROJECT_DIR
+[ -n "${CLAUDE_PROJECT_DIR:-}" ] && { [ -e "$CLAUDE_PROJECT_DIR/.claude/project.conf" ] || [ -L "$CLAUDE_PROJECT_DIR/.claude/project.conf" ]; } && root=$CLAUDE_PROJECT_DIR
 ROOT=$root
 # A `.` of a missing file is fatal under dash (exit 2 reads as a BLOCK): test first.
 if [ -f "$(dirname "$0")/../lib/conf.sh" ]; then

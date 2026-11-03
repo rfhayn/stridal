@@ -58,18 +58,44 @@ module_meta() {
 # modules_defaults: each enabled module's default keys (UPPERCASE="value" lines of its
 # module.conf), set only where project.conf set nothing; then the legacy switches follow the
 # list, so a check that reads PROPOSALS or REVIEW_PAGE sees the module that is on. A line that
-# needs a shell to read ($, backtick, backslash) is not applied.
+# needs a shell to read ($, backtick, backslash) is not applied. A key off conf.sh's allowlist is
+# refused by name: a project's own module.conf is a branch's text, as project.conf is. So when the keys
+# are origin/<main>'s (GUARD_CONF), a module.conf in the repository is main's copy too; one outside it
+# is the plugin's own. Every error a read of main records is then main's own text, never a branch's.
+_module_conf_text() {
+  if [ -n "${GUARD_CONF:-}" ]; then
+    case $1 in
+      "$ROOT"/*)
+        _mcr=$(conf_main_ref) && git -C "$ROOT" cat-file blob "$_mcr:${1#"$ROOT"/}/module.conf" 2>/dev/null
+        return 0 ;;
+    esac
+  fi
+  cat "$1/module.conf" 2>/dev/null
+}
 modules_defaults() {
   for _md in $(modules_enabled); do
     _mdd=$(module_dir "$_md") || continue
     while IFS= read -r _ml; do
       [ -n "$_ml" ] || continue
+      if [ "$_conf_nerr" -ge 20 ]; then
+        _conf_bad '?' "module $_md's module.conf has 20 keys it cannot read, so it is refused from there on"
+        return 0
+      fi
       _mk=${_ml%%=*}
+      if ! _conf_key_ok "$_mk"; then
+        _conf_bad "$_mk" "module $_md's module.conf ($_mk) sets a key the model does not know: a project's own module names its keys with the prefix PROJECT_"
+        continue
+      fi
+      _mv=${_ml#*=\"}
+      if ! _conf_value_ok "$_mk" "$_mv"; then
+        _conf_bad "$_mk" "module $_md's module.conf ($_mk) starts with -, which git would read as an option"
+        continue
+      fi
       eval "_mcur=\${$_mk:-}"
       # shellcheck disable=SC2154
       [ -n "$_mcur" ] || eval "$_ml"
     done <<EOF
-$(grep -E '^[A-Z][A-Z0-9_]*="[^"$`\\]*"[[:space:]]*$' "$_mdd/module.conf" 2>/dev/null)
+$(_module_conf_text "$_mdd" | grep -E '^[A-Z][A-Z0-9_]*="[^"$`\\]*"[[:space:]]*$')
 EOF
     case $_md in openspec) PROPOSALS=openspec ;; review-page) REVIEW_PAGE=artifact ;; esac
   done

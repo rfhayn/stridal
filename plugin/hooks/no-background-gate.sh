@@ -44,7 +44,7 @@ payload=$(cat)
 root=$(cd "$(dirname "$0")/../.." 2>/dev/null && pwd) || root=""
 # From the stridal plugin this file is not in the project: its GATE settings are under
 # CLAUDE_PROJECT_DIR.
-[ -n "${CLAUDE_PROJECT_DIR:-}" ] && [ -f "$CLAUDE_PROJECT_DIR/.claude/project.conf" ] && root=$CLAUDE_PROJECT_DIR
+[ -n "${CLAUDE_PROJECT_DIR:-}" ] && { [ -e "$CLAUDE_PROJECT_DIR/.claude/project.conf" ] || [ -L "$CLAUDE_PROJECT_DIR/.claude/project.conf" ]; } && root=$CLAUDE_PROJECT_DIR
 ROOT=$root
 # A `.` of a missing file is fatal with a shell-dependent status (dash exits 2, which Claude Code
 # reads as a BLOCK of every Bash call): test first, and fall back to the defaults.
@@ -52,11 +52,22 @@ if [ -f "$(dirname "$0")/../lib/conf.sh" ]; then
   # shellcheck disable=SC1091
   . "$(dirname "$0")/../lib/conf.sh"
 fi
-# Relative to the project, as a command names them: a project.conf may spell them "$ROOT/…".
+# Relative to the project, as a command names them: a project.conf may give an absolute path.
 run=${GATE_RUN:-scripts/ci/run-local.sh}; run=${run#"$ROOT"/}; run=${run#./}
 wrap=${GATE:-scripts/ci/gate.sh}; wrap=${wrap#"$ROOT"/}; wrap=${wrap#./}
 waiter="$(dirname "$run")/gate-wait.sh"; waiter=${waiter#./}
 gates="$run $wrap $waiter"
+# main_gates: a branch cannot rename the gate out of this hook's sight, so main's names count beside its
+# own. A ref it cannot read adds nothing and blocks nothing. Read by shape, not by conf.sh: a wrong
+# reading only misses a name, and the branch's stays. It costs a git process, so only for a call the
+# doors could refuse (could_refuse, once the command is read).
+main_gates() {
+  for _mg in $(git -C "$root" cat-file blob refs/remotes/origin/HEAD:.claude/project.conf 2>/dev/null \
+    | sed -n -e 's/^GATE=["'\'']\{0,1\}\([^"'\''#[:space:]]*\).*/\1/p' -e 's/^GATE_RUN=["'\'']\{0,1\}\([^"'\''#[:space:]]*\).*/\1/p'); do
+    _mg=${_mg#"$ROOT"/}; _mg=${_mg#./}
+    gates="$gates $_mg $(dirname "$_mg")/gate-wait.sh"
+  done
+}
 
 # names TEXT: a gate's path anywhere in TEXT, for the fallbacks (backslashes dropped: JSON may
 # escape a slash; `//` and `/./` collapsed, as the reader does).
@@ -80,6 +91,7 @@ HINT="Run it in the FOREGROUND, with the Bash timeout at 600000 and without '&'.
 block() { echo "BLOCKED by no-background-gate: $1" >&2; echo "$2" >&2; exit 2; }
 
 if ! command -v jq >/dev/null 2>&1 || ! printf '%s' "$payload" | jq -e . >/dev/null 2>&1; then
+  case "$payload" in *'"agent_id"'* | *'&'*) main_gates ;; esac
   names "$payload" || exit 0
   why=""
   amp "$payload" && why="beside an '&'"
@@ -90,6 +102,23 @@ if ! command -v jq >/dev/null 2>&1 || ! printf '%s' "$payload" | jq -e . >/dev/n
 fi
 
 cmd=$(printf '%s' "$payload" | jq -r '.tool_input.command // "" | tostring')
+# A project.conf that cannot say where the gate is must not read as "no gate here" (lib/conf.sh): any
+# command sent to the background could be it, and the refused command can always be rewritten. Door 3
+# (a foreground call's timeout) does not apply here: it would refuse every Bash call a subagent makes.
+if command -v conf_bad >/dev/null 2>&1 && { conf_bad GATE || conf_bad GATE_RUN; }; then
+  if amp "$cmd" || { [ "$(printf '%s' "$payload" | jq -r '.tool_input.run_in_background // false | tostring')" = true ] \
+    && [ -n "$(printf '%s' "$payload" | jq -r '.agent_id // "" | tostring')" ]; }; then
+    block "project.conf cannot say where the gate is, so this background command could be the gate, and a failure would be read by nobody." \
+      "Fix it, then retry: $(conf_why GATE)"
+  fi
+fi
+# A call a door could refuse: the shell's `&`, or a subagent's background or short-timeout call.
+could_refuse() {
+  case "$cmd" in *'&'*) amp "$cmd" && return 0 ;; esac
+  case "$payload" in *'"agent_id"'*) ;; *) return 1 ;; esac
+  [ "$(printf '%s' "$payload" | jq -r '(.tool_input.run_in_background // false | tostring) == "true" or ((.tool_input.timeout // 0 | tonumber? // 0) < 600000)')" = true ]
+}
+could_refuse && main_gates
 # No gate's file name anywhere in the text: no gate, and no need to read a long command word by word.
 mentions "$cmd" || exit 0
 # The reader failing (missing, or an awk that cannot run it) leaves the raw text: a gate's path

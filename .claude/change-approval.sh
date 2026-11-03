@@ -123,10 +123,13 @@ if [ "$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null)" != "$(cd "$ROOT" 
   gap="$ROOT is not a git repository's root (a GATE_CLEAN_ROOM=\"archive\" copy?), so origin/$MAIN_BRANCH cannot be read"
 elif [ "$(git -C "$ROOT" rev-parse --is-shallow-repository 2>/dev/null)" != false ]; then
   gap="this clone is shallow, so a proposal's history cannot be read whole (git fetch --unshallow; a CI checkout needs fetch-depth: 0)"
+elif _cm_ref=$(conf_main_ref); then
+  # Git's own record of main, never this branch's MAIN_BRANCH: the key says who may approve.
+  main_ref=${_cm_ref#refs/remotes/}
 elif git -C "$ROOT" rev-parse -q --verify "refs/remotes/origin/$MAIN_BRANCH" >/dev/null 2>&1; then
-  main_ref="origin/$MAIN_BRANCH"
+  gap="this clone has origin/$MAIN_BRANCH but no origin HEAD to say it is main, so the key and the lists cannot be read from it. Run: git remote set-head origin <its main branch> (in CI, a step after checkout, which sets none and needs fetch-depth: 0: git remote set-head origin \${{ github.event.repository.default_branch }})"
 elif [ -n "$(git -C "$ROOT" remote 2>/dev/null)" ]; then
-  gap="this clone has a remote but no origin/$MAIN_BRANCH to read the key and the lists from (fetch it; a CI checkout needs fetch-depth: 0)"
+  gap="this clone has a remote but no origin/$MAIN_BRANCH to read the key and the lists from (git fetch origin, then git remote set-head origin <its main branch>; a CI checkout needs fetch-depth: 0 and that step)"
 fi
 
 # authority FILE: FILE as origin/<main> has it, when FILE is in this repository and that ref exists

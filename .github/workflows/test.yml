@@ -47,6 +47,10 @@ jobs:
         # guarded lists from origin/main, and fails a delegated approval where it cannot (OPS-127).
         with:
           fetch-depth: 0
+      # change-approval.sh takes main from origin's HEAD, which actions/checkout does not set.
+      - run: git remote set-head origin "$DEFAULT_BRANCH"
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch || 'main' }}
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: framework/go.mod
