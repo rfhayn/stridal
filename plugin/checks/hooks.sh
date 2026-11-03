@@ -290,10 +290,15 @@ for c in "tools/check.sh" "tools/run-all.sh --quick" "tools/gate-wait.sh"; do
   rc=0; bgp a1 "$c" true | (cd "$R" && CLAUDE_PROJECT_DIR="$d/own-gate" sh "$H/no-background-gate.sh") >/dev/null 2>&1 || rc=$?
   expect_rc 2 "$rc" "no-background-gate blocks a subagent's background '$c' where project.conf names tools/check.sh and tools/run-all.sh"
 done
-# A project.conf that names its gate through $ROOT (an absolute path) still matches the relative spelling.
-mkdir -p "$d/abs-gate/.claude"; printf 'GATE="$ROOT/tools/check.sh"\nGATE_RUN="$ROOT/tools/run-all.sh"\n' > "$d/abs-gate/.claude/project.conf"
+# A project.conf that names its gate by an absolute path still matches the relative spelling.
+mkdir -p "$d/abs-gate/.claude"; printf 'GATE="%s/abs-gate/tools/check.sh"\nGATE_RUN="%s/abs-gate/tools/run-all.sh"\n' "$d" "$d" > "$d/abs-gate/.claude/project.conf"
 rc=0; bgp "" "tools/check.sh &" | (cd "$R" && CLAUDE_PROJECT_DIR="$d/abs-gate" sh "$H/no-background-gate.sh") >/dev/null 2>&1 || rc=$?
-expect_rc 2 "$rc" "no-background-gate blocks 'tools/check.sh &' where project.conf names GATE=\"\$ROOT/tools/check.sh\""
+expect_rc 2 "$rc" "no-background-gate blocks 'tools/check.sh &' where project.conf names GATE by its absolute path"
+# $ROOT in a value no longer expands (project.conf is data, lib/conf.sh), and the guard must not read
+# that as "no gate here".
+printf 'GATE="$ROOT/tools/check.sh"\nGATE_RUN="$ROOT/tools/run-all.sh"\n' > "$d/abs-gate/.claude/project.conf"
+rc=0; bgp "" "tools/check.sh &" | (cd "$R" && CLAUDE_PROJECT_DIR="$d/abs-gate" sh "$H/no-background-gate.sh") >/dev/null 2>&1 || rc=$?
+expect_rc 2 "$rc" "no-background-gate blocks 'tools/check.sh &' where project.conf says GATE=\"\$ROOT/tools/check.sh\", which it cannot read"
 # A substitution that starts with a subshell is not arithmetic; a path with // or /./ is the same path.
 nbg 2 "\$((gate) 2>&1): a command substitution of a subshell, not arithmetic" "$(bgp a1 "out=\$(($G --quick) 2>&1)")"
 nbg 2 "scripts/ci//gate.sh &" "$(bgp "" "scripts/ci//gate.sh &")"
@@ -755,6 +760,7 @@ git -C "$A" add .claude && git -C "$A" commit -qm hooks
 git -C "$A" remote add origin "$d/origin.git"
 git -C "$A" push -q origin HEAD:main 2>/dev/null
 git -C "$A" fetch -q origin
+git -C "$A" remote set-head origin main
 
 spawn='{"tool_name":"Agent","tool_input":{"prompt":"x","isolation":"worktree"}}'
 plain='{"tool_name":"Agent","tool_input":{"prompt":"mentions \"isolation\": \"worktree\""}}'
@@ -943,7 +949,7 @@ no-worktree-force-remove.sh	2	out:BLOCKED by no-worktree-force-remove:	{"tool_na
 no-pattern-kill.sh	2	out:BLOCKED by no-pattern-kill:	{"tool_name":"Bash","tool_input":{"command":"/usr/bin/pkill -f sleep"}}	a path to pkill, which skips the wrapper	block
 pattern-kill-path.sh	0	out:pattern-kill-path:	{"hook_event_name":"SessionStart","session_id":"hooks-check"}	SessionStart puts .claude/bin first, or says it could not	continue: SessionStart guards no action, and the pkill wrapper it puts first is a second line behind no-pattern-kill
 focus-staleness.sh	0	out:focus may be stale	{"prompt":"hello"}	no focus file yet: it nudges	continue: a nudge, not a guard: a crash that blocked would refuse the owner's prompt
-format.sh	0	file:@REPO@/formatted.stamp	{"tool_name":"Write","tool_input":{"file_path":"@TRACKED@"}}	FORMAT_CMD runs on the file just written	continue: a formatter, not a guard: it runs after the edit (PostToolUse), so blocking would undo nothing
+format.sh	0	file:@REPO@/formatted.stamp	{"tool_name":"Write","tool_input":{"file_path":"@TRACKED@"}}	FORMAT_CMD runs on the file just written, in a project with no remote, where the disk is the authority	continue: a formatter, not a guard: it runs after the edit (PostToolUse), so blocking would undo nothing
 EOF
 if [ -n "$plugin" ]; then : > "$d/expect.tsv"; else cp "$d/core.tsv" "$d/expect.tsv"; fi
 [ -f "$ROOT/.claude/local/hook-expectations.tsv" ] && grep -v '^[[:space:]]*#' "$ROOT/.claude/local/hook-expectations.tsv" | grep -v '^[[:space:]]*$' >> "$d/expect.tsv"

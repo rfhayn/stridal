@@ -29,10 +29,13 @@ set -f
 DRY=0
 [ "${1:-}" = "--dry-run" ] && DRY=1
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "machine-quiet: not in a git repo"; exit 0; }
-# The checkout's own config; a missing one leaves the defaults below.
+# The checkout's own config; a missing one leaves the defaults below. What gets killed or stopped is
+# main's to say, not a branch's (lib/conf.sh); main unreadable, the defaults below, with a note.
 if [ -f "$STRIDAL_FW/lib/conf.sh" ]; then
   # shellcheck disable=SC1091
   . "$STRIDAL_FW/lib/conf.sh"
+  conf_keys_from_main "$STRIDAL_FW/lib/conf.sh" MQ_ORPHAN_SHAPES MQ_DOCKER MQ_COLIMA
+  [ -z "$CONF_MAIN_NOTE" ] || echo "machine-quiet: on the defaults: $CONF_MAIN_NOTE"
 fi
 WT="$ROOT/.claude/worktrees"
 act() { if [ "$DRY" = 1 ]; then echo "  would: $*"; else "$@"; fi; }

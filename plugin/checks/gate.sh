@@ -675,14 +675,23 @@ rm -f "$RUNS.1"; before=$(lines "$RUNS")
 (cd "$R" && PATH="$d/bin:$np" CI= STRIDAL_LANE=check GATE_RUNS_MAX_BYTES=1 bash "$RUN_REL") >/dev/null 2>&1
 [ -s "$RUNS.1" ] && [ "$(lines "$RUNS")" = 1 ] && ok "past GATE_RUNS_MAX_BYTES a full run rotates the log to gate-runs.log.1 and starts again" || fail "rotation: log $(lines "$RUNS") lines, .1 $(lines "$RUNS.1") lines"
 
-# A project.conf that names a variable the run state does not set ($ROOT, read before conf.sh runs)
-# still gates: recording the run must never stop the gate.
-printf 'PROJECT_NOTES="$ROOT/docs/notes"\n' >> "$R/.claude/project.conf"
-# ROOT unset, as in a real gate: checks/run.sh exports it, which would hide the failure.
-rm -f "$STATE"; (unset ROOT; run --quick); rc=$?
-git -C "$R" checkout -q -- .claude/project.conf
-expect_rc 0 "$rc" "a project.conf naming \$ROOT does not stop the gate (the run state reads it without nounset)"
-grep -q '^started .* mode=quick ' "$STATE" && ok "...and the run is still recorded" || fail "no started line after a project.conf naming \$ROOT: $(tr '\n' '|' < "$STATE" 2>/dev/null)"
+# A line of project.conf that is not data (OPS-219, lib/conf.sh; here a value naming a variable) FAILS
+# the gate, naming the line: its key would otherwise be a default nobody asked for. Recording the run
+# is still not what stops it: the run state reads the conf without nounset, before the gate does.
+if ! stale_copy "$ROOT/$GATE_RUN" CONF_ERRORS; then
+  printf 'PROJECT_NOTES="$ROOT/docs/notes"\n' >> "$R/.claude/project.conf"
+  # ROOT unset, as in a real gate: checks/run.sh exports it, which would hide a failure of the recording.
+  rm -f "$STATE"; (unset ROOT; run --quick); rc=$?
+  git -C "$R" checkout -q -- .claude/project.conf
+  expect_rc 1 "$rc" "a project.conf line that is not data fails the gate"
+  grep -q 'FAIL: project.conf' "$d/out" && grep -q 'PROJECT_NOTES' "$d/out" && ok "...naming the line" || fail "the gate did not name the line: $(cat "$d/out")"
+  grep -q '^started .* mode=quick ' "$STATE" && ok "...and the run is still recorded" || fail "no started line after a project.conf naming \$ROOT: $(tr '\n' '|' < "$STATE" 2>/dev/null)"
+  # A new runner over an old conf.sh, which has no byte check: it runs, and does not die unheard.
+  cp "$R/.claude/lib/conf.sh" "$d/conf.new"; echo 'unset -f conf_nul_check' >> "$R/.claude/lib/conf.sh"
+  run --quick; rc=$?
+  cp "$d/conf.new" "$R/.claude/lib/conf.sh"
+  [ "$rc" != 127 ] && ok "a runner over a conf.sh without the byte check still runs (exit $rc)" || fail "the runner died unheard on an old conf.sh: $(tail -n 3 "$d/out")"
+fi
 
 # gate-wait takes whole seconds only, and says so: anything else would never compare as elapsed.
 run --quick

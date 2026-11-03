@@ -31,6 +31,13 @@ ever worked around: no `--admin`, no `--auto`, no merge clicked on the website.
   block is not mechanically fixable (a stale receipt or a missing slice line IS mechanical: fix it
   and go on), when review does not converge, or when the gate stays red. If `PushNotification` is
   not in your tool list, say so in the session; do not improvise another channel.
+- **The guard reads its keys and `guard.d` rules from `origin/<main>`**, so a PR that changes one is
+  judged by main's. When it refuses the rules, this checkout's are not main's, and its message is the
+  fix, which is mechanical: commit an uncommitted edit, then a PR that changes a rule restores main's
+  copy here for the merge. A lane that is only behind merges `origin/<main>` (`scripts/ci/batch.sh
+  sync` does). A main checkout that is behind pulls; if the sandbox refuses that pull, the owner runs
+  it (or merge from a lane that is up to date). A refused line on main's `project.conf` does not stop
+  the PR that fixes it: the guard reads this checkout's copy while main's is broken, and says so.
 - **When a session asked for the outcome** (`reportTo <session>` in the request, as `apply-change`
   and `build-change` pass it on), every outcome goes to it by `SendMessage` instead: the stop line
   above, or, once merged, a short summary (PR number, squash commit, the review line, anything left

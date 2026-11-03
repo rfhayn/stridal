@@ -705,6 +705,63 @@ func TestHooksOnlyActInPluginProjects(t *testing.T) {
 	}
 }
 
+// scaffold.sh reads a repository's project.conf as data, through the plugin's own conf.sh (OPS-219).
+// It runs on a repository the plugin has not seen yet, so what that file holds must not run, while the
+// keys it does give still place the gate and the panel's branches.
+func TestScaffoldReadsProjectConfAsData(t *testing.T) {
+	need(t, "git", "sh", "jq")
+	plug, _ := build(t)
+	home := t.TempDir()
+	e := env(t, home)
+	p := newProject(t, e)
+	canary := filepath.Join(t.TempDir(), "ran")
+	conf := "GATE_RUN=\"infra/run-local.sh\"\nBRANCH_CHANGE=\"chg/\"\n" +
+		"PROJECT_NAME=\"$(touch " + canary + ")\"\ntouch " + canary + "\nOWNER_NAME=`touch " + canary + "`\n"
+	os.MkdirAll(filepath.Join(p, ".claude"), 0o755)
+	if err := os.WriteFile(filepath.Join(p, ".claude", "project.conf"), []byte(conf), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, code := run(t, p, e, "", "sh", filepath.Join(plug, "scaffold.sh"))
+	if code != 0 {
+		t.Fatalf("scaffold: exit %d\n%s", code, out)
+	}
+	if _, err := os.Stat(canary); err == nil {
+		t.Errorf("scaffold.sh ran text from the repository's project.conf:\n%s", out)
+	}
+	settings, err := os.ReadFile(filepath.Join(p, ".claude", "settings.json"))
+	if err != nil || !strings.Contains(string(settings), "infra/run-local.sh") {
+		t.Errorf("settings.json did not take GATE_RUN from project.conf (%v)", err)
+	}
+	panel, err := os.ReadFile(filepath.Join(p, ".stridal", "panel.json"))
+	if err != nil || !strings.Contains(string(panel), "chg/") {
+		t.Errorf("panel.json did not take BRANCH_CHANGE from project.conf (%v)", err)
+	}
+}
+
+// scaffold.sh records which branch of origin is main, as the merge guard takes main from it (OPS-219).
+func TestScaffoldSetsOriginHead(t *testing.T) {
+	need(t, "git", "sh", "jq")
+	plug, _ := build(t)
+	e := env(t, t.TempDir())
+	p := newProject(t, e)
+	bare := filepath.Join(t.TempDir(), "origin.git")
+	if out, code := run(t, p, e, "", "git", "init", "-q", "--bare", "-b", "main", bare); code != 0 {
+		t.Fatal(out)
+	}
+	for _, args := range [][]string{{"commit", "-q", "--allow-empty", "-m", "first"}, {"remote", "add", "origin", bare}, {"push", "-q", "origin", "main"}} {
+		if out, code := run(t, p, e, "", "git", args...); code != 0 {
+			t.Fatalf("git %v: %s", args, out)
+		}
+	}
+	if out, code := run(t, p, e, "", "sh", filepath.Join(plug, "scaffold.sh")); code != 0 {
+		t.Fatalf("scaffold: exit %d\n%s", code, out)
+	}
+	head, code := run(t, p, e, "", "git", "symbolic-ref", "refs/remotes/origin/HEAD")
+	if code != 0 || strings.TrimSpace(head) != "refs/remotes/origin/main" {
+		t.Errorf("origin's HEAD after scaffold: %q (exit %d)", head, code)
+	}
+}
+
 // The strongest check: scaffold a repository from the plugin, then run the template's own process
 // checks FROM THE PLUGIN against it. They are the model's executable description of itself, so a
 // rewrite that broke a path breaks one of them.

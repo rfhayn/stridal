@@ -49,11 +49,12 @@ note() {
   exit 0
 }
 
-base="origin/${MAIN_BRANCH:-main}"
+# Main is git's own record, origin's HEAD: a branch can edit MAIN_BRANCH (lib/conf.sh).
 paths=".claude/hooks .claude/settings.json"
-if [ -z "$root" ] || ! git -C "$root" rev-parse -q --verify "$base" >/dev/null 2>&1; then
-  note "CANNOT CHECK whether the hooks guarding this worktree agent match $base (no git or no $base at ${root:-?}). Allowed; UNKNOWN, not verified."
+if [ -z "$root" ] || ! command -v conf_main_ref >/dev/null 2>&1 || ! _ref=$(conf_main_ref); then
+  note "CANNOT CHECK whether the hooks guarding this worktree agent match origin's main (no git, or git does not know which branch of origin is main, at ${root:-?}: git remote set-head origin <branch>). Allowed; UNKNOWN, not verified."
 fi
+base=${_ref#refs/remotes/}
 
 # $paths unquoted on purpose: two pathspecs, neither containing a space.
 # shellcheck disable=SC2086

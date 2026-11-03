@@ -116,6 +116,14 @@ gate_end() {
 trap gate_end EXIT
 # shellcheck disable=SC1091
 . "$ROOT/.claude/lib/conf.sh"
+# A line of project.conf conf.sh refused leaves a default in its place: nothing this gate then says
+# would be about the project's own settings (lib/conf.sh).
+command -v conf_nul_check >/dev/null 2>&1 && conf_nul_check 2>/dev/null
+if [ -n "${CONF_ERRORS:-}" ]; then
+  echo "==> FAIL: project.conf: a line that is not data, so the gate would run on defaults:"
+  printf '%s\n' "$CONF_ERRORS"
+  exit 1
+fi
 
 DIRTY=0   # MODE: set from argv before the lease (above)
 while [ $# -gt 0 ]; do

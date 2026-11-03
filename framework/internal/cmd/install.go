@@ -124,6 +124,7 @@ modifying anything. ` + "`stridal diff`" + ` compares without the guard.`,
 		}
 
 		fmt.Fprintln(out, "\nDone! Stridal framework installed.")
+		setOriginHead(out, targetDir)
 		printPrereqs(out, tmplDir)
 		fmt.Fprintln(out, "Next steps:")
 		fmt.Fprintln(out, "  claude")

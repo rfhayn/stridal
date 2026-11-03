@@ -1,5 +1,5 @@
 # conf.sh: sourced (never run) by the operating model's scripts. Sets ROOT and the defaults,
-# then reads the project's .claude/project.conf over them.
+# then reads the project's .claude/project.conf over them, as data (_conf_parse).
 #
 # ROOT comes from this file's own location when the caller passes it (CONF_FROM), else from
 # git: a hook runs from wherever the session happens to be, and a context script may be run
@@ -77,8 +77,345 @@ BATCH_REGENERATE=""
 # Derived from BRANCH_OPS after project.conf is read, unless the project names its own (or "").
 BRANCH_SESSION_CLOSE="@default"
 
-# shellcheck disable=SC1091
-[ -f "$ROOT/.claude/project.conf" ] && . "$ROOT/.claude/project.conf"
+# project.conf IS DATA (OPS-219). A branch can edit it, and every hook loads it, so it is read line by
+# line here and never given to a shell: no line of it runs and nothing in it expands.
+#
+# A CONTROL DOES NOT TAKE ITS DECISIONS FROM THE BRANCH IT JUDGES. The merge guard reads the whole of
+# origin/<main>'s copy (GUARD_CONF, exported, so every script it starts does too). format.sh's program
+# (FORMAT_CMD, FORMAT_EXT), machine-quiet's MQ_ keys, REVIEW_CAPS, REVIEW_AT_CAP and QUOTA_LANE_STOP_PCT
+# come from it (conf_keys_from_main). no-background-gate recognises main's gate names beside the
+# branch's. What runs in an agent's own call stays the branch's, as it runs the branch's code by design
+# and CI's required check is the control: the gate (GATE, GATE_RUN, GATE_STEPS), batch.sh
+# (BATCH_REGENERATE), enable.sh (OPENSPEC_BIN), living.sh (LIVING_SCRIPT_CHECK). The roadmap parser runs
+# in the guard's children from main's copy, and on the panel's refresh in the root that panel serves:
+# the main checkout as normally run, a lane's if `stridal panel` was started inside that lane. On a copy install this file and the hooks are themselves the branch's own files
+# until OPS-145, so all of this holds fully only from the plugin.
+#
+# What a line may be: blank, a comment, or KEY="value", KEY='value' or KEY=value, with an optional
+# blank and `# comment` after it. A value is one line. A double-quoted value holds no $, backtick or
+# backslash, since a shell would read those and this does not: single quotes mean the literal text,
+# in a shell and here. A bare value holds only letters, digits and _ . / : @ % + , = -. No value starts
+# with `-`, which git would read as an option (a `--upload-pack=` is a program), except where a key is
+# not an argument: GATE_QUICK_FLAGS, the two patterns, a number, and a project's own PROJECT_ keys.
+#
+# Anything else is an ERROR, never a silent skip. The key keeps its default, and a default can be a
+# guard turned off (an empty GATE_PR_CHECKS requires no check), so the line goes on CONF_ERRORS and
+# its key on CONF_BAD_KEYS ("?" when the line names no key it could mean), and is said on stderr. Who
+# acts on it: pr-merge-guard blocks every merge of this repo, run-local.sh fails the gate,
+# no-background-gate treats any backgrounded command as the gate when GATE or GATE_RUN is the bad key,
+# and roadmap_queue, format.sh and batch.sh refuse a bad key of theirs (conf_bad).
+#
+# THE KEY IS AN ALLOWLIST: a default above or a shipped module's default (_conf_known), or the prefix
+# PROJECT_, which is the project's own (no shell, git, gh or jq reads a PROJECT_ name). A list of what
+# to refuse could not finish, since a plain assignment to the right name stops a shell's `read`, or
+# chooses every program a guard runs. A project's own module takes the prefix too: its module.conf is
+# a branch's text, so "declared by a module" would let that text name anything (modules_defaults).
+_conf_known="ARTIFACT_PUBLISH ARTIFACT_REGISTRY ARTIFACT_RULE_SECONDS CI_STATUS_LOCAL_CONTEXT CI_STATUS_LOCAL_FAIL \
+CI_STATUS_LOCAL_PASS CI_STATUS_REMOTE_CONTEXT CI_STATUS_REMOTE_PASS IDEAS_FILE IDEAS_PAGE LIVING_COMMAND_SECONDS \
+LIVING_SCRIPT_CHECK LIVING_TYPED_DURATION OPENSPEC_BIN PEOPLE PEOPLE_OWNERS PREMISE_DOC_DIRS PREMISE_REQUIRED_ON RISK_REGISTER \
+WRITE_SURFACE_GLOBS WRITE_SURFACE_MAX \
+PROJECT_NAME PROJECT_SLUG STATUS_MARK OWNER_ROLE OWNER_NAME APPROVAL_DELEGATED MAIN_BRANCH \
+BRANCH_CHANGE BRANCH_FIX BRANCH_OPS JOURNAL INSIGHTS JOURNAL_FRAGMENTS ROADMAP ROADMAP_PARSER ROADMAP_NORMALIZER \
+OWNER_QUEUE ADR_DIR PRACTICES_DIR ADR_EVIDENCE_FROM ADR_EVIDENCE_SPIKES ADR_EVIDENCE_KNOWN INSIGHT_AREAS \
+INSIGHTS_TABLE_HEADING JOURNAL_HEADING RECORDS_BASELINE CHANGES_LEGACY COMPOUND_MAX_SESSIONS REVIEW_CAPS \
+REVIEW_AT_CAP TIME_ZONE TIME_ZONE_LABEL QUOTA_LANE_STOP_PCT PROPOSALS CHANGES_DIR SPECS_DIR REVIEW_PAGE \
+SCENARIO_IDS TEST_GLOBS GATE_RUN GATE GATE_STEPS GATE_CLEAN_ROOM GATE_REMOTE_WORKFLOW GATE_DISPLAY_CONTEXTS \
+GATE_PR_CHECKS GATE_FAIL_PATTERN GATE_TAIL_EXCLUDE GATE_DOCS MQ_ORPHAN_SHAPES MQ_DOCKER MQ_COLIMA FORMAT_CMD \
+FORMAT_EXT MODULES PLAYBOOK AGENTS_MD_MAX_BYTES AGENTS_MD_MAX_ROW MKTEMP_CHECK_PATHS COAUTHOR_HEALTH_SINCE \
+CHANGE_RECORD_EXTRA GATE_QUICK_FLAGS BATCH_REGENERATE BRANCH_SESSION_CLOSE"
+CONF_ERRORS=""
+CONF_BAD_KEYS=""
+_conf_nerr=0
+
+# _conf_key_ok KEY: the allowlist above.
+_conf_key_ok() {
+  case " $_conf_known " in *" $1 "*) return 0 ;; esac
+  case $1 in PROJECT_*) return 0 ;; esac
+  return 1
+}
+
+# _conf_value_ok KEY VALUE: not a value git would take for an option, unless the key is never an argument.
+_conf_value_ok() {
+  case $2 in
+    -*) case $1 in GATE_QUICK_FLAGS | GATE_FAIL_PATTERN | GATE_TAIL_EXCLUDE | QUOTA_LANE_STOP_PCT | PROJECT_*) ;; *) return 1 ;; esac ;;
+  esac
+  return 0
+}
+
+# _conf_line_bad KEY TEXT: this line (_cf_l, _cf_n) is refused. One ending in a carriage return says
+# CRLF, once, for the whole file; it is looked for only here, as a process on every load is not free.
+_conf_line_bad() {
+  case $_cf_l in
+    *"$(printf '\r')")
+      _conf_bad '?' ".claude/project.conf line $_cf_n ends in a carriage return (CRLF line endings), so it is refused from there on: save it with LF"
+      _cf_stop=1 ;;
+    *) _conf_bad "$1" ".claude/project.conf line $_cf_n$2" ;;
+  esac
+}
+
+# _conf_bad KEY MESSAGE: record one error. KEY is "?" when the line names no key it could mean.
+_conf_bad() {
+  CONF_BAD_KEYS="$CONF_BAD_KEYS $1"
+  CONF_ERRORS="${CONF_ERRORS:+$CONF_ERRORS
+}$2"
+  _conf_nerr=$((_conf_nerr + 1))
+  printf 'conf.sh: %s\n' "$2" >&2
+}
+
+# conf_bad KEY: 0 when project.conf did not give KEY's value, so the reader holds a default it was
+# not asked for: KEY's own line was refused, or a line was refused that could have meant any key.
+conf_bad() {
+  case " $CONF_BAD_KEYS " in *" $1 "* | *" ? "*) return 0 ;; esac
+  return 1
+}
+
+# conf_why KEY: the error that made conf_bad KEY true, for a reader's message.
+conf_why() {
+  _cw=$(printf '%s\n' "$CONF_ERRORS" | grep -F "($1)" | head -n 1)
+  [ -n "$_cw" ] || _cw=$(printf '%s\n' "$CONF_ERRORS" | head -n 1)
+  printf '%s\n' "$_cw"
+}
+
+# conf_nul_check [FILE]: a NUL byte reads differently in each shell (dash drops it; bash cuts the line
+# there), and nothing inside a shell can see it, so this takes two processes. Run by what decides on
+# the file (a read of main's copy, run-local.sh, the check), not on every load, which every hook pays for.
+conf_nul_check() {
+  set -- "${1:-$ROOT/.claude/project.conf}"
+  [ -f "$1" ] || return 0
+  if ! LC_ALL=C tr -d '\000' < "$1" | cmp -s - "$1"; then
+    _conf_bad '?' ".claude/project.conf holds a NUL byte, which each shell reads differently: remove it"
+  fi
+}
+
+# _conf_shellish TEXT: 0 when TEXT holds a character only a shell would read.
+_conf_shellish() {
+  case $1 in
+    *\$* | *\`* | *\\* | *\"* | *\'* | *\;* | *\&* | *\|* | *\<* | *\>* | *\(* | *\)* | *\{* | *\}* | *\[* | *\]* \
+      | *\** | *\?* | *\~* | *\!* | *\#*) return 0 ;;
+  esac
+  return 1
+}
+
+# _conf_parse FILE: no fork per line or per key (every hook pays for this); `eval` only ever assigns,
+# to a key on the allowlist, and the value stays in a variable it names, unexpanded.
+#
+# The limits keep a hook from hanging on a small committed file: a shell's pattern operators and its
+# appends to the error list grow with the square of their input. Past one, the file is refused with
+# one error, and what comes after it stays a default. A line past the limit is read to its end once.
+_conf_parse() {
+  _cf_n=0
+  _cf_stop=''
+  while IFS= read -r _cf_l || [ -n "$_cf_l" ]; do
+    [ -z "$_cf_stop" ] || return 0
+    _cf_n=$((_cf_n + 1))
+    if [ "$_cf_n" -gt 1000 ]; then
+      _conf_bad '?' ".claude/project.conf has more than 1000 lines, so it is refused from there on"
+      return 0
+    fi
+    if [ "${#_cf_l}" -gt 512 ]; then
+      _conf_bad '?' ".claude/project.conf line $_cf_n is over 512 characters, so it is refused from there on"
+      return 0
+    fi
+    if [ "$_conf_nerr" -ge 20 ]; then
+      _conf_bad '?' ".claude/project.conf has 20 lines it cannot read, so it is refused from there on"
+      return 0
+    fi
+    case $_cf_l in
+      '' | \#*) continue ;;
+      [\ \	]*)
+        _cf_l=${_cf_l#"${_cf_l%%[! 	]*}"}
+        case $_cf_l in '' | \#*) continue ;; esac ;;
+    esac
+    _cf_k=${_cf_l%%=*}
+    # Spelt out, not [A-Z]: in a shell honouring a locale's collation, that range holds lower case.
+    case $_cf_l in *=*) ;; *) _cf_k='' ;; esac
+    case $_cf_k in
+      [!ABCDEFGHIJKLMNOPQRSTUVWXYZ]* | *[!ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_]*) _cf_k='' ;;
+    esac
+    if [ -z "$_cf_k" ]; then
+      _conf_line_bad '?' " is not KEY=\"value\" or a comment; no line of project.conf runs, so it does nothing"
+      continue
+    fi
+    if ! _conf_key_ok "$_cf_k"; then
+      _conf_line_bad "$_cf_k" " ($_cf_k) sets a key the model does not know, which could be one a shell or a tool reads: a key of the project's own takes the prefix PROJECT_ (a variable the scripts read by its exact name, GATE_TAIL_LINES say, is set in the environment)"
+      continue
+    fi
+    _cf_r=${_cf_l#*=}
+    case $_cf_r in
+      \"*) _cf_q=\" ;;
+      \'*) _cf_q=\' ;;
+      *) _cf_q='' ;;
+    esac
+    if [ -n "$_cf_q" ]; then
+      _cf_b=${_cf_r#?}
+      case $_cf_b in
+        *"$_cf_q"*) ;;
+        *) _conf_line_bad "$_cf_k" " ($_cf_k) opens a quote it does not close; a value is one line"; continue ;;
+      esac
+      _cf_v=${_cf_b%%"$_cf_q"*}
+      _cf_t=${_cf_b#*"$_cf_q"}
+      if [ "$_cf_q" = \" ]; then
+        case $_cf_v in
+          *\$* | *\`* | *\\*)
+            _conf_line_bad "$_cf_k" " ($_cf_k) holds a \$, backtick or backslash in double quotes, which only a shell reads; nothing here expands, so write the value itself, in single quotes if it is literal"
+            continue ;;
+        esac
+      fi
+    else
+      _cf_v=${_cf_r%%[ 	]*}
+      _cf_t=${_cf_r#"$_cf_v"}
+      case $_cf_v in
+        *[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_./:@%+,=-]*)
+          _conf_line_bad "$_cf_k" " ($_cf_k) has a bare value holding a character only a quoted one may; nothing here expands, so quote the literal value"
+          continue ;;
+      esac
+    fi
+    # After the value: nothing, or a blank and a comment. Another word would have run as a command.
+    case $_cf_t in
+      '') ;;
+      [\ \	]*)
+        _cf_t=${_cf_t#"${_cf_t%%[! 	]*}"}
+        case $_cf_t in
+          '' | \#*) ;;
+          *) _conf_line_bad "$_cf_k" " ($_cf_k) has more after its value; no line of project.conf runs"; continue ;;
+        esac ;;
+      *) _conf_line_bad "$_cf_k" " ($_cf_k) has more after its value; no line of project.conf runs"; continue ;;
+    esac
+    if ! _conf_value_ok "$_cf_k" "$_cf_v"; then
+      _conf_line_bad "$_cf_k" " ($_cf_k) starts with -, which git would read as an option"
+      continue
+    fi
+    eval "$_cf_k=\$_cf_v"
+    [ "$_cf_k" != MAIN_BRANCH ] || _conf_main_named=1
+  done < "$1"
+  return 0
+}
+
+# conf_main_ref: the full ref of this repository's main, by git's own record: origin's HEAD, never a
+# key a branch can edit. Fails when that is unset or names a branch this clone does not have.
+conf_main_ref() {
+  _cm_r=$(git -C "$ROOT" symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null) || return 1
+  git -C "$ROOT" rev-parse -q --verify "$_cm_r^{commit}" >/dev/null 2>&1 || return 1
+  printf '%s\n' "$_cm_r"
+}
+# The fix for conf_main_ref failing, for any reader's message.
+conf_main_fix() {
+  printf '%s' "origin's main cannot be read here, as git does not know which branch of origin is main. Run: git -C \"$ROOT\" fetch origin && git -C \"$ROOT\" remote set-head origin <this project's main branch>"
+}
+
+# conf_main_blob REF PATH OUT: PATH as REF has it, into OUT. 0 written; 2 REF truly holds no PATH; 1
+# git could not say, which is never read as "absent": that would run a control on defaults in silence.
+conf_main_blob() {
+  _cb=$(git -C "$ROOT" ls-tree "$1" -- "$2" 2>/dev/null) || return 1
+  [ -n "$_cb" ] || return 2
+  git -C "$ROOT" cat-file blob "$1:$2" > "$3" 2>/dev/null || return 1
+}
+
+# conf_keys_from_main LIB KEY...: these keys as origin/<main>'s copy has them, for a hook or a script
+# that a branch's value must not steer (LIB is this file). A repository with no remote has no main but
+# the disk: the keys stay as they are. Main holding no project.conf is the defaults, with no complaint.
+# Main unreadable is the defaults too, with why in CONF_MAIN_NOTE. A line main's copy refuses keeps its
+# default: CONF_MAIN_NOTE says so, and CONF_MAIN_BAD_KEYS and CONF_MAIN_ERRORS hold the requested keys
+# it touches, apart from this checkout's CONF_BAD_KEYS and CONF_ERRORS, which keep judging the rest.
+# The merge guard takes the whole file instead (GUARD_CONF).
+conf_keys_from_main() {
+  _ck_lib=$1; shift
+  CONF_MAIN_NOTE="" CONF_MAIN_BAD_KEYS="" CONF_MAIN_ERRORS="" CONF_MAIN_READ=""
+  [ -n "$(git -C "$ROOT" remote 2>/dev/null)" ] || return 0
+  CONF_MAIN_READ=1
+  _ck_f=$(mktemp "${TMPDIR:-/tmp}/conf-main.XXXXXX") || { CONF_MAIN_NOTE="no temp file to read origin's main into"; _ck_f=/dev/null; }
+  if ! _ck_ref=$(conf_main_ref); then
+    CONF_MAIN_NOTE=$(conf_main_fix); [ "$_ck_f" = /dev/null ] || : > "$_ck_f"
+  elif [ "$_ck_f" != /dev/null ]; then
+    conf_main_blob "$_ck_ref" .claude/project.conf "$_ck_f"
+    case $? in
+      0) ;;
+      2) : > "$_ck_f" ;;
+      *) : > "$_ck_f"; CONF_MAIN_NOTE="git could not read .claude/project.conf from ${_ck_ref#refs/remotes/}" ;;
+    esac
+  fi
+  _ck_out=$(
+    GUARD_CONF=$_ck_f
+    . "$_ck_lib" 2>/dev/null
+    for _ck_k in "$@"; do
+      eval "printf '%s=%s\n' \"\$_ck_k\" \"\${$_ck_k-}\""
+      if conf_bad "$_ck_k"; then
+        printf '_ck_bad=%s\n' "$_ck_k"
+        printf '_ck_err=%s\n' "$(conf_why "$_ck_k")"
+      fi
+    done
+  )
+  [ "$_ck_f" = /dev/null ] || rm -f "$_ck_f"
+  while IFS= read -r _ck_l; do
+    _ck_k=${_ck_l%%=*}
+    case $_ck_k in
+      _ck_bad) CONF_MAIN_BAD_KEYS="$CONF_MAIN_BAD_KEYS ${_ck_l#*=}" ;;
+      _ck_err)
+        [ -n "$CONF_MAIN_NOTE" ] || CONF_MAIN_NOTE="origin's main's project.conf holds a line that is not data, so a key read here may be a default: ${_ck_l#*=}"
+        CONF_MAIN_ERRORS="${CONF_MAIN_ERRORS:+$CONF_MAIN_ERRORS
+}${_ck_l#*=}" ;;
+      *) eval "$_ck_k=\${_ck_l#*=}" ;;
+    esac
+  done <<CONF_MAIN_KEYS
+$_ck_out
+CONF_MAIN_KEYS
+}
+
+# Truly absent is no conf: the defaults. Anything else that cannot be read as a file (a directory, a
+# dangling link, a pipe) is an error: the project has said something, and it cannot be heard.
+# GUARD_CONF names another copy to read, as main's in the merge guard (off the allowlist, so a conf
+# cannot set it); /dev/null is that copy when none could be made, the defaults and nothing else.
+_conf_main_named=""
+if [ "${GUARD_CONF:-}" = /dev/null ]; then
+  :
+elif [ -f "${GUARD_CONF:-$ROOT/.claude/project.conf}" ] && [ -r "${GUARD_CONF:-$ROOT/.claude/project.conf}" ]; then
+  _conf_parse "${GUARD_CONF:-$ROOT/.claude/project.conf}"
+elif [ -e "${GUARD_CONF:-$ROOT/.claude/project.conf}" ] || [ -L "${GUARD_CONF:-$ROOT/.claude/project.conf}" ]; then
+  _conf_bad '?' ".claude/project.conf is there but is not a readable file"
+fi
+# Reading main's copy, a MAIN_BRANCH it does not name is the branch git knows as main, not the default.
+if [ -n "${GUARD_CONF:-}" ] && [ -z "$_conf_main_named" ] && _cm_named=$(conf_main_ref); then
+  MAIN_BRANCH=${_cm_named#refs/remotes/origin/}
+fi
+
+# _conf_argv_bad VALUE: 0 when VALUE cannot run as an argv: it holds shell syntax, has no command, or
+# its first word is an option or an assignment, which are a shell's or exec's to read, not a program.
+_conf_argv_bad() {
+  _conf_shellish "$1" && return 0
+  _ca=${1#"${1%%[! 	]*}"}
+  _ca=${_ca%%[ 	]*}
+  case $_ca in '' | -* | *=*) return 0 ;; esac
+  return 1
+}
+
+# The keys that name a program run as an argv with no shell (conf_exec). An existing value that needs
+# a shell (a pipe, a quote, a `cd x &&`) fails here, by name, rather than doing nothing: put it in a
+# script and name the script. The key is then empty, so nothing can run the refused text.
+for _cf_k in FORMAT_CMD ROADMAP_PARSER ROADMAP_NORMALIZER BATCH_REGENERATE; do
+  eval "_cf_v=\$$_cf_k"
+  if [ -n "$_cf_v" ] && _conf_argv_bad "$_cf_v"; then
+    _conf_bad "$_cf_k" ".claude/project.conf ($_cf_k) cannot run: it runs as one command and its arguments, with no shell, so shell syntax, a leading option or a leading VAR= is refused; put it in a script and name the script"
+    eval "$_cf_k="
+  fi
+done
+
+# conf_exec VALUE [ARGS]: replace this shell with the program VALUE names, VALUE split on blanks, ARGS
+# after it, and no shell in between: no expansion, no glob, and exec (not "$@" alone, which a shell
+# would look up as a builtin or a function first). Call it ONLY in a subshell. Exit 126 or 127 when
+# the program cannot start, as exec itself gives; 126, naming VALUE, when it cannot run as an argv.
+conf_exec() {
+  if _conf_argv_bad "$1"; then
+    printf 'conf.sh: "%s" cannot run: one command and its arguments, with no shell\n' "$1" >&2
+    exit 126
+  fi
+  _cx=$1; shift
+  set -f
+  unset IFS   # the default: blanks and newlines, whatever the caller set
+  # shellcheck disable=SC2086
+  set -- $_cx "$@"
+  exec "$@"
+}
+
 [ "$BRANCH_SESSION_CLOSE" = "@default" ] && BRANCH_SESSION_CLOSE="${BRANCH_OPS}session-[0-9]*-close*"
 
 # roadmap_queue MODE [ARGS] [FILE]: THE way a script reads the change queue. Every consumer calls
@@ -105,16 +442,22 @@ roadmap_queue() {
       [ -z "$_rq_t" ] || printf '%s\n' "$_rq_t" | awk -F'\t' -v k="$_rq_k" '$7 == "queued" && (k == "" || $6 == k) { print $5 }'
       return 0 ;;
   esac
+  # A parser project.conf did not give leaves the template's in its place: a confident reading of a
+  # roadmap it may not be the parser for. The queue is UNKNOWN instead.
+  if conf_bad ROADMAP_PARSER || conf_bad ROADMAP_NORMALIZER || conf_bad ROADMAP; then
+    printf 'ERROR: .claude/project.conf cannot say how to read the roadmap, so the change queue is UNKNOWN:\n%s\n' "$CONF_ERRORS"
+    return 1
+  fi
   # ROADMAP_BUILTIN=1 tells the template's parser it was called by this helper, not as the front
   # door, so a ROADMAP_PARSER naming it (or a wrapper around it) cannot loop back here.
   if [ -z "$ROADMAP_PARSER" ]; then
     _rq_o=$(ROADMAP_BUILTIN=1 sh "$ROOT/.claude/roadmap-queue.sh" "$@"); _rq_rc=$?
   else
-    _rq_o=$(cd "$ROOT" && ROADMAP_BUILTIN=1 && export ROOT ROADMAP ROADMAP_BUILTIN && eval "$ROADMAP_PARSER \"\$@\""); _rq_rc=$?
+    _rq_o=$(cd "$ROOT" && ROADMAP_BUILTIN=1 && export ROOT ROADMAP ROADMAP_BUILTIN && conf_exec "$ROADMAP_PARSER" "$@"); _rq_rc=$?
   fi
   if [ "$_rq_rc" -eq 0 ] && [ "${1:-}" = --tsv ]; then
     if [ -n "$ROADMAP_NORMALIZER" ] && [ -n "$_rq_o" ]; then
-      _rq_o=$(printf '%s\n' "$_rq_o" | (cd "$ROOT" && export ROOT ROADMAP && eval "$ROADMAP_NORMALIZER")) \
+      _rq_o=$(printf '%s\n' "$_rq_o" | (cd "$ROOT" && export ROOT ROADMAP && conf_exec "$ROADMAP_NORMALIZER")) \
         || { echo "ERROR: ROADMAP_NORMALIZER ($ROADMAP_NORMALIZER) failed, so the change queue is UNKNOWN"; return 1; }
     fi
     if ! _rq_e=$(printf '%s\n' "$_rq_o" | roadmap_tsv_errors); then

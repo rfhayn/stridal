@@ -126,8 +126,12 @@ for f in $create; do
 done
 
 # render_settings: the scaffold's settings.json with the gate's paths (allow rules, sandbox
-# exclusions) at the project's GATE_RUN and GATE, read from its project.conf in a subshell.
-conf_get() { sh -c '[ -f .claude/project.conf ] && . ./.claude/project.conf >/dev/null 2>&1; eval "printf %s \"\${$1:-$2}\""' _ "$1" "$2"; }
+# exclusions) at the project's GATE_RUN and GATE, read from its project.conf in a subshell, as data,
+# by the plugin's own conf.sh (the repository's text never runs here). A line it refuses says so on
+# stderr, and its key stays a default for this one rendering.
+conf_get() {
+  STRIDAL_FW="$PLUGIN" ROOT="$PWD" sh -c '. "$STRIDAL_FW/lib/conf.sh" >/dev/null; eval "printf %s \"\${$1:-$2}\""' _ "$1" "$2"
+}
 render_settings() {
   if command -v jq >/dev/null 2>&1; then
     jq --arg r "$(conf_get GATE_RUN scripts/ci/run-local.sh)" --arg g "$(conf_get GATE scripts/ci/gate.sh)" '
@@ -255,6 +259,11 @@ RETIRED
       fi ;;
   esac
 done
+# The merge guard takes main from origin's HEAD, which `git init` and a first push leave unset.
+if git remote get-url origin >/dev/null 2>&1 && ! git symbolic-ref -q refs/remotes/origin/HEAD >/dev/null; then
+  git remote set-head origin --auto >/dev/null 2>&1 \
+    || echo "  note: set origin's HEAD before the first merge: git fetch origin && git remote set-head origin <your main branch>"
+fi
 printf 'This repository runs the stridal operating model from the stridal plugin (0.1.0 at init).\nThe plugin'"'"'s hooks act only where this file exists. Delete it to make them stand aside.\n' > .claude/stridal-plugin
 echo "  marked: .claude/stridal-plugin"
 # The tools the model uses, present or missing, with this OS's install hints. A report: it never

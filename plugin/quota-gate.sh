@@ -23,6 +23,9 @@ ROOT=$(case $STRIDAL_FW in (*/.claude) dirname "$STRIDAL_FW" ;; (*) [ -n "${ROOT
 . "$STRIDAL_FW/lib/conf.sh"
 # shellcheck disable=SC1091
 . "$STRIDAL_FW/lib/quota.sh"
+# The threshold is main's to say, not a branch's (lib/conf.sh); unreadable, the default.
+conf_keys_from_main "$STRIDAL_FW/lib/conf.sh" QUOTA_LANE_STOP_PCT
+[ -z "$CONF_MAIN_NOTE" ] || echo "quota-gate: on the default threshold: $CONF_MAIN_NOTE" >&2
 
 pct=$(quota_stop_pct) || { echo "quota-gate: ERROR — $pct; this stops every new build-change run until it is one"; exit 2; }
 [ "$pct" -gt 0 ] || { echo "quota-gate: off — QUOTA_LANE_STOP_PCT is 0, so the quota holds back no lane"; exit 0; }

@@ -63,7 +63,10 @@ EOF
 printf '# add-low\n\n**Risk:** low\n' > "$F/changes/add-low/proposal.md"
 printf '# add-bad\n\n**Risk:** medium\n' > "$F/changes/add-bad/proposal.md"
 printf '# add-old\n\n**Risk:** high\n' > "$F/changes/archive/2026-01-02-add-old/proposal.md"
-cap() { (cd "$F" && sh .claude/review-cap.sh "$@" 2>&1); }
+# REVIEW_CAPS and REVIEW_AT_CAP are main's to say (lib/conf.sh), so main says what each case sets.
+new_repo "$F"; git -C "$F" add -A; git -C "$F" commit -qm base; git -C "$F" update-ref refs/remotes/origin/main HEAD
+git -C "$F" remote add origin "$F/no-such-origin.git"
+cap() { conf_on_main "$F"; (cd "$F" && sh .claude/review-cap.sh "$@" 2>&1); }
 is() {  # is WANT LABEL ARGS…: the cap printed, exit 0
   w=$1; l=$2; shift 2
   if got=$(cap "$@") && [ "$got" = "$w" ]; then ok "review-cap: $l → $w"; else fail "review-cap: $l: want $w, got '$got'"; fi
@@ -159,6 +162,31 @@ grep -q 'REVIEW_AT_CAP stop' "$ROOT/.claude/skills/merge-pr/SKILL.md" 2>/dev/nul
   && ok "merge-pr step 3 stops at cap with medium or worse when REVIEW_AT_CAP is stop" || fail "merge-pr does not stop on medium+ at cap under stop"
 grep -qF 'do not merge' "$ROOT/.claude/skills/merge-pr/SKILL.md" 2>/dev/null \
   && ok "merge-pr step 3 refuses to merge past medium+ at cap under stop" || fail "merge-pr may still merge past medium+ at cap under stop"
+# The caps are main's, not the PR's: a branch cannot grant itself more rounds. Main unreadable: the
+# defaults, said inside the one line --why prints, as build-change matches that line whole.
+printf 'REVIEW_CAPS="low:2 normal:5 high:4"\n' > "$F/.claude/project.conf"; conf_on_main "$F"
+printf 'REVIEW_CAPS="low:2 normal:9 high:9"\nREVIEW_AT_CAP="known-limits"\n' > "$F/.claude/project.conf"
+got=$(cd "$F" && sh .claude/review-cap.sh ops/plain --why 2>&1)
+case $got in "5 — "*"REVIEW_AT_CAP stop") ok "review-cap: main's caps and REVIEW_AT_CAP, not the branch's" ;; *) fail "review-cap read the branch's: $got" ;; esac
+git -C "$F" symbolic-ref --delete refs/remotes/origin/HEAD
+got=$(cd "$F" && sh .claude/review-cap.sh ops/plain --why 2>&1)
+case $got in "3 — "*"default caps"*"set-head"*"; REVIEW_AT_CAP stop") [ "$(printf '%s\n' "$got" | wc -l | tr -d ' ')" = 1 ] && ok "review-cap: main unreadable: the defaults, said on the one line" || fail "review-cap: two lines: $got" ;; *) fail "review-cap, main unreadable: $got" ;; esac
+git -C "$F" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/conf-on-main
+# A line main's copy refuses, naming no key, is said. It does not make the roadmap's own read, which
+# is this checkout's, refuse: that would judge one file by another's errors.
+printf 'REVIEW_CAPS="low:2 normal:5 high:4"\ntouch nothing\n' > "$F/.claude/project.conf"; conf_on_main "$F"
+printf 'REVIEW_CAPS="low:2 normal:9 high:9"\n' > "$F/.claude/project.conf"
+got=$(cd "$F" && sh .claude/review-cap.sh ops/plain --why 2>&1); rc=$?
+case $rc:$got in "0:5 — "*"not data"*) ok "review-cap: main's refused line: main's valid caps still read, it is said, and the row still reads" ;; *) fail "review-cap, main's refused line: exit $rc: $got" ;; esac
+printf 'ROADMAP_PARSER="$(x)"\n' > "$F/.claude/project.conf"
+got=$(cd "$F" && sh .claude/review-cap.sh ops/plain --why 2>&1); rc=$?
+[ "$rc" != 0 ] && ok "review-cap: this checkout's own refused parser still stops the row's read" || fail "review-cap read the roadmap past a refused parser: $got"
+printf 'REVIEW_CAPS="low:2 normal:3 high:4"\n' > "$F/.claude/project.conf"
+# No remote: the disk is the authority, with no note and no fix that could not work.
+git -C "$F" remote remove origin
+printf 'REVIEW_CAPS="low:2 normal:7 high:4"\n' > "$F/.claude/project.conf"
+got=$(cd "$F" && sh .claude/review-cap.sh ops/plain --why 2>&1)
+case $got in "7 — "*) case $got in *"default caps"*) fail "review-cap, no remote: a note: $got" ;; *) ok "review-cap: no remote: the disk's caps, with no note" ;; esac ;; *) fail "review-cap, no remote: $got" ;; esac
 grep -q 'known-limits' "$ROOT/.claude/skills/merge-pr/SKILL.md" 2>/dev/null \
   && ok "merge-pr step 3 keeps known-limits behavior for projects that want it" || fail "merge-pr does not name known-limits"
 finish

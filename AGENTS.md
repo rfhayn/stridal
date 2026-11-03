@@ -2,34 +2,33 @@
 
 > **A budget, not an archive.** Every session and subagent loads this file, so each line is paid
 > for at each start. `.claude/checks/agents-md-budget.sh` holds it to a byte ceiling and
-> each table row to a length ceiling. **New lessons go to `docs/insights-log.md`** (from a row, by
-> its fragment); detail goes to **`docs/conventions.md`**. Change this file only to add a
-> mechanism or to delete something, and give the mechanism its row below.
+> each row to a length ceiling. **New lessons go to `docs/insights-log.md`** (from a row, by
+> its fragment); detail to **`docs/conventions.md`**. Change this file only to add a
+> mechanism, with its row below, or to delete something.
 
 ## Four rules that keep the model honest
 
-Rule 4 is the general shape; rules 1–3 are its three costliest instances. What unites them is a
-failure MODE, not a subject: **each degrades to silence rather than to an error**, so every
-check passes and the work reads as correct. The cited principles are argued in
-`docs/principles.md`.
+Rule 4 is the general shape; rules 1–3 its costliest instances. They share a failure MODE, not a
+subject: **each degrades to silence, not an error**, so every check passes and the work reads as
+correct. Principles: `docs/principles.md`.
 
 **1. Deferring a finding means naming the CHANGE that will close it, not an endpoint.** An
-endpoint is a hope; a queued change is a commitment. If no such change exists, creating it (a
-roadmap row, an issue) is part of deferring.
+endpoint is a hope; a queued change is a commitment. If none exists, creating it (a roadmap row,
+an issue) is part of deferring.
 - **The owner must EXIST, be OPEN, and contain the work.** `gh issue view N --json state,title,body`.
-  A stale issue number has no failure mode: it is a correctly formatted integer forever.
+  A stale issue number never fails: it stays a well-formed integer.
 - **The rationale expires independently of the work.** Re-read the reason, not just the item.
 - **Prefer a condition you would OBSERVE over a phase label.** A phase slips quietly.
 
 **2. A handoff summary is a claim, not a receipt.** Verify what a summary names by **existence**
 (`ls`, `grep`, `git log`, `gh`), never by re-reading it. Verify the outcome,
-never the exit code, never the report. When you write a test for a control, ask what would have to
-be true for it to pass **without** the control, and confirm it fails there first (*A passing test
-is evidence of nothing until it has failed*).
+never the exit code, never the report. When testing a control, ask what would make the test pass
+**without** it, and confirm it fails there first (*A passing test is evidence of nothing until it
+has failed*).
 
 **3. For every capability, name the process that invokes it IN PRODUCTION.** If the only answer
-is "a test", it is not shipped. The check: `grep` the callers and ask *"is any of these a
-real process?"*. Packages, scripts and config keys are capabilities too.
+is "a test", it is not shipped. `grep` the callers and ask *"is any a
+real process?"*. Packages, scripts, config keys are capabilities.
 
 **4. For every rule this repo states, name what EXECUTES it.** If the answer is "whoever reads the
 file", it is documentation, not a control. Corollaries:
@@ -89,6 +88,7 @@ One row a line; the last row last.
 | A module adds only while `MODULES` names it; a broken extension guard rule blocks, never allows | **`lib/modules.sh`** for every host; **`pr-merge-guard.sh`** extension rules; **`checks/modules.sh`** |
 | Orphans and clean lane worktrees do not outlive a session; tmux lanes are never killed | **`.claude/machine-quiet.sh`** via `session-close`; **`checks/machine-quiet.sh`** |
 | Work that needs the owner at the computer is seen | **`.claude/owner-queue.sh`** via `session-start` and the panel card |
+| `project.conf` is data; a bad line fails the gate; the merge guard reads keys and `guard.d` from `origin/<main>` | **`lib/conf.sh`**; **`pr-merge-guard.sh`**; **`checks/project-conf.sh`** |
 | The change queue is read ONE way; a malformed row is an error, not a shorter queue | **`roadmap_queue`** (`lib/conf.sh`) over `.claude/roadmap-queue.sh` or `ROADMAP_PARSER`; **`checks/roadmap.sh`** fails a bypass and a row planned twice |
 | A project's history is never reformatted; records since adoption meet the format | `RECORDS_BASELINE`, `CHANGES_LEGACY` (`lib/records.sh`); **`checks/journal.sh`**, **`adr-numbering.sh`**, **`changes.sh`** |
 | ADRs, PRACs: unique numbers (one space), indexed, naming enforcement and evidence | **`checks/adr-numbering.sh`**, **`adr-evidence.sh`**; `new-adr` numbers from `origin/main`, open PRs |
@@ -120,8 +120,8 @@ Run every check with `sh .claude/checks/run.sh`.
 
 **Everything else runs without asking, merging included**, through `merge-pr` once the merge guard
 passes and review has converged. Reach the owner with `PushNotification` only when blocked on
-one of the decisions above, once per delegated approval, and once when a session is done.
-Where several people work, each merges only their own PRs. Claude's memory is per machine: what
+a decision above, once per delegated approval, and once per finished session.
+Where several work, each merges only their own PRs. Claude's memory is per machine: what
 another person needs goes in the repo. Detail: `docs/conventions.md`; how-to: `docs/playbook.md`.
 
 ## Essentials every agent applies
@@ -132,6 +132,6 @@ another person needs goes in the repo. Detail: `docs/conventions.md`; how-to: `d
   **No `Co-Authored-By`**, no provenance trailers (`.claude/model-roles.json`, ADR-0008).
 - **The gate** is `GATE_RUN` in `.claude/project.conf`; agents run it through `GATE`.
 - **`template/` is the product.** A template edit ships: rebuild the plugin
-  (`scripts/build-plugin.sh`) and sync this repo's copy with `stridal update`.
+  (`scripts/build-plugin.sh`); sync this repo's copy with `stridal update`.
 - **Never kill a tmux server or another session's process from a script** (ADR-0005).
 - **Reuse before you write.** Grep for the concept before adding a function, query or dependency.

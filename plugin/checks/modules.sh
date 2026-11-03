@@ -39,7 +39,7 @@ part() {
   printf 'docs/%s.json\tre-run the %s generator\n' "$n" "$n" > "$b/conflicts.tsv"
 }
 part "$R/.claude/modules/demo" demo
-printf 'name="demo"\nrequires=""\nenables="guard.d context.d health checks skills conflicts.tsv"\nDEMO_KEY="from-module"\n' > "$R/.claude/modules/demo/module.conf"
+printf 'name="demo"\nrequires=""\nenables="guard.d context.d health checks skills conflicts.tsv"\nPROJECT_DEMO_KEY="from-module"\n' > "$R/.claude/modules/demo/module.conf"
 part "$R/.claude/local" locallayer
 mkdir -p "$R/.claude/modules/needy"
 printf 'name="needy"\nrequires="demo"\nenables=""\n' > "$R/.claude/modules/needy/module.conf"
@@ -94,11 +94,11 @@ has yes "PASS demo:c" "$r" "checks/run.sh runs an enabled module's check"
 touch "$R/FAIL_demo"
 (cd "$R" && unmarked sh .claude/checks/run.sh >/dev/null 2>&1); expect_rc 1 $? "a failing module check fails checks/run.sh"
 rm -f "$R/FAIL_demo"
-v=$(inr 'echo "$DEMO_KEY"')
-[ "$v" = from-module ] && ok "module.conf's default key applies when project.conf sets nothing" || fail "DEMO_KEY='$v'"
-conf 'MODULES="demo"' 'DEMO_KEY="mine"'
-v=$(inr 'echo "$DEMO_KEY"')
-[ "$v" = mine ] && ok "project.conf's value wins over the module's default" || fail "DEMO_KEY='$v' (project.conf said mine)"
+v=$(inr 'echo "$PROJECT_DEMO_KEY"')
+[ "$v" = from-module ] && ok "module.conf's default key applies when project.conf sets nothing" || fail "PROJECT_DEMO_KEY='$v'"
+conf 'MODULES="demo"' 'PROJECT_DEMO_KEY="mine"'
+v=$(inr 'echo "$PROJECT_DEMO_KEY"')
+[ "$v" = mine ] && ok "project.conf's value wins over the module's default" || fail "PROJECT_DEMO_KEY='$v' (project.conf said mine)"
 
 conf 'MODULES="needy"'
 l=$(ext list); (cd "$R" && sh .claude/extensions.sh list >/dev/null 2>&1); expect_rc 1 $? "list fails when a module requires one that is not on"

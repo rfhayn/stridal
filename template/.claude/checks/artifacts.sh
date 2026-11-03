@@ -305,11 +305,12 @@ commit "the model"
 git init -q --bare "$R/acme/app.git"
 echo "acme/" >> "$R/.git/info/exclude"
 git -C "$R" remote add origin acme/app.git
-(cd "$R" && git push -q origin HEAD:main 2>/dev/null && git fetch -q origin)
+(cd "$R" && git push -q origin HEAD:main 2>/dev/null && git fetch -q origin && git remote set-head origin main)
 cat > "$d/bin/gh" <<'EOF'
 #!/bin/sh
 case "$1 $2" in
   "pr checks") echo '[]' ;;
+  "api repos/"*) case "$*" in *.default_branch) git symbolic-ref -q refs/remotes/origin/HEAD | sed -e 's|^refs/remotes/origin/||' -e 's/^conf-on-main$/conf-forge/' ;; *) exit 1 ;; esac ;;
   "pr view") case "$*" in
       *"--json state "*) echo OPEN ;;
       *headRefName*) printf '{"headRefName":"%s","headRefOid":"%s"}\n' "$GH_BRANCH" "$GH_HEAD" ;;
@@ -323,6 +324,7 @@ chmod +x "$d/bin/gh"
 gd() {  # gd WANT BRANCH HEAD LABEL [env...]
   want=$1 br=$2 hd=$3 label=$4; shift 4
   printf '%s\tfull\tclean\tall\n' "$hd" > "$R/.git/ci-receipt"
+  conf_on_main "$R"
   rc=0
   gout=$(payload "gh pr merge 999 --squash" "$R" | (cd "$R" && env PATH="$d/bin:$PATH" GH_HEAD="$hd" GH_BRANCH="$br" "$@" sh "$R/.claude/hooks/pr-merge-guard.sh" 2>"$d/err")) || rc=$?
   expect_rc "$want" "$rc" "guard rule: $label"

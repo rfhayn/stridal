@@ -15,6 +15,7 @@ cp "$STRIDAL_FW/machine-quiet.sh" "$R/.claude/"
 cp "$STRIDAL_FW/lib/conf.sh" "$R/.claude/lib/"
 echo '.claude/worktrees/' > "$R/.gitignore"
 git -C "$R" add -A && git -C "$R" commit -qm init
+git -C "$R" update-ref refs/remotes/origin/main HEAD; git -C "$R" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
 git -C "$R" worktree add -q "$R/.claude/worktrees/lane" 2>/dev/null
 WT="$R/.claude/worktrees"
 

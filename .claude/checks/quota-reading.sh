@@ -197,7 +197,10 @@ reading() {
     '{windows:[{key:"five_hour",pct:$a,resetsAt:$w5},{key:"seven_day",pct:$b,resetsAt:$w7},{key:"seven_day_opus",pct:$c,resetsAt:$cr}],at:$at}' > "$QF"
 }
 hl() { (cd "$d" && HOME="$HQ" QUOTA_NOW="${QNOW:-$QN}" ROOT="$P" sh "$P/.claude/health/quota.sh" 2>&1); }
-gate() { (cd "$d" && HOME="$HQ" QUOTA_NOW="${QNOW:-$QN}" ROOT="$P" sh "$P/.claude/quota-gate.sh" 2>&1; echo "exit $?"); }
+# QUOTA_LANE_STOP_PCT is main's to say (lib/conf.sh), so main says what each case sets.
+new_repo "$P"; git -C "$P" commit -q --allow-empty -m base; git -C "$P" update-ref refs/remotes/origin/main HEAD
+git -C "$P" remote add origin "$P/no-such-origin.git"
+gate() { conf_on_main "$P"; (cd "$d" && HOME="$HQ" QUOTA_NOW="${QNOW:-$QN}" ROOT="$P" sh "$P/.claude/quota-gate.sh" 2>&1; echo "exit $?"); }
 
 if [ -n "$has_health" ]; then
   conf 90; reading 41 63.0 77.5
@@ -269,6 +272,14 @@ done
 # it) and the orchestrating session, whose rule in session-start names it. The patterns leave out the
 # `sh .claude/` before the name, which the plugin's copies spell `stridal-model `.
 grep -q 'quota-gate\.sh 2>&1; echo "exit \$?"' "$ROOT/.claude/workflows/build-change.js" && ok "build-change.js's preflight runs .claude/quota-gate.sh" || fail "build-change.js does not run .claude/quota-gate.sh"
+# The threshold is main's, not the branch's: a branch cannot raise it for itself.
+conf 50; conf_on_main "$P"; conf 99; reading 41 70 5 "$W7"
+got=$( (cd "$d" && HOME="$HQ" QUOTA_NOW="$QN" ROOT="$P" sh "$P/.claude/quota-gate.sh" 2>&1; echo "exit $?") )
+case $got in *"STOP"*"exit 1") ok "gate: main's threshold, not the branch's higher one" ;; *) fail "gate read the branch's threshold: $got" ;; esac
+git -C "$P" symbolic-ref --delete refs/remotes/origin/HEAD
+got=$( (cd "$d" && HOME="$HQ" QUOTA_NOW="$QN" ROOT="$P" sh "$P/.claude/quota-gate.sh" 2>&1; echo "exit $?") )
+case $got in *"on the default threshold"*"set-head"*) ok "gate: main unreadable: the default threshold, with a note" ;; *) fail "gate, main unreadable: $got" ;; esac
+git -C "$P" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/conf-on-main
 awk '/^- \*\*Run as an orchestrator of lanes\*\*/ { on = 1 } on && /^- \*\*/ && !/orchestrator of lanes/ { on = 0 } on' "$ROOT/.claude/skills/session-start/SKILL.md" | grep -q 'run `[^`]*quota-gate\.sh`' \
   && ok "session-start's orchestrator rule names sh .claude/quota-gate.sh before a lane starts" || fail "session-start's 'Run as an orchestrator of lanes' rule does not name sh .claude/quota-gate.sh"
 finish

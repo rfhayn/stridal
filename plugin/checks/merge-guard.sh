@@ -80,9 +80,18 @@ case "$1 $2" in
   # GH_API_HOST: the GitHub Enterprise host this repo lives on; asked anywhere else, it is not found.
   "api --hostname" | "api repos/"*)
     host=""; [ "$2" = --hostname ] && { host=$3; shift 3; set -- api "$@"; }
-    [ -n "${GH_API_LOG:-}" ] && echo "$2" >> "$GH_API_LOG"
+    [ -n "${GH_API_LOG:-}" ] && case "$*" in *.default_branch) ;; *) echo "$2" >> "$GH_API_LOG" ;; esac
     [ -n "${GH_API_ERR:-}" ] && { echo "$GH_API_ERR" >&2; exit 1; }
     [ -n "${GH_API_HOST:-}" ] && [ "$2" = repos/acme/app ] && [ "$host" != "$GH_API_HOST" ] && { echo "HTTP 404: Not Found" >&2; exit 1; }
+    # GH_BAD_HOST: a name gh cannot reach, as an ssh alias is.
+    [ -n "${GH_BAD_HOST:-}" ] && [ "$host" = "$GH_BAD_HOST" ] && { echo "could not resolve $host" >&2; exit 1; }
+    # --jq .default_branch: GH_DEFAULT_BRANCH, else whatever origin's HEAD here names (the forge's for
+    # conf_on_main's side ref), so a case that is not about it agrees. GH_DEFAULT_ERR: gh itself fails.
+    case "$*" in *.default_branch)
+      [ -z "${GH_DEFAULT_ERR:-}" ] || { echo "$GH_DEFAULT_ERR" >&2; exit 1; }
+      echo "${GH_DEFAULT_BRANCH:-$(git symbolic-ref -q refs/remotes/origin/HEAD | sed -e 's|^refs/remotes/origin/||' -e 's/^conf-on-main$/conf-forge/')}"
+      exit 0 ;;
+    esac
     asked=${2#repos/}
     case " ${GH_RENAMED:-} " in *" $asked "*) echo "${GH_CANON:-Acme/App}" ;; *) echo "$asked" ;; esac ;;
   *) exit 1 ;;
@@ -95,11 +104,15 @@ receipt() { printf '%s\tfull\t%s\t%s\n' "$1" "${2:-clean}" "${3:-all}" > "$R/.gi
 guard() {  # guard WANT LABEL COMMAND [env assignments...]
   want=$1 label=$2 c=$3; shift 3
   rc=0
+  # This table sets each key in the checkout's copy; the guard reads main's (lib/conf.sh). Off from
+  # the extension rules on, where `land` puts them on main for real.
+  [ -z "${CONF_SYNC:-}" ] || conf_on_main "$R"
   out=$(payload "$c" "${PCWD-$R}" | (cd "$R" && env PATH="$d/bin:$PATH" GH_HEAD="${GH_HEAD:-$MAINSHA}" "$@" sh "$R/.claude/hooks/pr-merge-guard.sh" 2>"$d/err")) || rc=$?
   expect_rc "$want" "$rc" "merge-guard $( [ "$want" = 2 ] && echo blocks || echo allows ): $label"
   [ "$rc" = "$want" ] || sed 's/^/       /' "$d/err" | head -3
 }
 
+CONF_SYNC=1
 guard 0 "a command that is not a merge" "git status"
 guard 0 "gh pr view" "gh pr view 5"
 guard 2 "--auto" "gh pr merge 5 --squash --auto"
@@ -677,6 +690,7 @@ fi
 jq '.provenance.enabled = true | .attribution.enabled = true' "$ROOT/.claude/model-roles.json" > "$R/.claude/model-roles.json"
 sguard() {  # sguard WANT LABEL COMMAND — with a session id in the payload, as Claude Code sends
   rc=0
+  [ -z "${CONF_SYNC:-}" ] || conf_on_main "$R"
   jq -cn --arg c "$3" --arg d "$R" '{tool_name:"Bash", cwd:$d, session_id:"sess-1", tool_input:{command:$c}}' \
     | (cd "$R" && env PATH="$d/bin:$PATH" GH_HEAD="$MAINSHA" sh "$R/.claude/hooks/pr-merge-guard.sh" 2>"$d/err") >/dev/null || rc=$?
   expect_rc "$1" "$rc" "merge-guard $( [ "$1" = 2 ] && echo blocks || echo allows ): $2"
@@ -1251,45 +1265,433 @@ g13 2 "a file whose markers are missing at base AND head, edited (cannot tell wh
 git -C "$R" checkout -q main
 
 # Extension rules: the enabled modules' guard.d/*.sh and .claude/local/guard.d/*.sh run after the
-# core rules, with the same exit/advisory contract, and fail closed (lib/modules.sh).
+# core rules, with the same exit/advisory contract, and fail closed (lib/modules.sh). Each runs only
+# as origin/<main> holds it (OPS-219), so `land` puts what the checkout holds on origin/main.
 cp "$STRIDAL_FW/lib/modules.sh" "$R/.claude/lib/"
-TOP=$(git -C "$R" rev-parse HEAD); receipt "$TOP"
+CONF_SYNC=""
+git -C "$R" remote set-head origin main
+land() {
+  git -C "$R" add -A .claude && git -C "$R" commit -q --allow-empty -m "${1:-land the rules}" \
+    && (cd "$R" && git push -q origin HEAD:main 2>/dev/null && git fetch -q origin)
+  TOP=$(git -C "$R" rev-parse HEAD); receipt "$TOP"
+}
+land
 G="$R/.claude/local/guard.d"; mkdir -p "$G"
 gx() {  # gx WANT LABEL [env...]: a plain merge of the clean head, through the extension rules
   w=$1 l=$2; shift 2
   guard "$w" "guard.d: $l" "gh pr merge 5 --squash" GH_HEAD="$TOP" "$@"
 }
-printf 'echo "PR $GUARD_PR head $GUARD_HEAD branch $GUARD_BRANCH"\n' > "$G/10-facts.sh"
+printf 'echo "PR $GUARD_PR head $GUARD_HEAD branch $GUARD_BRANCH"\n' > "$G/10-facts.sh"; land
 gx 0 "a rule that exits 0 allows"
 case "$out" in *'"additionalContext"'*"local guard.d/10-facts.sh: PR 5 head $TOP branch fix/1-x"*) ok "guard.d: its stdout reaches Claude as an advisory, with the PR's facts in GUARD_*" ;; *) fail "guard.d advisory: $out" ;; esac
-printf '#!/usr/bin/env bash\nif [[ -n "$GUARD_PR" ]]; then echo "bash ran me"; fi\n' > "$G/20-bash.sh"
+printf '#!/usr/bin/env bash\nif [[ -n "$GUARD_PR" ]]; then echo "bash ran me"; fi\n' > "$G/20-bash.sh"; land
 gx 0 "a bash-only rule runs under bash (its #! line), not sh"
 rm -f "$G/20-bash.sh"
-printf 'echo "not this one" >&2\nexit 2\n' > "$G/30-block.sh"
+printf 'echo "not this one" >&2\nexit 2\n' > "$G/30-block.sh"; land
 gx 2 "a rule that exits 2 blocks"
 grep -q 'local guard.d/30-block.sh: not this one' "$d/err" && ok "guard.d: ...with its stderr as the reason" || fail "guard.d block message: $(cat "$d/err")"
-printf 'exit 1\n' > "$G/30-block.sh"
+printf 'exit 1\n' > "$G/30-block.sh"; land
 gx 2 "a rule that crashes (exit 1) blocks: fail closed"
-printf 'if then fi\n' > "$G/30-block.sh"
+printf 'if then fi\n' > "$G/30-block.sh"; land
 gx 2 "a rule that does not parse blocks"
 grep -q 'does not parse' "$d/err" && ok "guard.d: ...and says it does not parse" || fail "guard.d parse message: $(cat "$d/err")"
-printf 'sleep 20\n' > "$G/30-block.sh"
+printf 'sleep 20\n' > "$G/30-block.sh"; land
 gx 2 "a rule that outlives GUARD_RULE_TIMEOUT blocks" GUARD_RULE_TIMEOUT=1
 grep -q 'did not finish within 1 s' "$d/err" && ok "guard.d: ...and says it timed out" || fail "guard.d timeout message: $(cat "$d/err")"
-rm -f "$G/30-block.sh"
+rm -f "$G/30-block.sh"; land
+
+# OPS-219: a rule that is not origin/<main>'s is refused BEFORE it runs. The proof it did not run is
+# a stamp it would make; the proof the stamp can be made is the same rule, on main, running below.
+CANARY="$d/rule-ran"
+rule_writes() { printf 'touch "%s"\n' "$CANARY" > "$1"; }
+refused() {  # refused LABEL [TEXT]: blocked, naming TEXT, and the rule did not run
+  rm -f "$CANARY"
+  gx 2 "$1"
+  grep -qF -- "${2:-refused and not run}" "$d/err" && [ ! -e "$CANARY" ] && ok "guard.d: ...it says '${2:-refused and not run}', and no rule ran" \
+    || fail "guard.d: $1: ran=$( [ -e "$CANARY" ] && echo yes || echo no ): $(cat "$d/err")"
+}
+rule_writes "$G/40-stamp.sh"
+refused "a rule origin/main does not hold"
+land
+rm -f "$CANARY"; gx 0 "the same rule, once origin/main holds it"
+[ -e "$CANARY" ] && ok "guard.d: ...it runs (so the refusals here are the comparison's)" || fail "guard.d: a rule on origin/main did not run"
+printf '# a local edit\n' >> "$G/40-stamp.sh"
+refused "a rule edited here, so it differs from origin/main" "40-stamp.sh"
+git -C "$R" checkout -q -- .claude/local/guard.d/40-stamp.sh
+# The tree on disk against main's, whatever git's index would say: a mode, a link, a name with a blank
+# or beyond ASCII, a deletion, an addition that the exclude file hides from `git status`.
+chmod +x "$G/40-stamp.sh"; refused "a rule whose mode alone changed"; chmod -x "$G/40-stamp.sh"
+printf 'x\n' > "$G/not-a-rule.txt"; refused "a file there that is no rule"; rm -f "$G/not-a-rule.txt"
+cp "$G/40-stamp.sh" "$d/same-text.sh"; rm -f "$G/40-stamp.sh"; ln -s "$d/same-text.sh" "$G/40-stamp.sh"
+refused "a link to a file of the same text, where main holds a file"
+rm -f "$G/40-stamp.sh"; git -C "$R" checkout -q -- .claude/local/guard.d/40-stamp.sh
+rule_writes "$G/ignored.sh"; echo '.claude/local/guard.d/ignored.sh' >> "$R/.git/info/exclude"
+refused "a new rule the exclude file hides"
+rm -f "$G/ignored.sh"; sed -i.bak '$d' "$R/.git/info/exclude" && rm -f "$R/.git/info/exclude.bak"
+SPACED="$G/50 a blank and é.sh"; rule_writes "$SPACED"; land
+rm -f "$CANARY"; gx 0 "a rule with a blank and a non-ASCII byte in its name, on main"
+printf '# a local edit\n' >> "$SPACED"
+refused "...edited here, which the message can name" "50 a blank and é.sh"
+git -C "$R" checkout -q -- ".claude/local/guard.d/50 a blank and é.sh"
+rm -f "$SPACED"
+refused "...deleted here"
+git -C "$R" checkout -q -- ".claude/local/guard.d/50 a blank and é.sh"; rm -f "$SPACED"; land
+mv "$R/.claude/local" "$d/local-moved"; ln -s "$d/local-moved" "$R/.claude/local"
+printf '# an edit on the far side\n' >> "$d/local-moved/guard.d/40-stamp.sh"
+refused "the local layer a link to somewhere else, with an edited rule on the far side"
+rm -f "$R/.claude/local"; mv "$d/local-moved" "$R/.claude/local"; git -C "$R" checkout -q -- .claude/local/guard.d/40-stamp.sh
+# git failing to answer is not git saying they match.
+real_git=$(command -v git)
+printf '#!/bin/sh\ncase " $* " in *" %s "*) exit 129 ;; esac\nexec "%s" "$@"\n' 'ls-tree -r' "$real_git" > "$d/bin/git"; chmod +x "$d/bin/git"
+refused "git failing to read main's rules" "cannot read"
+printf '#!/bin/sh\ncase " $* " in *" %s "*) exit 129 ;; esac\nexec "%s" "$@"\n' 'hash-object --no-filters' "$real_git" > "$d/bin/git"; chmod +x "$d/bin/git"
+refused "git failing to hash a rule on disk"
+rm -f "$d/bin/git"
+# An uncommitted edit: the fix would lose it, so the message says to commit first and states no fix.
+printf '# not committed yet\n' >> "$G/40-stamp.sh"
+refused "an uncommitted edit to a rule" "commit them first"
+grep -q 'restore --source' "$d/err" && fail "guard.d: the message offers a restore that would lose an uncommitted edit" || ok "guard.d: ...and offers no restore that would lose it"
+git -C "$R" checkout -q -- .claude/local/guard.d/40-stamp.sh
+# The message is the fix a lane can run. A PR that changes a rule: the branch holds the edit.
+git -C "$R" checkout -q -b rule-pr
+printf '# the PR edit\n' >> "$G/40-stamp.sh"
+git -C "$R" add -A .claude && git -C "$R" commit -qm "the PR changes a rule"
+refused "the merge of a PR that changes a rule, from its own checkout" "restore --source=origin/main"
+fix=$(sed -n 's/.*run: \(git -C "[^"]*" restore --source=origin\/main -- [^(]*\) (.*/\1/p' "$d/err")
+back=$(sed -n 's/.*; \(git -C "[^"]*" restore -- [^)]*\) puts its copy back.*/\1/p' "$d/err")
+[ -n "$fix" ] && [ -n "$back" ] && sh -c "$fix" 2>"$d/fixerr" \
+  && { rm -f "$CANARY"; gx 0 "...which the fix the message states lets through, with main's rule judging it"; [ -e "$CANARY" ] && ! grep -q 'the PR edit' "$G/40-stamp.sh" && ok "guard.d: ...and main's copy is what ran" || fail "guard.d: after the stated fix: ran=$( [ -e "$CANARY" ] && echo yes || echo no )"; } \
+  || fail "guard.d: the message's fix did not run: '$fix': $(cat "$d/fixerr" 2>/dev/null)"
+sh -c "$back" 2>/dev/null; grep -q 'the PR edit' "$G/40-stamp.sh" && ok "guard.d: ...and the command it names puts the branch's copy back" || fail "guard.d: '$back' did not put the branch's copy back"
+[ -z "$(git -C "$R" status --porcelain -- .claude/local)" ] && ok "guard.d: ...leaving the branch as it was" || fail "guard.d: the branch's tree moved: $(git -C "$R" status --porcelain -- .claude/local)"
+git -C "$R" checkout -q main
+# A checkout that is only behind, the state every lane is in once a rule lands.
+git -C "$R" checkout -q -b rule-behind
+git -C "$R" checkout -q main
+printf '# a rule that landed\n' >> "$G/40-stamp.sh"; land
+git -C "$R" checkout -q rule-behind
+refused "a lane behind a rule that landed" "git -C \"$R\" merge origin/main"
+git -C "$R" merge -q --no-edit origin/main 2>/dev/null
+rm -f "$CANARY"; gx 0 "...which merging origin/main clears"
+git -C "$R" checkout -q main
+# The checkout's project.conf cannot choose what it is compared with: a branch it names is not main.
+git -C "$R" checkout -q -b rule-side
+printf '# a side edit\n' >> "$G/40-stamp.sh"
+git -C "$R" add -A .claude && git -C "$R" commit -qm "side: the edited rule" && (cd "$R" && git push -q origin rule-side 2>/dev/null && git fetch -q origin)
+git -C "$R" checkout -q main
+git -C "$R" show rule-side:.claude/local/guard.d/40-stamp.sh > "$G/40-stamp.sh"
+cp "$R/.claude/project.conf" "$d/conf.keep"; echo 'MAIN_BRANCH="rule-side"' >> "$R/.claude/project.conf"
+refused "a branch's MAIN_BRANCH naming a branch that holds the edited rule" "not what origin/main holds"
+cp "$d/conf.keep" "$R/.claude/project.conf"
+git -C "$R" checkout -q -- .claude/local/guard.d/40-stamp.sh
+# The forge's default branch naming another branch: origin's HEAD must follow it, and the fix is named.
+echo 'MAIN_BRANCH="rule-side"' >> "$R/.claude/project.conf"; land
+printf '# a local edit\n' >> "$G/40-stamp.sh"; git -C "$R" add -A .claude; git -C "$R" commit -qm "edit"
+refused "MAIN_BRANCH on main that is not origin's default" "set-head origin rule-side"
+git -C "$R" reset -q --hard origin/main
+cp "$d/conf.keep" "$R/.claude/project.conf"; land
+rm -f "$G/40-stamp.sh"
+refused "a rule origin/main holds that this checkout has deleted" "40-stamp.sh"
+git -C "$R" checkout -q -- .claude/local/guard.d/40-stamp.sh
+# origin/<main> cannot be read: nothing vouches for the keys or the rule, and the fix is named.
+git -C "$R" symbolic-ref --delete refs/remotes/origin/HEAD
+refused "origin's HEAD unknown" "cannot be read"
+grep -qF 'remote set-head origin <this project' "$d/err" && ! grep -qF 'set-head origin --auto' "$d/err" && ok "guard.d: ...and names the fix, which is not --auto: that would point back at origin's default" || fail "guard.d: no fix named: $(cat "$d/err")"
+git -C "$R" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/no-such-branch
+GH_DEFAULT_BRANCH=main; export GH_DEFAULT_BRANCH
+refused "origin's HEAD naming a branch this clone does not have" "set-head origin main"
+unset GH_DEFAULT_BRANCH
+git -C "$R" remote set-head origin main
+# A rule outside the repository is the plugin's own copy, which no branch holds, on every path: this
+# modules.sh is as the plugin build writes it, with shipped modules under the plugin (MODULES_FW).
+rm -f "$G/40-stamp.sh"
+mkdir -p "$d/fw/modules/shipped/guard.d"
+printf 'name="shipped"\nrequires=""\nenables="guard.d"\n' > "$d/fw/modules/shipped/module.conf"
+rule_writes "$d/fw/modules/shipped/guard.d/shipped.sh"
+sed "s|^MODULES_FW=.*|MODULES_FW=\"$d/fw/modules\"|" "$STRIDAL_FW/lib/modules.sh" > "$R/.claude/lib/modules.sh"
+echo 'MODULES="shipped"' >> "$R/.claude/project.conf"; land
+rm -f "$CANARY"; gx 0 "a rule in the plugin, outside the repository, is not compared"
+[ -e "$CANARY" ] && ok "guard.d: ...and it ran" || fail "guard.d: the plugin's rule did not run: $(cat "$d/err")"
+cp "$STRIDAL_FW/lib/modules.sh" "$R/.claude/lib/modules.sh"
+sed -i.bak '/^MODULES=/d' "$R/.claude/project.conf" && rm -f "$R/.claude/project.conf.bak"; land
+
+# OPS-219: a line of this checkout's project.conf that is not data blocks every merge from it: its key
+# holds a default it was not asked for, and a default can be a rule turned off. It stays unrun.
+cp "$R/.claude/project.conf" "$d/conf.keep"; rm -f "$CANARY"
+printf 'GATE_PR_CHECKS="$(touch %s)"\n' "$CANARY" >> "$R/.claude/project.conf"
+guard 2 "a checkout's project.conf line that is not data blocks a merge" "gh pr merge 5 --squash" GH_HEAD="$TOP"
+grep -q 'not data' "$d/err" && grep -q 'GATE_PR_CHECKS' "$d/err" && [ ! -e "$CANARY" ] && ok "...naming the line, and the substitution did not run" \
+  || fail "conf line: ran=$( [ -e "$CANARY" ] && echo yes || echo no ): $(cat "$d/err")"
+guard 0 "...and a command that is not a merge is not stopped by it" "git status"
+cp "$d/conf.keep" "$R/.claude/project.conf"
+printf 'MAIN_BRANCH="--upload-pack=touch %s"\n' "$CANARY" >> "$R/.claude/project.conf"
+guard 2 "an option-shaped MAIN_BRANCH on a branch" "gh pr merge 5 --squash" GH_HEAD="$TOP"
+[ ! -e "$CANARY" ] && ok "...and git never read it as an option" || fail "an option-shaped MAIN_BRANCH ran"
+cp "$d/conf.keep" "$R/.claude/project.conf"
+echo 'TMOUT="1"' >> "$R/.claude/project.conf"
+guard 2 "a key off the allowlist in a checkout blocks a merge" "gh pr merge 5 --squash" GH_HEAD="$TOP"
+grep -q 'PROJECT_' "$d/err" && ok "...naming the prefix a project's own key takes" || fail "conf key: $(cat "$d/err")"
+cp "$d/conf.keep" "$R/.claude/project.conf"
+# After the closing quote: every shell here reads this line as a clean one, so only the byte check sees it.
+printf 'PROJECT_NAME="x"\000\n' >> "$R/.claude/project.conf"
+guard 2 "a NUL byte in a checkout's project.conf blocks a merge, in every shell" "gh pr merge 5 --squash" GH_HEAD="$TOP"
+cp "$d/conf.keep" "$R/.claude/project.conf"
+# The deadlock: a line MAIN's copy refuses, as an adopter's older line would be on upgrade, must not
+# stop the PR that fixes it. A checkout that reads clean stands in, and the guard says so.
+printf 'PROJECT_OLD="$ROOT/x"\n' >> "$R/.claude/project.conf"; land
+cp "$d/conf.keep" "$R/.claude/project.conf"
+gx 0 "main's project.conf holds a refused line, this checkout's reads clean: the PR that fixes it lands"
+case "$out" in *"not data"*"this checkout's copy"*) ok "...with a note saying whose keys judged it" ;; *) fail "no note: $out" ;; esac
+printf 'PROJECT_OLD="$ROOT/x"\n' >> "$R/.claude/project.conf"
+guard 2 "main's project.conf and this checkout's both refused: nothing to judge on" "gh pr merge 5 --squash" GH_HEAD="$TOP"
+cp "$d/conf.keep" "$R/.claude/project.conf"; land
+# Same for a NUL byte only main's copy holds.
+printf 'PROJECT_NAME="x"\000\n' >> "$R/.claude/project.conf"; land
+cp "$d/conf.keep" "$R/.claude/project.conf"
+gx 0 "a NUL byte on main's project.conf, a clean checkout: the PR that fixes it lands"
+case "$out" in *"NUL byte"*) ok "...and the note names it" ;; *) fail "no NUL note: $out" ;; esac
+cp "$d/conf.keep" "$R/.claude/project.conf"; land
+
 mkdir -p "$R/.claude/modules/strict/guard.d"
 printf 'name="strict"\nrequires=""\nenables="guard.d"\n' > "$R/.claude/modules/strict/module.conf"
-printf 'echo "strict says no" >&2\nexit 2\n' > "$R/.claude/modules/strict/guard.d/no.sh"
+printf 'echo "strict says no" >&2\nexit 2\n' > "$R/.claude/modules/strict/guard.d/no.sh"; land
 gx 0 "a DISABLED module's rule does not run"
-echo 'MODULES="strict"' >> "$R/.claude/project.conf"
+echo 'MODULES="strict"' >> "$R/.claude/project.conf"; land
 gx 2 "an ENABLED module's rule runs"
 grep -q 'module strict guard.d/no.sh: strict says no' "$d/err" && ok "guard.d: ...and the block names the module" || fail "guard.d module block: $(cat "$d/err")"
-sed -i.bak 's/^MODULES=.*/MODULES="nosuch"/' "$R/.claude/project.conf" && rm -f "$R/.claude/project.conf.bak"
-gx 2 "a module in MODULES that cannot load blocks (its rules cannot run)"
-sed -i.bak '/^MODULES=/d' "$R/.claude/project.conf" && rm -f "$R/.claude/project.conf.bak"
+# THE KEYS ARE MAIN'S: a branch switching the module off, emptying the file or deleting it changes nothing.
+sed -i.bak 's/^MODULES=.*/MODULES=""/' "$R/.claude/project.conf" && rm -f "$R/.claude/project.conf.bak"
+gx 2 "a branch's MODULES=\"\" does not turn main's module off"
+grep -q 'strict says no' "$d/err" && ok "guard.d: ...the module's rule still ran" || fail "guard.d: $(cat "$d/err")"
+rm -f "$R/.claude/project.conf"
+gx 2 "a branch deleting project.conf does not turn main's module off"
+grep -q 'strict says no' "$d/err" && ok "guard.d: ...the module's rule still ran" || fail "guard.d: $(cat "$d/err")"
+git -C "$R" checkout -q -- .claude/project.conf
+sed -i.bak 's/^MODULES=.*/MODULES="nosuch"/' "$R/.claude/project.conf" && rm -f "$R/.claude/project.conf.bak"; land
+gx 2 "a module in main's MODULES that cannot load blocks (its rules cannot run)"
+grep -q 'merge origin/main' "$d/err" && ok "guard.d: ...and says to merge origin's main, for a checkout behind one that enabled it" || fail "guard.d: module: $(cat "$d/err")"
+sed -i.bak '/^MODULES=/d' "$R/.claude/project.conf" && rm -f "$R/.claude/project.conf.bak"; land
 mv "$R/.claude/lib/modules.sh" "$d/modules.bak"
 gx 2 "the loader missing while .claude/local/guard.d exists (fails closed, not open)"
 mv "$d/modules.bak" "$R/.claude/lib/modules.sh"
-rm -rf "$G" "$R/.claude/modules"
+rm -rf "$G" "$R/.claude/modules"; land
 gx 0 "no extension rules at all: the guard is unchanged"
+git -C "$R" symbolic-ref --delete refs/remotes/origin/HEAD
+gx 2 "no extension rules and origin's HEAD unknown: still blocked, as the keys are main's"
+grep -qF 'remote set-head origin <this project' "$d/err" && ok "...naming the fix" || fail "no fix named: $(cat "$d/err")"
+git -C "$R" remote set-head origin main
+
+# ── Fresh repositories for the states the index, the stat cache and attributes can hide ─────────
+# fresh NAME: a new project with origin, main holding the rule 40.sh, which carries a keyword line.
+fresh() {
+  R="$d/$1"; new_repo "$R"
+  mkdir -p "$R/.claude/hooks/lib" "$R/.claude/lib" "$R/docs"
+  cp "$STRIDAL_FW/hooks/pr-merge-guard.sh" "$R/.claude/hooks/"
+  cp "$STRIDAL_FW/hooks/lib/"* "$R/.claude/hooks/lib/"
+  cp "$STRIDAL_FW/lib/conf.sh" "$STRIDAL_FW/lib/modules.sh" "$STRIDAL_FW/lib/change.sh" "$STRIDAL_FW/lib/evals.sh" "$R/.claude/lib/"
+  [ -f "$STRIDAL_FW/lib/docs-gate.sh" ] && cp "$STRIDAL_FW/lib/docs-gate.sh" "$R/.claude/lib/"
+  cp "$STRIDAL_FW/scenario-trace.sh" "$R/.claude/"
+  printf 'GATE_DISPLAY_CONTEXTS="ci/local"\n' > "$R/.claude/project.conf"
+  printf '# Journal\n\n## Session 1 — 2026-01-01 — a — start\n' > "$R/docs/development-journal.md"
+  G="$R/.claude/local/guard.d"; mkdir -p "$G"
+  printf '# $Id$\ntouch "%s"\n' "$CANARY" > "$G/40.sh"
+  git -C "$R" add -A && git -C "$R" commit -qm base
+  git init -q --bare "$R/acme/app.git"; echo "acme/" >> "$R/.git/info/exclude"
+  git -C "$R" remote add origin acme/app.git
+  (cd "$R" && git push -q origin HEAD:main 2>/dev/null && git fetch -q origin && git remote set-head origin main)
+  TOP=$(git -C "$R" rev-parse HEAD); receipt "$TOP"
+}
+# One flag a call: given both, update-index acts on the first alone, and the next case would inherit
+# the other bit and prove only that. The cmp holds each case to start from main's bytes.
+restore_rule() {
+  rm -f "$R/.git/info/attributes"
+  git -C "$R" update-index --no-assume-unchanged .claude/local/guard.d/40.sh
+  git -C "$R" update-index --no-skip-worktree .claude/local/guard.d/40.sh
+  git -C "$R" checkout -q -- .claude/local/guard.d/40.sh
+  git -C "$R" show refs/remotes/origin/main:.claude/local/guard.d/40.sh | cmp -s - "$G/40.sh" || fail "guard.d: the rule was not restored between cases: the next case proves nothing"
+}
+fresh states
+rm -f "$CANARY"; gx 0 "fresh: the rule as main holds it runs"
+[ -e "$CANARY" ] && ok "guard.d: ...and it ran" || fail "guard.d: fresh: the rule did not run: $(cat "$d/err")"
+git -C "$R" update-index --assume-unchanged .claude/local/guard.d/40.sh; printf '# hidden edit\n' >> "$G/40.sh"
+refused "an edit the index's assume-unchanged bit hides"; restore_rule
+git -C "$R" update-index --skip-worktree .claude/local/guard.d/40.sh; printf '# hidden edit\n' >> "$G/40.sh"
+refused "an edit the index's skip-worktree bit hides"; restore_rule
+git -C "$R" update-index --skip-worktree .claude/local/guard.d/40.sh; rm -f "$G/40.sh"
+refused "a rule a sparse checkout leaves out"; restore_rule
+echo '*.sh filter=hide' > "$R/.git/info/attributes"; git -C "$R" config filter.hide.clean "sed '/hidden edit/d'"; printf '# hidden edit\n' >> "$G/40.sh"
+refused "an edit a clean filter removes"; git -C "$R" config --unset filter.hide.clean; restore_rule
+echo '*.sh ident' > "$R/.git/info/attributes"; printf '# $Id: a hidden edit $\ntouch "%s"\n' "$CANARY" > "$G/40.sh"
+refused "an edit keyword expansion folds away"; restore_rule
+mkdir -p "$d/elsewhere"; git -C "$R" archive HEAD | tar -xf - -C "$d/elsewhere"; git -C "$R" config core.worktree "$d/elsewhere"; printf '# hidden edit\n' >> "$G/40.sh"
+refused "an edit core.worktree looks away from"; git -C "$R" config --unset core.worktree; restore_rule
+# The other direction: what reads the same on disk and on main passes, whatever its name or kind.
+fresh names
+printf 'touch "%s"\n' "$CANARY" > "$G/a blank and é.sh"
+printf 'exit 0\n' > "$G/runnable.sh"; chmod +x "$G/runnable.sh"
+ln -s runnable.sh "$G/a-link.sh"
+land
+rm -f "$CANARY"; gx 0 "an unchanged tree: a blank and a non-ASCII name, an x bit and a link all read the same"
+[ -e "$CANARY" ] && ok "guard.d: ...and its rules ran" || fail "guard.d: the unchanged tree's rules did not run: $(cat "$d/err")"
+rm -f "$G/a-link.sh"; printf 'exit 0\n' > "$G/a-link.sh"
+refused "a link replaced by a file with what it pointed to"; git -C "$R" checkout -q -- .claude/local/guard.d/a-link.sh
+
+# Main is what a script the guard starts reads too: a rule that loads the conf sees main's value.
+fresh child
+printf '. "%s"\necho "parser is $ROADMAP_PARSER"\n' "$R/.claude/lib/conf.sh" > "$G/50-child.sh"
+echo 'ROADMAP_PARSER="sh main-parser.sh"' >> "$R/.claude/project.conf"; land
+sed -i.bak 's/main-parser/branch-parser/' "$R/.claude/project.conf" && rm -f "$R/.claude/project.conf.bak"
+gx 0 "a rule the guard starts"
+case "$out" in *"parser is sh main-parser.sh"*) ok "guard.d: ...reads the parser main names, not the branch's" ;; *) fail "guard.d: the rule read: $out" ;; esac
+git -C "$R" checkout -q -- .claude/project.conf
+echo 'GATE_PR_CHECKS="test"' >> "$R/.claude/project.conf"; land
+sed -i.bak '/^GATE_PR_CHECKS=/d' "$R/.claude/project.conf" && rm -f "$R/.claude/project.conf.bak"
+gx 2 "a branch dropping GATE_PR_CHECKS does not drop the check main requires"
+grep -q 'GATE_PR_CHECKS' "$d/err" && ok "guard.d: ...and the block names the key" || fail "guard.d: $(cat "$d/err")"
+
+# A project's first setup PR must still land. Main with no project.conf yet: the defaults, and the
+# branch's copy, which a rule cannot rely on until it merges, changes nothing.
+R="$d/setup"; new_repo "$R"; printf 'first\n' > "$R/README"; git -C "$R" add -A; git -C "$R" commit -qm first
+git init -q --bare "$R/acme/app.git"; echo "acme/" >> "$R/.git/info/exclude"; git -C "$R" remote add origin acme/app.git
+(cd "$R" && git push -q origin HEAD:main 2>/dev/null && git fetch -q origin && git remote set-head origin main)
+git -C "$R" checkout -q -b ops/setup
+mkdir -p "$R/.claude/hooks/lib" "$R/.claude/lib" "$R/docs"
+cp "$STRIDAL_FW/hooks/pr-merge-guard.sh" "$R/.claude/hooks/"; cp "$STRIDAL_FW/hooks/lib/"* "$R/.claude/hooks/lib/"
+cp "$STRIDAL_FW/lib/conf.sh" "$STRIDAL_FW/lib/modules.sh" "$STRIDAL_FW/lib/change.sh" "$STRIDAL_FW/lib/evals.sh" "$R/.claude/lib/"
+[ -f "$STRIDAL_FW/lib/docs-gate.sh" ] && cp "$STRIDAL_FW/lib/docs-gate.sh" "$R/.claude/lib/"
+cp "$STRIDAL_FW/scenario-trace.sh" "$R/.claude/"
+printf 'MODULES="not-yet-on-main"\nGATE_DISPLAY_CONTEXTS="ci/local"\n' > "$R/.claude/project.conf"
+git -C "$R" add -A; git -C "$R" commit -qm "the setup PR"
+TOP=$(git -C "$R" rev-parse HEAD); receipt "$TOP"
+gx 0 "the first setup PR, with main holding no project.conf yet"
+# init then push: origin's branches, no record of which is main. Blocked once, by name, then fine.
+git -C "$R" symbolic-ref --delete refs/remotes/origin/HEAD
+gx 2 "a clone that does not know origin's HEAD"
+grep -qF 'remote set-head origin <this project' "$d/err" && ok "...names the fix" || fail "no fix named: $(cat "$d/err")"
+git -C "$R" remote set-head origin main
+gx 0 "...which clears it"
+# A module.conf on main with a key the model refuses can land its own fix. Main's line opens the
+# fallback, so its module.conf may differ from main for that PR; its rules may not.
+fresh modfix
+mkdir -p "$R/.claude/modules/own/guard.d"
+printf 'name="own"\nrequires=""\nenables="guard.d"\nOWN_KEY="1"\n' > "$R/.claude/modules/own/module.conf"
+printf 'echo ran >> "%s"\n' "$CANARY" > "$R/.claude/modules/own/guard.d/stamp.sh"
+echo 'MODULES="own"' >> "$R/.claude/project.conf"; land
+rm -f "$CANARY"; gx 2 "a refused key in a module.conf on main, from a checkout holding it"
+grep -q '.claude/modules/own/module.conf holds a line' "$d/err" && grep -q 'PROJECT_' "$d/err" && [ ! -e "$CANARY" ] && ok "guard.d: ...it names that file and the rename, and no rule ran" || fail "guard.d: refused module.conf: $(cat "$d/err")"
+sed -i.bak 's/^OWN_KEY=/PROJECT_OWN_KEY=/' "$R/.claude/modules/own/module.conf" && rm -f "$R/.claude/modules/own/module.conf.bak"
+git -C "$R" add -A .claude; git -C "$R" commit -qm "rename the key"; TOP=$(git -C "$R" rev-parse HEAD); receipt "$TOP"
+rm -f "$CANARY"; gx 0 "...the PR that renames it lands, the module still enabled"
+[ "$(wc -l < "$CANARY" 2>/dev/null | tr -d ' ')" = 1 ] && grep -q "origin/main's .claude/modules/own/module.conf holds a line" "$d/err" && ok "guard.d: ...its rule ran once, named in both lists, and the merge is told which file" || fail "guard.d: the rename: ran=$(wc -l < "$CANARY" 2>/dev/null): $(cat "$d/err")"
+# Dropping the module from MODULES does not skip its rule: main's modules stay on in the fallback.
+drop_modules() { sed -i.bak '/^MODULES=/d' "$R/.claude/project.conf" && rm -f "$R/.claude/project.conf.bak"; git -C "$R" add -A .claude; git -C "$R" commit -qm "drop MODULES"; TOP=$(git -C "$R" rev-parse HEAD); receipt "$TOP"; }
+drop_modules
+rm -f "$CANARY"; gx 0 "...the rename with MODULES dropped lands"
+[ "$(wc -l < "$CANARY" 2>/dev/null | tr -d ' ')" = 1 ] && ok "guard.d: ...and main's module's rule still ran" || fail "guard.d: rename, MODULES dropped: ran=$(wc -l < "$CANARY" 2>/dev/null): $(cat "$d/err")"
+git -C "$R" reset -q --hard HEAD~1
+printf '# a branch edit\n' >> "$R/.claude/modules/own/guard.d/stamp.sh"
+git -C "$R" add -A .claude; git -C "$R" commit -qm "and edit its rule"; TOP=$(git -C "$R" rev-parse HEAD); receipt "$TOP"
+refused "...and that PR also editing the module's guard.d"
+drop_modules
+refused "...and that PR editing the rule and dropping MODULES too"
+# Branch text in a repository's module.conf cannot trigger the fallback to the checkout's keys: main's
+# module.conf is what is read, so MODULES and GATE_PR_CHECKS stay main's.
+fresh modbranch
+mkdir -p "$R/.claude/modules/own/guard.d"
+printf 'name="own"\nrequires=""\nenables="guard.d"\n' > "$R/.claude/modules/own/module.conf"
+printf 'echo "own says no" >&2\nexit 2\n' > "$R/.claude/modules/own/guard.d/no.sh"
+echo 'MODULES="own"' >> "$R/.claude/project.conf"; land
+printf 'NOT_A_KEY="x"\n' >> "$R/.claude/modules/own/module.conf"
+sed -i.bak '/^MODULES=/d' "$R/.claude/project.conf" && rm -f "$R/.claude/project.conf.bak"
+gx 2 "branch text in a module.conf, the branch dropping MODULES"
+grep -q "this checkout's copy" "$d/err" && fail "guard.d: branch text triggered the fallback to the checkout's keys: $(cat "$d/err")" || ok "guard.d: ...does not trigger the fallback to the checkout's keys"
+grep -q 'module.conf' "$d/err" && grep -q 'refused and not run' "$d/err" && ok "guard.d: ...and the changed module.conf is refused" || fail "guard.d: module.conf: $(cat "$d/err")"
+# The chain holds origin's HEAD to account, here where it decides: the forge's default branch, what that
+# branch names as main, and origin's HEAD must name it.
+fresh forge
+# forge_branch NAME TEXT: a branch of origin that is main with TEXT for its project.conf.
+forge_branch() {
+  _fb=$(printf '%s\n' "$2" | git -C "$R" hash-object -w --stdin)
+  GIT_INDEX_FILE="$d/forge.index" git -C "$R" read-tree refs/remotes/origin/main
+  GIT_INDEX_FILE="$d/forge.index" git -C "$R" update-index --add --cacheinfo "100644,$_fb,.claude/project.conf"
+  _fb=$(GIT_INDEX_FILE="$d/forge.index" git -C "$R" write-tree | xargs -I{} git -C "$R" commit-tree {} -p refs/remotes/origin/main -m "$1")
+  (cd "$R" && git push -q --force origin "$_fb:refs/heads/$1" 2>/dev/null && git fetch -q origin)
+  rm -f "$d/forge.index"
+}
+# fix_in_err: the message's own fix, run as it stands: the fix the message states must be one that works.
+fix_in_err() { (eval "$(sed -n 's/.*Run: //p' "$d/err" | head -n 1)") >/dev/null 2>&1; }
+forge_branch other '# names no MAIN_BRANCH'
+rm -f "$CANARY"; gx 2 "origin's HEAD disagreeing with what the forge's default branch names" GH_DEFAULT_BRANCH=other
+grep -q 'default branch (other) says main is other' "$d/err" && [ ! -e "$CANARY" ] && ok "guard.d: ...it says so, and no rule ran" || fail "guard.d: forge: $(cat "$d/err")"
+rm -f "$CANARY"; gx 2 "a forge default this clone cannot read" GH_DEFAULT_BRANCH=no-such-branch
+grep -q 'git could not read .claude/project.conf from origin/no-such-branch' "$d/err" && [ ! -e "$CANARY" ] && ok "guard.d: ...it says so, and no rule ran" || fail "guard.d: forge unread: $(cat "$d/err")"
+git -C "$R" branch -q side; git -C "$R" push -q origin side 2>/dev/null; git -C "$R" fetch -q origin
+git -C "$R" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/side
+gx 2 "origin's HEAD re-pointed at another branch" GH_DEFAULT_BRANCH=main
+grep -q 'set-head origin main' "$d/err" && ok "guard.d: ...naming the fix" || fail "guard.d: re-pointed HEAD: $(cat "$d/err")"
+fix_in_err
+gx 0 "...and the fix that message states lets it through" GH_DEFAULT_BRANCH=main
+# A project whose integration branch is not the forge's default: its default branch names it, once.
+forge_branch trunk 'MAIN_BRANCH="main"'
+gx 0 "a git-flow project lands: the forge's default names the integration branch" GH_DEFAULT_BRANCH=trunk
+git -C "$R" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/trunk
+gx 2 "a git-flow project with origin's HEAD on the forge's default itself" GH_DEFAULT_BRANCH=trunk
+grep -q 'set-head origin main' "$d/err" && ok "guard.d: ...naming the integration branch" || fail "guard.d: git-flow HEAD: $(cat "$d/err")"
+fix_in_err
+gx 0 "...and that fix works too" GH_DEFAULT_BRANCH=trunk
+gx 2 "gh failing to say which branch is the default" GH_DEFAULT_ERR="no network"
+grep -q 'cannot read' "$d/err" && ok "guard.d: ...refuses, as it does for a PR's state" || fail "guard.d: gh failing: $(cat "$d/err")"
+# A fetch that fails is said: what follows is judged on the copy fetched last.
+printf '#!/bin/sh\ncase " $* " in *" fetch "*) exit 1 ;; esac\nexec "%s" "$@"\n' "$real_git" > "$d/bin/git"; chmod +x "$d/bin/git"
+gx 0 "origin's main cannot be fetched" GH_DEFAULT_BRANCH=main
+grep -q 'could not fetch main' "$d/err" && ok "guard.d: ...and it says it judged on the copy fetched last" || fail "guard.d: fetch: $(cat "$d/err")"
+# Signed in to more than one host: the default branch is asked of origin's host, not gh's default one.
+git -C "$R" remote set-url origin https://ghe.example.com/acme/app.git
+gx 0 "a GitHub Enterprise origin's default branch is read on its own host" GH_DEFAULT_BRANCH=main GH_API_HOST=ghe.example.com
+# An ssh alias with a dot reads as such a host, and gh cannot reach it: gh's own host is asked, once.
+git -C "$R" remote set-url origin git@github.com-work:acme/app.git
+gx 0 "an ssh alias with a dot lands" GH_DEFAULT_BRANCH=main GH_BAD_HOST=github.com-work
+gx 2 "an ssh alias, gh's own host answering a default that disagrees" GH_DEFAULT_BRANCH=other GH_BAD_HOST=github.com-work
+grep -q 'set-head origin other' "$d/err" && ok "guard.d: ...held to the same agreement" || fail "guard.d: alias, other default: $(cat "$d/err")"
+gx 2 "an ssh alias, both reads failing" GH_DEFAULT_ERR="gh says no" GH_BAD_HOST=github.com-work
+grep -q 'could not resolve github.com-work' "$d/err" && grep -q 'gh says no' "$d/err" && ok "guard.d: ...refuses, showing what gh said" || fail "guard.d: alias, gh failing: $(cat "$d/err")"
+git -C "$R" remote set-url origin acme/app.git
+rm -f "$d/bin/git"
+# A git error reading main's copy blocks: it is not "main holds none".
+printf '#!/bin/sh\ncase " $* " in *" ls-tree "*".claude/project.conf"*) exit 129 ;; esac\nexec "%s" "$@"\n' "$real_git" > "$d/bin/git"; chmod +x "$d/bin/git"
+gx 2 "git failing to read main's project.conf"
+grep -q 'git could not read .claude/project.conf' "$d/err" && ok "guard.d: ...and says so" || fail "guard.d: git error: $(cat "$d/err")"
+printf '#!/bin/sh\ncase " $* " in *" ls-tree "*".claude/model-roles.json"*) exit 129 ;; esac\nexec "%s" "$@"\n' "$real_git" > "$d/bin/git"; chmod +x "$d/bin/git"
+gx 2 "git failing to read main's model-roles.json"
+grep -q 'git could not read .claude/model-roles.json' "$d/err" && ok "guard.d: ...and says so" || fail "guard.d: roles git error: $(cat "$d/err")"
+rm -f "$d/bin/git"
+# An adopter on master with no project.conf on main yet: the branch git knows as main, not the default.
+R="$d/onmaster"; new_repo "$R"; git -C "$R" branch -M master; printf 'first\n' > "$R/README"; git -C "$R" add -A; git -C "$R" commit -qm first
+git init -q --bare -b master "$R/acme/app.git"; echo "acme/" >> "$R/.git/info/exclude"; git -C "$R" remote add origin acme/app.git
+(cd "$R" && git push -q origin HEAD:master 2>/dev/null && git fetch -q origin && git remote set-head origin master)
+git -C "$R" checkout -q -b ops/setup
+mkdir -p "$R/.claude/hooks/lib" "$R/.claude/lib" "$R/docs"
+cp "$STRIDAL_FW/hooks/pr-merge-guard.sh" "$R/.claude/hooks/"; cp "$STRIDAL_FW/hooks/lib/"* "$R/.claude/hooks/lib/"
+cp "$STRIDAL_FW/lib/conf.sh" "$STRIDAL_FW/lib/modules.sh" "$STRIDAL_FW/lib/change.sh" "$STRIDAL_FW/lib/evals.sh" "$R/.claude/lib/"
+[ -f "$STRIDAL_FW/lib/docs-gate.sh" ] && cp "$STRIDAL_FW/lib/docs-gate.sh" "$R/.claude/lib/"
+cp "$STRIDAL_FW/scenario-trace.sh" "$R/.claude/"
+git -C "$R" add -A; git -C "$R" commit -qm "the setup PR"
+TOP=$(git -C "$R" rev-parse HEAD); receipt "$TOP"
+gx 0 "an adopter on master, main holding no project.conf yet: judged against origin/master"
+# A fresh clone has origin's HEAD already, so it merges with nothing to do.
+fresh clone-source
+git -C "$R/acme/app.git" symbolic-ref HEAD refs/heads/main
+git clone -q "$R/acme/app.git" "$d/cloned" 2>/dev/null
+R="$d/cloned"; G="$R/.claude/local/guard.d"
+git -C "$R" config user.email check@example.com; git -C "$R" config user.name check
+TOP=$(git -C "$R" rev-parse HEAD); receipt "$TOP"
+[ "$(git -C "$R" symbolic-ref -q refs/remotes/origin/HEAD)" = refs/remotes/origin/main ] && ok "a fresh clone has origin's HEAD" || fail "a fresh clone has no origin's HEAD"
+rm -f "$CANARY"; gx 0 "a fresh clone merges with nothing to do"
+[ -e "$CANARY" ] && ok "guard.d: ...its rule, as main holds it, ran" || fail "guard.d: the clone's rule did not run: $(cat "$d/err")"
+# model-roles.json is main's too: a branch turning provenance off does not turn rule 12 off.
+fresh roles
+printf '{"provenance":{"enabled":true},"attribution":{"enabled":true}}\n' > "$R/.claude/model-roles.json"; land
+printf '{"provenance":{"enabled":false},"attribution":{"enabled":true}}\n' > "$R/.claude/model-roles.json"
+gx 2 "a branch turning provenance off in model-roles.json: rule 12 still holds"
+grep -q 'rule 12' "$d/err" && ok "...as main's file says" || fail "rule 12: $(cat "$d/err")"
 finish
