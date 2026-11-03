@@ -97,8 +97,7 @@ roles="$ROOT/.claude/model-roles.json"
 jq -e '.prices | type == "object"' "$roles" >/dev/null 2>&1 || cannot "$roles has no .prices table"
 
 # This repository's main checkout, whatever worktree we run in: transcripts from any of its lanes.
-common=$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || cannot "$ROOT is not a git checkout"
-main=$(dirname "$common")
+main=$(usage_main) || cannot "$ROOT is not a git checkout"
 projects=${CLAUDE_PROJECTS_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects}
 [ -d "$projects" ] || cannot "no transcripts at $projects"
 # Claude Code names a project's transcript directory after its path, every non-alphanumeric

@@ -624,8 +624,11 @@ _brand_env
 # repository shares it, and it is keyed by branch, so two repos, or two lanes of one, never show
 # each other's focus. Not under $HOME: the sandbox lets a command write the repository but not
 # ~/.claude (OPS-75). It is under BRAND_NAME's folder. Fails outside a git repository.
+# No `--path-format=absolute`: below git 2.31 rev-parse echoes it and exits 0 (OPS-241). So the answer
+# may be relative, to DIR's physical path: `-P`, or a `..` walks a symlink's parents.
 focus_file() {
-  _ff=$(git -C "${2:-.}" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
+  _ff=$(git -C "${2:-.}" rev-parse --git-common-dir 2>/dev/null) && [ -n "$_ff" ] || return 1
+  _ff=$(CDPATH= cd -P -- "${2:-.}" 2>/dev/null && CDPATH= cd -P -- "$_ff" 2>/dev/null && pwd -P) || return 1
   _ff_key=$(printf '%s' "$1" | tr '/' '-')
   printf '%s' "$_ff/$BRAND_NAME/focus-$_ff_key.txt"
 }

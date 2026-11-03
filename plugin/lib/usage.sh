@@ -28,8 +28,11 @@ usage_projects() {
 }
 
 # usage_main: this repository's main checkout, whatever worktree we run in.
+# No `--path-format=absolute`: below git 2.31 rev-parse echoes it and exits 0 (OPS-241). So the answer
+# may be relative, to $ROOT's physical path: `-P`, or a `..` walks a symlink's parents.
 usage_main() {
-  _c=$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
+  _c=$(git -C "$ROOT" rev-parse --git-common-dir 2>/dev/null) && [ -n "$_c" ] || return 1
+  _c=$(CDPATH= cd -P -- "$ROOT" 2>/dev/null && CDPATH= cd -P -- "$_c" 2>/dev/null && pwd -P) || return 1
   dirname "$_c"
 }
 

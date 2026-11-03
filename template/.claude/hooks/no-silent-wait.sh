@@ -136,7 +136,12 @@ fi
 [ "$event" = PostToolUse ] && [ -z "$task_id" ] && exit 0
 [ "$event" = PreToolUse ] && [ "$tool" != AskUserQuestion ] && exit 0
 
-common=$(git -C "${CLAUDE_PROJECT_DIR:-.}" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) \
+# No `--path-format=absolute`: below git 2.31 rev-parse echoes that flag and exits 0, so a task was
+# recorded under a relative name of the flag's, where a stop read from another directory never saw it
+# (OPS-241). Inline: lib/conf.sh is loaded only if it is there. The answer may be relative, to the
+# project directory's physical path: `-P`, or a `..` walks a symlink's parents to another repository.
+common=$(git -C "${CLAUDE_PROJECT_DIR:-.}" rev-parse --git-common-dir 2>/dev/null) && [ -n "$common" ] \
+  && common=$(CDPATH= cd -P -- "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null && CDPATH= cd -P -- "$common" 2>/dev/null && pwd -P) \
   || common="${TMPDIR:-/tmp}"
 BASE="$common/stridal-wait"
 STATE="$BASE/$sid"

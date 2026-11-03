@@ -572,9 +572,13 @@ script_facts() { printf '%s\n' "$sfacts" | sed -n "s/^$1$TAB//p"; }
 # one repository: a subagent's absolute paths point into its worktree while this hook may run from
 # the main checkout, and asking `git ls-files` in the wrong tree answers "untracked".
 # Normalised with `pwd -P`, because macOS reaches `/var` through a symlink.
+# No `--path-format=absolute`: below git 2.31 rev-parse echoes that flag and exits 0, and this guard
+# then found no repository and allowed the command (OPS-241). The answer may be relative, to $1's
+# PHYSICAL directory, so it is resolved from there: `-P`, or a `..` walks a symlink's parents and this
+# guard allows; CDPATH off so a relative `.git` cannot land in another repository.
 common_of() {
-  _c=$(git -C "$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
-  (cd "$_c" 2>/dev/null && pwd -P)
+  _c=$(git -C "$1" rev-parse --git-common-dir 2>/dev/null) && [ -n "$_c" ] || return 1
+  (CDPATH= cd -P -- "$1" 2>/dev/null && CDPATH= cd -P -- "$_c" 2>/dev/null && pwd -P)
 }
 ours=""; root=""
 find_repo() {
@@ -835,7 +839,7 @@ existing_dir() {
 
 # Which of the absolute paths on stdin are FILES tracked by OUR repository? Prints each one.
 #
-# BATCHED — one `git rev-parse` per distinct directory and one `git ls-files` per worktree, not a
+# BATCHED — two `git rev-parse` per distinct directory and one `git ls-files` per worktree, not a
 # git call per candidate per base. A call per candidate made a PR body naming 800 files take
 # 41 s while every Bash call waited on it.
 #
@@ -854,11 +858,11 @@ tracked_files() {
   done)
   [ -n "$_pairs" ] || return 0
   _info=$(printf '%s\n' "$_pairs" | cut -f1 | sort -u | while IFS= read -r _d; do
-    _o=$(git -C "$_d" rev-parse --path-format=absolute --git-common-dir --show-toplevel --show-prefix 2>/dev/null) || continue
-    { IFS= read -r _c; IFS= read -r _t; IFS= read -r _x; } <<EOF
+    [ "$(common_of "$_d")" = "$ours" ] || continue
+    _o=$(git -C "$_d" rev-parse --show-toplevel --show-prefix 2>/dev/null) || continue
+    { IFS= read -r _t; IFS= read -r _x; } <<EOF
 $_o
 EOF
-    [ "$(cd "$_c" 2>/dev/null && pwd -P)" = "$ours" ] || continue
     printf '%s\t%s\t%s\n' "$_d" "$_t" "$_x"
   done)
   [ -n "$_info" ] || return 0
