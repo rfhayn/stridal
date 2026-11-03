@@ -64,8 +64,8 @@ under data, and falls back to the last verified engine, saying so.
 | 7 | OPS-218 | Marker everywhere, SessionStart registration, canary, hook tests, latency, other main-key readers, ADR and docs | The marker settlements |
 
 The launcher stays on no control, but these PRs are not all inert: OPS-232 adds an equality failure to
-`release-build.yml`, which runs on every PR; OPS-233 changes when the guard retries its default-branch
-read, its messages and the scaffold's `set-head` bound; OPS-234 changes
+`release-build.yml`, which runs on every PR; OPS-233 changes which host the guard's default-branch
+read tries, its messages and the scaffold's `set-head` bound; OPS-234 changes
 doctor's line through `engine.Decide`; OPS-235 adds a shipped Edit deny; OPS-237 changes the gate's
 engine; OPS-218 registers the resolver. After them: OPS-213 and OPS-201 rebuilt rather than merged, as
 its branch merged an old OPS-184 head; the release (OPS-242, the owner's call); the first lock
