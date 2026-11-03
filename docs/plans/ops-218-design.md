@@ -1,0 +1,116 @@
+# OPS-218's design and its split
+
+The owner read this design and took every recommendation on 2026-11-03. It splits OPS-218's row
+into seven sequential PRs. The row's text stays the requirement; this file says which PR carries
+what. The launcher stays on no control throughout, until OPS-224. Line counts in the split are
+estimates, and no latency or test result here is measured: OPS-218's own PR states the number.
+
+## Where the trust logic lives
+
+Lock read, hash and fetch all come before any trusted binary, so Go cannot hold them under ADR-0018
+decision 3, option (b).
+
+- `hooks/stridal-engine.sh`, the shim, about 80 lines and held to that by a test: it reads the
+  record with builtins and runs, refuses or stands aside, keeping the recovery allowlist. It runs no
+  git, hash, awk or network, and 126 and 127 refuse.
+- `hooks/stridal-resolve.sh`, registered directly on SessionStart: all pre-binary trust logic.
+- `hooks/stridal-fetch.sh RELEASE SHA`: the one fetcher, for the resolver and `stridal lock update`.
+- Go: doctor reads the record, `Decide` tables over it, and `stridal trust` serves a person's
+  terminal.
+
+**The resolver, in order:** scrub the git environment, `GIT_DIR` included; find the common dir and
+check the `.git` pointer; read the recorded url, or seed it in a main checkout; `ls-remote` and fetch
+in the mirror; read marker and lock at origin's tip and parse the lock; compare the plugin version;
+fetch, hash and install the engine; rename the record into place.
+
+**Per call:** read the record only. `run` executes that engine, `refuse` refuses unless it is a
+recovery command, and `aside` exits 0. With no record, a marker (worktree, else one local read)
+refuses with "start a new session"; otherwise the call stands aside.
+
+**The record:** `$data/resolved/<proj>/record`, one atomically renamed file holding state, engine,
+release, model, main, time, why and fix.
+
+**The mirror:** `$data/trust/<common>/{origin-url,mirror.git}`. The recorded url is the authority,
+and the repository's own url only produces a note, so one lane cannot refuse the others. A `mkdir`
+lock serializes writes. Contention and unknown transport errors are outages, using the last verified
+engine; only authentication and not-found mean origin said no.
+
+**The fetcher:** a by-tag url, never `latest`, and a test base only under a fixture HOME. It downloads
+a bare-engine release asset into `$data/engine/`, hashes it, then renames; nothing is unpacked or run
+before the hash. OPS-213's attestation check goes between hash and rename.
+
+**The manifest:** the source is `release/engines.sha256`, outside `framework/`, because `build.go`
+embeds `all:assets` and a manifest there would change the sums it lists. The release PR bumps
+`Version` and generates the file, and the builder copies it to `plugin/engine/` after `resetOut`.
+`release-build.yml` requires equality while `Version` has no tag, so a stale one is caught before a
+tag is used up, and `release.yml` refuses a draft unless the tag's manifest equals the built sums.
+
+**The marker read:** `git ls-tree` should give three states, marked, unmarked and unknown, and a
+protocol stop replaces a version floor for lazy fetch. Both still need testing.
+
+**This repo:** the resolver recognizes the module path at the mirror's tip, builds with `GOCACHE`
+under data, and falls back to the last verified engine, saying so.
+
+## The split
+
+| PR | Row | Scope | Closes |
+|---|---|---|---|
+| 1 | OPS-232 | Manifest source, builder, CI equality, bare assets, stale url text | The ordering gaps, `resetOut`, `latest` |
+| 2 | OPS-233 | Bounded set-head, one-branch block, gh host retry, module-delete message | Those findings |
+| 3 | OPS-234 | Shim and record; verification moves to the resolver on local refs; copy, then exec | Decision 7, hash-then-exec |
+| 4 | OPS-235 | Mirror, recorded url, lane detection, config isolation, `stridal trust`, seeds | The trust roots, M1, M3, M4, round 3's, one lane refusing others |
+| 5 | OPS-236 | Outage against refusal, fix lines, first push, last verified engine | M5, M6, M7 |
+| 6 | OPS-237 | Fetcher, `EnginePath`, doctor's "not here yet", the pin read for OPS-201, this repo's build, deny rules | The delivery gaps |
+| 7 | OPS-218 | Marker everywhere, SessionStart registration, canary, hook tests, latency, other main-key readers, ADR and docs | The marker settlements |
+
+Only PRs 2 and 7 change live behaviour. After them: OPS-213, a new tag (the owner's call), OPS-201
+rebuilt rather than merged, as its branch merged an old OPS-184 head, then the first lock and OPS-224.
+
+## The owner's decisions
+
+1. Six new rows at Risk: high, cap 3, with OPS-218 last.
+2. A session with no record refuses: the unresolved path reads what a lane can write.
+3. M1: isolate all git config from the mirror except `credential.helper`, which a private HTTPS origin
+   needs, and name that a trust root under an Edit deny. This relaxes the row's "config cannot run a
+   program" by that one key.
+4. "An authority lanes cannot write" holds for sandboxed Bash only while `allowUnsandboxedCommands`
+   is true. ADR-0018 states the limit, OPS-216 becomes a dependency of OPS-224, and the copy-install
+   limit stands until OPS-145.
+5. The marketplace serves main's `plugin/`, not the tag, so two installs of one version string can
+   differ. The limit is recorded now, and OPS-238 pins the marketplace before REL-1.
+6. `stridal-resolve.sh` registers directly, not `stridal-engine.sh --resolve` through `if-project.sh`.
+7. A `none` record gaining an origin is cleared by `stridal trust reset`, from a terminal only.
+8. The 10 ms ceiling returns to the owner with OPS-218's idle-machine number.
+
+The amendment to ADR-0018 decision 5, for OPS-218's PR, true of what lands:
+
+> A repository counts as marked if a model marker is in the worktree or in the tree of the ref treated
+> as main: origin's default branch, read at SessionStart at origin's live tip through the recorded
+> url; with no origin, the branch `stridal.mainBranch` names, else `main`. The verdict is a record
+> under the plugin's data directory, and each later call obeys it: deleting a marker, adding
+> `.claude/stridal-template` or moving a ref in a worktree changes nothing until a session resolves
+> again. Before a session has a record, the read is of local refs and worktree files, which a lane can
+> write, so it is a convenience, not a control. A tree that cannot be read locally counts as unknown,
+> never unmarked. A session rooted below a repository's top stands aside. The opt-out is removing the
+> marker on main, by a reviewed PR; the next session stands aside.
+
+## Where the row was wrong
+
+- `git remote set-head` in `--resolve` contradicts "never through the lane's own git directory":
+  the resolver reports it instead.
+- `stridal-engine.sh --resolve` through `if-project.sh` would fail
+  `TestTheCommittedRegistrationsDoNotYetRunTheLauncher`, and `if-project.sh` stands aside in a
+  copy-install repository such as this one.
+- `plugin/bin/` is on main, against the row's "a plugin with a top-level `bin/` is refused". OPS-237
+  checks which is true; option (b) stands either way.
+- "Not trusting `CLAUDE_PLUGIN_DATA` from the environment" can only be partial, as its fallback reads
+  other environment. The bound is that `lock update` writes a working-tree file reaching main by PR.
+- A real fetch cannot be shown on `v0.1.0-rc.1`, which has no manifest and no bare assets. These rows
+  prove it on fixtures, and the new tag is the first real proof.
+
+## Still unverified, for the PR named
+
+- OPS-235: `ls-tree` and the protocol stop on old git and partial clones (only git 2.54 is here).
+- OPS-232: Mac-to-Linux byte equality of the engines; the CI equality check would catch a difference.
+- OPS-218: whether `settings.json` `env` or `CLAUDE_ENV_FILE` reach a hook, SessionStart ordering and
+  timeouts, and whether a project canary can detect a disabled plugin.
