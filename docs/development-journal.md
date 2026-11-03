@@ -14,6 +14,204 @@ entries with one number on `main`.
 
 <!-- Newest session goes below this line. -->
 
+## Session 23 — 2026-11-03 — Rich — the floor's suite and settings; project.conf as data; the first release tag
+
+**Totals.** Gate 54 min (a row's gate was CANNOT CHECK, so this is a floor); cost $0 (a row's cost was CANNOT CHECK, so this is a floor).
+
+**Rows folded.** OPS-203 (#394); OPS-219 (#392); OPS-220 (#394); OPS-221 (#394); OPS-226 (#394); OPS-229 (#395).
+
+**What happened.** The session started after a restart and took the owner's whole list: the suite, the sandbox settings, one session per planned row, and the open decisions, in one gate (#394). `project.conf` as data took a gate of its own on the owner's ruling, with no medium left at merge, which meant five review rounds against a cap of three. Then the first tag: `v0.1.0-rc.1` built, reproduced on a second runner and opened a draft on `release.yml`'s first run, and is published as a labelled pre-release, unattested until OPS-213, with written notes because generated ones would span all history and hold the earlier name. `checks-double-pass.yml` is clean on main for the first time, so #375's condition is met.
+
+**Insights decided.** The stale quota reading is fixed. `Fix #N:` goes to OPS-227, a ready right after a push to OPS-228. Steps in a public row became a rule in `docs/conventions.md`, which no check can enforce. Hardening code that nothing runs became PRAC-0024, Proposed for the owner to read. S23's new rows stay Raw.
+
+**Slips, each named when it happened, none changing anything tracked.** Agents wrote probe files into the main checkout's root and `.git` (removed); read the real `hosts.yml` once, for a count only; attempted a billed `claude -p`; ran an unchecked `rm -rf` under `$TMPDIR`; ran the real `claude` through a machine-quiet dry run, the source of denied connections to the API; downloaded git's source to test an old version; and ran the real `claude plugin validate` in a throwaway config. The tests that started `claude` were given stubs. `TestClaudePluginValidate` still runs the real one with no short guard.
+
+**Team queue.** Team queue: #374 → OPS-221 merged (#394). Team queue: #375 → OPS-221 merged (#394). Team queue: #380 → OPS-226 merged (#394).
+
+**Flow.** cycle 1.7h median, lead 3.2h, 43.2 merges/wk, change-fail 4.5%, approval wait 4.6h, review rounds 2, spend $906.77/wk, 7 in flight (excludes unpriced models: claude-haiku-5-5).
+
+**Cost.** About $307 at list price when the close began, on this machine, for the whole session: builder (Opus) $149, reviewer (Opus) $130, session (Opus) $28, reviewer-docs (Sonnet) $0.29. The per-row costs read CANNOT CHECK because all the rows shared one session, so the $0 in the totals above is a floor and this is the real figure. The reviewers caught highs in each of OPS-219's first three rounds.
+
+**What's next.** S24: the delivery half (OPS-218), now that a tagged release exists. The owner pulls main and runs `./install.sh`, and reads PRAC-0024.
+
+### OPS-203 — ADR-0022 accepted, and the owner's other decisions of S23 recorded
+
+- **PR**: #394
+- **Session**: S23, started 2026-11-02 13:29 ET
+- **Review**: 1 round, peak low, cap 2
+- **Gate**: CANNOT CHECK — filled once the batch gate has run
+- **Cost**: CANNOT CHECK — filled at the batch
+- **Session start**: CANNOT CHECK — this row opened no marker of its own
+
+#### What happened
+
+The owner accepted ADR-0022's option B after S23a showed a sandboxed Bash can write under the git common dir, so the feed is display-only. The same PR records the owner's other decisions of 2026-11-02: ADR-0007 and ADR-0017's wordings, the Lite answers (R50, R52), the OK for a first `v0.1.0-rc.1` tag as a labelled pre-release (OPS-229), and PRAC-0024 drafted Proposed. It adds rows OPS-227, OPS-228 and OPS-229, and the rule that a public record states a finding's class.
+
+#### Decisions
+
+- ADR-0022, option B accepted, display-only, polling at risk: the owner.
+- `v0.1.0-rc.1`, published though unattested and clearly labelled: the owner.
+- Lite: R50 and R52 as in `PRD-product.md`, decision 8: the owner. The questions' original text was no longer in the repo, so the owner answered them as restated.
+- ADR-0017's `tools:` line names tools, with nothing accepted at risk: the owner.
+- OPS-220's clause denying the Read tool on `hosts.yml` is dropped: the owner. A `Read(...)` deny also binds the OS sandbox, which would very likely break sandboxed `gh`, inferred from OPS-75 and this session's sandbox list, not tested; a run that would settle it was refused by the classifier. The token check is the control.
+
+#### Surprises
+
+Team-queue approval reads UNAPPROVED on #374, #375 and #380 although the owner labelled them, because the check also wants a `Content-SHA256` line that these issues never had. An edit to add one would void the label, so the lanes worked from the owner's approval in chat.
+
+#### Insights
+
+None.
+
+### OPS-219 — project.conf is data, and a control reads its inputs from main
+
+- **PR**: #392
+- **Session**: S23, started 2026-11-02 13:29 ET
+- **Review**: 5 rounds, peak high, cap 3
+- **Gate**: 27 min
+- **Cost**: CANNOT CHECK — this row shared a session with S23's other rows, read at the close
+- **Session start**: 1732687 tokens, 37 min
+
+#### What happened
+
+`project.conf` stopped being a shell program. `lib/conf.sh` parses it as data against an allowlist of keys and refuses a value it cannot hold as data, and a bad line fails the gate (`checks/project-conf.sh`). `FORMAT_CMD`, the roadmap parser and normalizer and `BATCH_REGENERATE` run as an argv with no shell.
+
+A control no longer takes its inputs from the branch it judges. The merge guard reads the whole of `project.conf` and `model-roles.json` from `origin/<main>` for itself and every script it starts, and refuses a `guard.d` script or `module.conf` that differs from main. `format.sh`, `machine-quiet.sh`, `review-cap.sh`, `quota-gate.sh` and `change-approval.sh` read their keys from there too. `GATE`, `GATE_RUN`, `GATE_STEPS`, `OPENSPEC_BIN`, `BATCH_REGENERATE` and `LIVING_SCRIPT_CHECK` stay the branch's, because they run in an agent's call on the branch's code and CI's required check is the control.
+
+Which branch is main is now held to the forge. The forge's default branch names `MAIN_BRANCH` in its own `project.conf`, and origin's HEAD must name the result, so a git-flow project lands and a re-pointed HEAD blocks. `install`, `update`, `init` and the scaffold set origin's HEAD, and `test.yml` and `checks-double-pass.yml` set it in CI.
+
+#### Decisions
+
+- **No medium left at merge, past the cap** (the owner, S23): "With 219, I don't want any medium, so let that be the rule." Review ran five rounds against a cap of three on that ruling.
+- Two gates rather than one (the owner): S23's other rows landed first in #394, so this row's review did not hold them.
+- The row stayed whole. Splitting the reads from main into a row of their own was offered to the owner, who did not take it up.
+- The latency is accepted unless the owner objects: about 25 to 40 ms more on a Bash call of about 235 ms, across all ten hooks, on a noisy machine; about 9 ms on a Markdown write through `format.sh`. Hot paths read main only when they must, and `project-conf.sh` holds those read counts with a logging git and no clock.
+- `_gr_also` deleted (PRAC-0014): the forge chain's block replaces its hint. The reviewer ran the further hop and found only a lost hint, not a bypass.
+- A project whose `ROOT` is not the repo's top level is not a supported layout: `install` warns, the scaffold takes the top level, and `run-local.sh` never writes a receipt there.
+
+#### Surprises
+
+Three rounds were meant to be enough; the row took five, with a high in each of the first three. Round 1's was a line the parser accepted that silently stopped every `guard.d` rule on one platform, round 2's a comparison that asked git's index rather than reading bytes, and round 3's a delegated approval that CI could not read. Round 4's medium was the reviewer's third instance in this row of one shape: a refusal whose stated fix the caller cannot perform. An adopter told to rename a key could not land the rename, and the fix was to stop comparing the file that was itself the broken thing.
+
+The test that counted `setOriginHead` calls in the source passed while a cancelled review returned without calling it. Replacing it with a real run of `update` found the bug at once.
+
+An ssh alias with a dot was an ordinary multi-account setup that this row would have blocked on every merge. Only the reviewer's alias case found it. That case ran with a stub, and real `gh` was never run against such a host.
+
+Builder and orchestrator messages crossed repeatedly, and twice a report read as complete while a list sent after it was still undone. Reading the lane each time caught that; an idle notice did not.
+
+Unproven here: real `gh`, a hook inside real Claude Code, and a delegated change in CI. This PR's first CI run proves the workflows' set-head step on Ubuntu, not a delegated approval.
+
+#### Insights
+
+3 row(s), moved to the insights log.
+
+### OPS-220 — the sandbox settings promise only what holds
+
+- **PR**: #394
+- **Session**: S23, started 2026-11-02 13:29 ET
+- **Review**: 3 rounds, peak high, cap 3
+- **Gate**: CANNOT CHECK — filled once the batch gate has run
+- **Cost**: CANNOT CHECK — filled at the batch
+- **Session start**: 1732687 tokens, 38 min
+
+#### What happened
+
+The docker, git, gh, tmux and stridal exclusions leave the settings and both merge roads retire them, tied to one list by a test. `~/.git-credentials`, `~/.netrc` and `~/.npmrc` are denied. Two model-owned health lines reach every project through `extensions.sh`: `gh-token-file` reports a token in gh's `hosts.yml`, and `sandbox-writes` states at each session start what the sandbox refused, or NOT PROVEN. Review's round 1 high was that the row's write test only ever passed as a skip; round 2's high, from that fix, was a false FAILED in every plugin project. OPS-145's row now carries the deferred hooks write-deny.
+
+#### Decisions
+
+- OPS-220's clause denying the Read tool on `hosts.yml` is dropped: the owner, 2026-11-02. A `Read(...)` deny also binds the OS sandbox, inferred from OPS-75 and the session's sandbox list, not tested, since the run that would settle it was refused by the classifier. Nothing denies that file, and a check fails if anything does.
+- The `allowWrite` check the builder added is removed, and OPS-216's row takes a static check on write allowances.
+- A project may keep `allowUnsandboxedCommands` false; a test holds the shipped value true until OPS-216.
+
+#### Surprises
+
+A real session start has not been observed running the new lines, and whether a skill's `!` line runs sandboxed rests on OPS-75's record: the next session start after this merges shows it. A new deny applies only to a session started after it. Agents overstepped their briefs three times, all reported by them: a probe file created and removed in the main checkout's root, another in its `.git`, and one health-line run that read the real `hosts.yml`, printing only a path and a count. One billed `claude -p` attempt failed in the sandbox.
+
+#### Insights
+
+2 row(s), moved to the insights log.
+
+### OPS-221 — the suite can be believed: #375, #374 items 2 and 3, the two sleeps
+
+- **PR**: #394
+- **Session**: S23, started 2026-11-02 13:29 ET
+- **Review**: 3 rounds, peak medium, cap 3
+- **Gate**: CANNOT CHECK — filled once the batch gate has run
+- **Cost**: CANNOT CHECK — filled at the batch
+- **Session start**: 1732687 tokens, 37 min
+
+#### What happened
+
+#375's cause was git's default branch, not the platform: the coauthor fixture cloned a bare repo whose HEAD named master while only main was pushed. Apple's git and the checks' own HOME both configure main, so only the double pass's first pass on Ubuntu could see it. The fixture now names its branch, and the checks' environment gives git a default branch that is neither main nor master, so the class fails in a local whole-set run; `no-stridal.sh` holds that value, and a whole-set failure says what it means. Both fixed sleeps in `stall_integration_test.go` are gone, replaced by observed events, and the window check now compares a notice's send time against the panel's start. The README and the template's playbook state git 2.31 as the floor.
+
+#374 item 3 is fixed by #350 and was reproduced: with the test's wait removed it fails 47 of 300 runs under `-race -cpu 1`, and none with it. #374 item 2 is **explained, not reproduced**: `GIT_TRACE` shows the maintenance spawn with no config and none with testgit's, `TestNoTestGitRunsMaintenance` fails without that config, and it has not recurred in CI since #350, but the lock race itself was never seen locally. Item 1 was fixed by #384.
+
+#### Decisions
+
+- The checks' default-branch value applies to adopters' own checks too, which is a loud cost on a real bug. The failure names the value and the fix.
+- A caller exporting `GIT_CONFIG_GLOBAL` at a config naming main or master gets a `no-stridal` FAIL that names the variable.
+- Old-git fixtures are not chased one by one: the floor is stated, and OPS-231 executes it. A `new_origin` helper across 11 sites was declined as too wide here.
+
+#### Surprises
+
+#375 closes only on a green `checks-double-pass.yml`: nothing here ran on Ubuntu when this was written. The sleep at the old line 704 was replaced as a guessed duration; no defect in it was shown. Older git was only simulated, by a wrapper refusing `init -b`, so it is no evidence the model runs on old git. A reviewer's round 1 medium, that #374 item 1 had recurred, was wrong and retracted: the run it cited predates #384. Known limit: the default-branch hint prints only on a whole-set run, so the double pass and a standalone `no-stridal` run do not show it, and a fixture failing there reads only git's own error.
+
+#### Insights
+
+1 row(s), moved to the insights log.
+
+### OPS-226 — a row planned in two sessions fails the gate
+
+- **PR**: #394
+- **Session**: S23, started 2026-11-02 13:29 ET
+- **Review**: 3 rounds, peak medium, cap 3
+- **Gate**: CANNOT CHECK — filled once the batch gate has run
+- **Cost**: CANNOT CHECK — filled at the batch
+- **Session start**: CANNOT CHECK — this row opened no marker of its own
+
+#### What happened
+
+`checks/roadmap.sh` now runs the project's own Session plan through `.claude/roadmap-plan.sh`, the one parser, so a row planned in two sessions fails the gate. Before, only the local tracker read the plan, after a merge. On #379's roadmap the old check exits 0 and the new one exits 1, naming OPS-199 and OPS-165. A change's `(proposal)` then its build still passes, and so does a project with no plan. A project with its own `ROADMAP_PARSER` is not broken: an own-shape section reads as an ok line saying it was NOT read. session-close's local step now says to remove a moved row from the closed session. Delivers team-queue #380, approved by the owner in chat; the issue reads UNAPPROVED for want of a `Content-SHA256` line.
+
+#### Decisions
+
+- With `ROADMAP_PARSER` set, an own-shape plan and a missing file pass, naming what was not read, since the row says adopters must not break.
+- A plan the reader cannot see is found by its table, not its heading.
+
+#### Surprises
+
+Known limits, each loud and naming its cause. Under a parser, an unusual own table can fail: one headed `| Session | When | Where |` beside a second own table, two own tables beside a plan-shaped table elsewhere in the file, or a 5-cell table repeating a word in two rows. With no parser, a fenced example of the full plan table in the roadmap fails. Nothing shipped hits either. Nothing fails if the `grep`'s stderr redirect is removed; only a stray line comes back.
+
+#### Insights
+
+None.
+
+### OPS-229 — the version moves to 0.1.0-rc.1, for the first release tag
+
+- **PR**: #395
+- **Session**: S23, started 2026-11-02 13:29 ET
+- **Review**: 1 rounds, peak low, cap 3
+- **Gate**: 27 min
+- **Cost**: CANNOT CHECK — this row shared a session with S23's other rows, read at the close
+- **Session start**: 1732687 tokens, 37 min
+
+#### What happened
+
+`Version` and `template/.template-version` move to `0.1.0-rc.1`, and the plugin is rebuilt from them, so a release tagged `v0.1.0-rc.1` names this tree. An rc version was run through `scripts/check-release-tag.sh`, `scripts/build-release.sh` and `scripts/check-release-repro.sh` in a throwaway clone before the tag existed. The tag and the release's first run follow this PR.
+
+#### Decisions
+
+- The rc tag and its publication as a clearly labelled pre-release are the owner's OK of 2026-11-02, recorded in OPS-229's row; `v0.1.0` stays REL-1's. It is unattested until OPS-213.
+
+#### Surprises
+
+A version bump broke two tests that had nothing to do with versions. `TestResolveNeverGuessesFromHome` hard-coded `0.1.0`, and it now reads the checkout's version. The new `originhead_test.go` took `STRIDAL_FRAMEWORK` from the caller's environment, and now clears it.
+
+#### Insights
+
+None.
+
 ## Session 22 — 2026-11-02 — Rich — S22: the plan re-scoped after three reviews; the release workflow lands; the launcher held
 
 **Totals.** Gate 0 min (a row's gate was CANNOT CHECK, so this is a floor); cost $0 (a row's cost was CANNOT CHECK, so this is a floor).
