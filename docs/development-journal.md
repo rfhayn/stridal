@@ -14,6 +14,349 @@ entries with one number on `main`.
 
 <!-- Newest session goes below this line. -->
 
+## Session 24 — 2026-11-03 — Rich — the merge road's guards, the macOS margin, OPS-218's split
+
+**Totals.** Gate 0 min (a row's gate was CANNOT CHECK, so this is a floor); cost $0 (a row's cost was CANNOT CHECK, so this is a floor).
+
+**Rows folded.** OPS-222 (#407); OPS-225 (#404); OPS-227 (#404, also closes OPS-239); OPS-228 (#404); OPS-231 (#404); OPS-240 (#407); OPS-241 (#407).
+
+**What happened.** The session planned to run OPS-218 first and instead landed the small rows, in two gates, after the owner agreed the re-cut. It took all day: the small rows needed two to five review rounds each. Full gates were 29 and 25 minutes (the Totals line above reads a floor, as the fragments' fields were CANNOT CHECK).
+- #404: OPS-227, OPS-228, OPS-225, OPS-231, OPS-239 and the plan, with OPS-218 split into OPS-232 to OPS-237 and OPS-218 last, and rows OPS-238, OPS-242 and OPS-243.
+- #407: OPS-222, OPS-241 and OPS-240, with rows OPS-244, OPS-245, OPS-246 and outcome check `o.12`.
+- On the owner's decisions: OPS-227's rule moved to the local layer; OPS-225, OPS-222 and OPS-240 each ended past a review cap, or with a last small fix unreviewed, as each row's Review line and #404's and #407's bodies state.
+- OPS-218's design went to the owner before it had an independent review, against what `propose` holds for a change. The review then found gaps touching decisions 2, 3 and 6. They are recorded under *Open in this design*, and a review before OPS-234 settles them. No code rests on them.
+- Seen working on real GitHub for the first time: `ci-started.sh` readied #407 and reported its run. Not yet seen: a real toggle. #407 merged with `.claude/local/guard.d/team-queue.sh` on main; the guard's output did not name the rule, so that it ran is not shown.
+- GO-2026-6809 is fixed on main; `v0.1.0-rc.1`'s engines predate it.
+- A due outcome check never reached session-start until OPS-240: `o.8` shows from 2026-11-05.
+
+**Flow.** 30d to 2026-11-03: cycle 1.6h median, lead 3.2h, 44.1 merges/wk, change-fail 4.4%, approval wait 4.6h, review rounds 2, spend $958/wk, 10 in flight (excludes unpriced models: claude-haiku-5-5).
+
+**Cost.** About $216 at list price before this close, this machine only: builder (claude-opus-5-5) $105.39, reviewer (claude-opus-5-5) $77.45, session (claude-opus-5-5) $31.08, Plan (claude-opus-5-5) $1.94, reviewer-docs (claude-sonnet-5-5) $0.19.
+
+Team queue: #397 → OPS-240 open (#407): it stays open until `o.12` is read, and its body has no `Content-SHA256` line, so it reads UNAPPROVED.
+
+**Compound.** Eleven insights joined the log, three from this close; one of those is marked an instance of PRAC-0014. The older Raw rows wait, none past its limit.
+
+**What's next.** S25: OPS-246, then a review of OPS-218's design, then OPS-232 onward, as `docs/roadmap.md`'s plan says. Read main's macOS timing first: `o.12` owns it, and OPS-244 and OPS-245 are queued for S26. OPS-222's and OPS-241's changes have not yet run on a macOS runner.
+
+### OPS-222 — the worktree hook-drift check fails closed, and the audit's tools are pinned
+
+- **PR**: #407
+- **Session**: S24, started 2026-11-03 06:35 ET
+- **Review**: 5 rounds, peak high, cap 3, raised by the owner; the last round's peak was medium, fixed by removal
+- **Gate**: CANNOT CHECK — filled once the gate has run
+- **Cost**: CANNOT CHECK — this row shares S24's session with its other rows, read at the close
+- **Session start**: 1239439 tokens, 6 min
+
+#### What happened
+
+`worktree-hook-drift.sh` used to allow everything it could not evaluate. It now compares `.claude/hooks`, `.claude/lib` and `settings.json` with origin's main and refuses a dirty or index-flagged file, commits on main that origin lacks, and anything it cannot compare. A refusal names commands that `checks/hooks.sh` runs as printed in the common states; discarding takes uncommitted work from `HEAD` and leaves commits alone. They are a start, not a promise for every state: the hook's header lists under KNOWN LIMITS where one stops or clears nothing, and spawning without worktree isolation stays the way out. A repository with no remote called origin is still allowed, with a note that reaches Claude. `dependency-audit.yml` runs govulncheck `v1.9.0` and pip-audit `2.10.1` in the root's and the template's copies, and `checks/supply-chain.sh` holds each tool line to a listed form and each tool's version. It fails only in the framework's own repository; a project gets a named note, as `stridal update` never touches its copy.
+
+Seen failing first: each new case ran against the previous hook or workflow. The cases that must stay allowed passed there, so they were tested by mutant in throwaway clones.
+
+#### Decisions
+
+- **The orchestrator's decisions, from review rounds 1 to 3:** the pin fails only in the framework's own repository; on main a dirty hook's remedy is restore then pull, or moving to a branch and committing there, never a commit on main; commits ahead of main are refused there; `.claude/lib` is compared too; the checkout must be the same directory as the top of its repository, with git's locating variables cleared; a discard works from `HEAD`; a conflict offers no road that commits its markers.
+- **The orchestrator's decision, from the extra round after round 3: print less.** Each of the last three rounds found a remedy true in only some states, so more roads were the wrong answer. A merge or rebase in progress prints no command, only that finishing it by hand keeps the work and that an abort drops it. An uncommitted install prints no discard. "Or go back to main" is gone, as the merge road works in every case. A lane stopped on a merge in an app file keeps its note. What is left that can stop or clear nothing is listed in the header, not handled.
+- **A checkout with no commit yet refuses and names no command.** No command printed there would clear it.
+- **An untracked file among the hooks counts as dirty; a gitignored one does not.** `git diff` never sees an untracked file, and git's own ignore rules are the way out for a `.DS_Store`. The header names the limit.
+- **Hook files uncommitted but identical to origin's main are allowed.** They are main's code, which is what the check asks.
+- **An origin nothing has been fetched from refuses.** It has a remote, so "no origin" is not true of it.
+- **No git and no repository refuse.** A worktree agent cannot be cut there anyway. Only git's own list of remotes says "no origin".
+- **A detached HEAD, only ahead of main, keeps the note.** The ask was to refuse on main and keep a lane's own branch; refusing a third state adds a rule with no finding behind it.
+- **`pwd -P` is gone.** `-ef` compares the directories, so the physical path bought nothing, and the mutant review asked for could only fail while the comparison was of spellings.
+- **The prose remedy "gitignore it" is gone.** A refusal names a discard and a keep road as commands; ignoring a file was the one remedy no case ran.
+- **pip-audit is pinned at 2.10.1**, published 2026-06-10, and run through `pipx run --spec`. Its own dependencies still resolve at run time.
+- **pnpm is named, not pinned.** No one version fits every project: a pin at 12.16.0 failed a 6.0 lockfile and a project declaring `packageManager: pnpm@9`, while plain corepack honours that key.
+- **`conf_main_fix` is not shared with `decide.go`'s `FixSetHead`.** The launcher's says `--auto`, and `checks/merge-guard.sh` holds this text to not saying it, as that would point back at origin's default.
+
+#### Surprises
+
+The old `missing=$(git log …)` ignored its exit, so a failing `git log` read as "no commits missing" and took the allowed path. Round 2 found four remedies this row's first fixes had named that did not work: a single `update-index` call clears only one of two flags and exits 0, a flag's fix dies on a conflict, a pull alone leaves the dirty file standing, and a restore dies whole on one path its source lacks. Round 3 found two that worked only in the state their case ran in: a discard from main's copy reversed committed hook work, and a keep road committed conflict markers into a guard. Also, the pinned scanner's first run over `framework/` reports a standard-library advisory against the toolchain `go.mod` names, fixed in the next patch release; it is not caused by the pin.
+
+#### Insights
+
+2 row(s), moved to the insights log.
+
+### OPS-225 — what the rewrite guard holds is said truly, and why no check on the diff sees past it
+
+- **PR**: #404
+- **Session**: S24, started 2026-11-03 06:35 ET
+- **Review**: 3 rounds, peak high, cap 2, raised by the owner; round 3's medium was fixed with no fourth round, on the owner's decision of 2026-11-03, and verified by a fixture project
+- **Gate**: CANNOT CHECK — filled once the batch's gate has run
+- **Cost**: CANNOT CHECK — filled at the row's close
+- **Session start**: 1239439 tokens, 7 min
+
+#### What happened
+
+`no-blind-source-rewrite` holds a few in-place forms, by their words. Round 1's review showed the first statement of this was still too generous: "command text is held and only unread scripts escape" is false. Payloads through the real hook, none executed, show classes of edit that pass, in a list that is not exhaustive: a write in a command's own words that is no in-place form it knows, a find-replace it recognises on a target the command does not name, a script it reads whose write form or target it cannot resolve, and a script it does not read, the route two S22 lanes took. The hook's header, AGENTS.md's row in both copies, `builder.md`, `apply-change`, `conventions.md`, the hooks README and the playbook row now say so. `checks/hooks.sh` shows each class passing in a throwaway repository, by running the edit except for the recognised find-replace, a payload only, and holds the header's words; here, in the framework's own repository, it also holds the row and the builder's paragraph.
+
+The hook's one code change: a script counts as committed by HEAD, not the index, so `git add` or `git add -N` no longer moves it from read to unread. Its refusals now give a command that only mentions these words a road that needs no particular tool, say a mutant in a throwaway clone goes in as a patch or a new file, and tell an edit of real tracked source to go through the Edit tool or be reported. What the hook refuses did not change for any of these.
+
+The S22 form, a script outside the repository and a temp dir, can have no row in the check, whose scratch is always in a temp dir. It was shown once in a throwaway clone: the hook exited 0 and the run changed a tracked file.
+
+#### Decisions
+
+- No check on the diff sees what passes, and the limit stands. An edit from a script and the same edit from the Edit tool hash to one blob, shown in a clone, so a gate step reading a diff has nothing to compare. A record of the writes could be taken, a before-and-after hash on PostToolUse Bash or a ledger of each Edit's blob; none is built, the coordinator's decision in round 1. PostToolUse cannot undo a write; formatters, `git merge` and `stridal update` would fill it with noise; and the harm is in the diff, where S22's review found no damage (`docs/insights-log.md:53`). Review on an `ops/` row is a skill step no hook checks, so what reads the diff is not itself a control.
+- Two false refusals stay, stated in the header's list: a read-only command naming an in-place editor beside a tracked path, and an in-place edit in a throwaway clone. Telling a search from an edit is no small change to the detection. A command that only mentions these words has a road (a search drops the flag, a body or a payload goes in a file), and a mutant in a clone goes in as a patch or a new file, as the refusal says: a road the refusal names cannot be a tool the refused role may not hold, since reviewers have no Edit tool.
+- Review round 2 stopped at the cap with 2 mediums. The owner chose on 2026-11-03: one more round, with the refusals reworded and no change to what the hook refuses. Round 1's peak was high; the Review line above records round 2's.
+- The AGENTS.md row reads `A few in-place forms on tracked source are refused` and `(blocking; limits: its header)`, leaving 8 bytes spare in this repo's copy.
+- `checks/hooks.sh` holds the hook's own header and refusals everywhere, since `update` replaces the hook. It holds AGENTS.md's row and the builder's paragraph only in the framework's own repository, which `framework/internal/template` marks, reading `AGENTS.md`, `template/AGENTS.md` and `template/.claude/agents/builder.md`, and comparing this repo's `.claude/agents/builder.md` with the template's: a project that kept an older row or customised its agent is not failed for what it owns. The coordinator's decision before round 2; shown green in a scaffolded plugin project and in a fixture project with the old row.
+- This repo's own `docs/playbook.md` and `docs/conventions.md` carry the same correction as the template's, by hand, since `update` never writes a project's docs.
+
+#### Surprises
+
+`stridal update` prints `Error: … operation not permitted` for a file it could not write, then `Update complete.`, and exits 0. Here that was this repo's `.claude/agents/builder.md`, in both rounds; only a file comparison showed it.
+
+The guards refused four of this lane's own commands: a scripted edit in a throwaway clone, a `grep` whose pattern named an in-place editor beside tracked paths, a test payload naming one beside the hook's own path, and a command defining a shell function. None was rerouted. The same-blob proof printed the scripted output and hashed it rather than writing it; the `grep` dropped its pattern; the payload moved to a file under `$TMPDIR` and, like the command it replaced, edited nothing; the function's body ran inline.
+
+#### Insights
+
+2 row(s), moved to the insights log.
+
+### OPS-227 — a closing keyword cannot close a team-queue issue by accident
+
+- **PR**: #404
+- **Session**: S24, started 2026-11-03 06:35 ET
+- **Review**: 3 rounds, peak high, cap 3
+- **Gate**: CANNOT CHECK — the lane runs no full gate; the batch's gate covers this row
+- **Cost**: CANNOT CHECK — not read at the build; the lane's session is still open
+- **Session start**: 1239439 tokens, 6 min
+- **Also closes**: OPS-239
+
+#### What happened
+
+A new rule in this repo's local layer, `.claude/local/guard.d/team-queue.sh`, refuses a merge while a
+closing keyword it would land names an open issue labelled `team-queue`. It lists those issues first,
+and with none open it reads nothing else. Then it reads every text the merge can land: GitHub's
+closing list, the PR body, the subject and the body the merge sets or their defaults, and the
+branch's commit messages unless the merge is a squash. `docs/conventions.md` says what to write
+instead, and `AGENTS.md`'s team-queue row names the rule. Its check is
+`.claude/local/checks/team-queue-guard.sh`. Review converged at the third round, whose peak was low;
+the row's peak of high was the first round's.
+
+#### Decisions
+
+- **The rule is local, the owner's decision of 2026-11-03.** `team-queue` exists only in this repo, so
+  the rule leaves the shipped guard. The first build's changes to `template/`, `.claude/hooks/`,
+  `.claude/checks/` and `plugin/` are restored to their state at the row's start, and the row's scope
+  cell is corrected to match. The shipped hook needed no change: `GUARD_*` carries what the rule reads.
+- **How it lands.** A branch's copy of a guard rule does not judge its own merge, so the rule does not
+  run on this row's merge. From the main checkout the merge passes, the rule unrun. From a lane's own
+  worktree it is refused, and the message's `git restore --source=origin/main` fix works although main
+  has no such path. Once it lands, a checkout still behind is refused until it merges `origin/main`.
+- **The batch that adds it** merges from the main checkout, level with main, so the rule does not
+  judge its own landing. The landing PR's title and body are checked by hand.
+- The list of open team-queue issues is the authority, not a read of each number a keyword names. A
+  closed issue, a PR and a number that does not exist pass with no read of their own, and a merge
+  whose body cannot be read is refused only where an open issue could be closed.
+- A list as long as its limit (1000) may be cut short, so it blocks.
+- `same_repo` and `canon` live inside the hook, which cannot be sourced, so the rule asks
+  `gh api repos/<name>` itself and compares the answers. It asks only about a number the queue holds.
+  An answer it cannot get blocks, a real 404 included, as `same_repo` does: gh prints an HTTP error's
+  body on stdout and exits 1, so the rule checks gh's status and accepts only an owner/name shape.
+- The hook's reader of the method is not passed to a rule either, so `is_squash` reads the plain words.
+  Run alone, the rule allows a method word hidden by shell quoting, and a merge commit that sets a
+  subject and no body, whose message lands the PR title. The guard's rule 15 holds both while
+  attribution is off, as it is here, and a through-guard case pins that. Turning attribution on reopens
+  them, so `local:team-queue-guard` fails on it, naming this rule.
+- With no body set, the PR body is read as plain text as well. That is smaller than reading the
+  repo's `squash_merge_commit_message` setting, and it holds if the setting changes.
+- A keyword in an HTML comment in the PR body links nothing, and a PR that does not target
+  `MAIN_BRANCH` closes nothing, so both pass. Both were small enough to handle.
+- Commit text is read as plain text, so a code span does not shelter a keyword there. Whether GitHub
+  skips a code span in a commit message was not tested: refusing costs a rewording, while the other
+  mistake closes an owner's input.
+- The branch's commit subjects count when the merge sets no subject: GitHub's `COMMIT_OR_PR_TITLE`
+  gives a one-commit PR the commit's subject, not the PR's title. The remedy is one flag.
+- **`AGENTS.md`'s team-queue row carries the rule**, at net +7 bytes (15990; 15999 once OPS-225's +9
+  lands, of 16000) and 317 of 320 characters. `(the states)`, `.claude/`, "through", "its" twice and
+  "the handling steps" were trimmed to pay for it. `local:team-queue*`, covering both local checks, is
+  not bold: `checks/approval-guarded.sh` holds a bold name to one file.
+- A sidebar link puts an issue in GitHub's closing list with no keyword, so when that list is what the
+  rule read, the block also names the PR's Development sidebar.
+- The parser is the rule's own, not a copy of premise-check's: it reads `gh-N`, keeps each reference's
+  repository, and is one awk that ends with a mark, so a failure is seen.
+
+#### Surprises
+
+GitHub's `closingIssuesReferences` for #384 reads empty: a title is not in that list, and the squash
+commit's subject closed #374. A guard reading that field alone would have allowed the merge that
+caused this row.
+
+The first build read every unreadable body as a refusal, which refused 13 forms the guard allows.
+
+#### Insights
+
+1 row(s), moved to the insights log.
+
+### OPS-228 — merge-pr confirms a required check started on the head before it trusts a watch
+
+- **PR**: #404
+- **Session**: S24, started 2026-11-03 06:35 ET
+- **Review**: 3 rounds, peak high, cap 3; round 3's peak was low
+- **Gate**: CANNOT CHECK — filled once the final gate has run
+- **Cost**: CANNOT CHECK — read at the close
+- **Session start**: 1239439 tokens, 6 min
+
+#### What happened
+
+`merge-pr` step 2 now runs `skills/merge-pr/ci-started.sh <n>` before any watch, for a required check that has not reported or is not green and for any draft. It marks a draft ready and waits until every name in `GATE_PR_CHECKS` reports on the head as anything but skipped, neutral or cancelled. It toggles draft and ready only for a name the head holds as one of those, or a head with no checks, and only with nothing live. Each way it ends has its own exit: 0 started, 1 stop and read why, 3 a read or a refusal stopped it, 4 something is live, so wait on it and run this again. `checks/ci-started.sh` holds it with a stub `gh` and a stub clock, using the completed shapes real `gh` returned.
+
+#### Decisions
+
+- Two reads for two questions. "Did the required check start" is the required NAMES in the head's `statusCheckRollup`: on this repository's drafts `release-build` succeeds on the head beside a skipped `test`, so `gh run list --commit <head>` would say a run exists for the state in question. "Is anything live" is the rollup plus `gh run list --commit <head>`, the only read that shows a run with no job yet; a failure of that read is unknown, and nothing is toggled on it.
+- Absence alone is not evidence that a run was lost (the coordinator, review round 2): a name is toggled only when the head holds it as skipped, cancelled or neutral, or the head has no checks. A typo then restarts nothing. The accepted cost: a workflow triggered only by `ready_for_review`, with other checks present, stops at exit 1 for a person to read.
+- Exit 4 rather than exit 1 when something is live: a status that posts after a long suite is healthy, and exit 1 would stop `merge-pr` on it every time. Where the live thing is only in the runs read, `gh pr checks --watch` would end at once, so the message names `gh run list --commit` and step 2 does not count that as the second exit 4. A second exit 4 being a stop is the skill's words: the check holds the words, and nothing executes them.
+- `gh pr view --json headRefOid,isDraft,statusCheckRollup` rather than the guard's `gh pr checks --json`: one answer binds the checks to the head, and its exit code means only whether gh worked. The name match is the guard's.
+- Step 2 now reaches a draft that reads green (the coordinator, review round 2), so the script makes "marks a draft ready" true there and looks for the run that ready starts, for up to 30 s, before it exits. Left a draft, step 4's ready fires that run after step 2 read green, and the guard blocks once. An empty `GATE_PR_CHECKS` pays this only for a draft: where no run appears, three `gh pr view`s, one `gh pr ready`, two `gh run list`s and about 30 s of sleep. A run only the runs read shows yet is named in the exit 0 answer, as `gh pr checks` can still read the pass before it. A ready PR with the key empty does not run the script at all.
+- Time is read from the clock: a 70 s wait before each toggle, and the script stops itself at 210 s, inside the 300 s the skill gives the tool even with `gh` at 10 s a call. The clock alone allows two toggles, so no counter limits them. Constants, with no config key.
+- The step keeps `gh pr checks <n> --watch`, without `--required`: the guard blocks on any reported check that is not passing, so watching only the required ones would end the wait early.
+- No new row in `AGENTS.md`'s table: the row's scope cell does not name it, and this is a step of `merge-pr`, whose rows already stand.
+- Stated, not closed: a run that registers after `gh run list` and before `--undo` can be cancelled by the toggle, as `gh` offers no way to make the read and the toggle one step. A signal between the toggle's two calls readies the PR before it dies; a `kill -9` there leaves a draft, which `merge-pr`'s context names; and a `gh` that hangs is stopped only by the tool's timeout.
+- `checks/ci-started.sh` adds about 20 s to each whole-set run, and `internal/plugin` runs the whole set in a scaffolded project. That package's margin on macOS is OPS-240's, which lands in this batch; this row defers nothing else to it.
+
+#### Surprises
+
+The insight this row closes says `--watch --required` exited 0. On this PR's own draft, with `gh` 2.86.0, it printed the same "no required checks reported" and exited 1, so the words are what read as a pass in #389, and the script depends on neither.
+
+The check caught two of this row's own jq slips: `inside` is a substring test on strings, so a running check's empty conclusion read as skipped; and `label` is a jq keyword, so a helper of that name failed every read, which the script reported as gh's failure.
+
+Review found the toggle deciding from a missing name alone, twice over. In round 1 it toggled over a running suite, which in a repository that cancels on a new event kills it. In round 2 a typo restarted a passed suite on every run, and `test=SKIPPED, lint=SUCCESS`, #389's state with a second required check, got a false "not reported" and no next step. The first check had no case with a second name, so it stayed green.
+
+Unproven here: `gh pr ready --undo` and `gh pr ready` have run only against the stub, so no toggle has been seen to start a real run under the script; the insight records that toggling by hand did. The completed shapes in the stub are what real `gh` returned, but a live rollup entry, a `StatusContext` and `in_progress` in the `--commit` read have not been seen on the read the script uses. Nor has a run held `pending` by concurrency, since none was on this repository when it was read.
+
+#### Insights
+
+1 row(s), moved to the insights log.
+
+### OPS-231 — the git floor is executed, not only stated
+
+- **PR**: #404
+- **Session**: S24, started 2026-11-03 06:35 ET
+- **Review**: 2 rounds, peak low, cap 2
+- **Gate**: CANNOT CHECK — no full gate has run in this lane yet
+- **Cost**: CANNOT CHECK — this row's session is still running
+- **Session start**: 1239439 tokens, 7 min
+
+#### What happened
+
+The model needs git 2.31 for `rev-parse --path-format`, and the floor was only stated, in `README.md`, `docs/QUICKSTART.md` and the playbook. `stridal doctor` now warns below it, under a subject of its own (`checkGitFloor`, `framework/internal/cmd/doctor.go`; `[DOCTOR-1-S8]` in `specs/doctor/spec.md`), and `.claude/extensions.sh` runs a third model line, `git-floor`, over `health_git_floor` in `.claude/lib/health.sh`, which says `FAILED` below it for a project with no binary. One table of stub versions drives both roads (`framework/internal/cmd/doctor_gitfloor_test.go`): 2.30.2, 2.31.0, `git version 2.54.0 (Apple Git-157)`, an Apple build below the floor, the Windows form, the release candidates 2.31.0.rc1 and 2.30.0.rc2, and 2.9.5, 3.0.0 and 1.99.0 for a comparison by number.
+
+This row reports the floor; it does not close the hazard below it. Review found that below the floor a blocking guard fails open: `no-blind-source-rewrite`'s common-dir reads take `rev-parse`'s output as valid on exit 0. OPS-241 owns that medium: one helper that rejects output not starting with `/`, at every call site. It predates this row, so the peak above is this diff's. OPS-241's row lands in the same batch as this row, and its fix follows in S24. Round 2 widened it to `build-change.js`'s main-checkout guard. The review's reproduction emulated old `rev-parse` on a stub, with no real git 2.30 run, and `TestGitFloorHealthLineOnAnEmulatedOldGit` is an emulation too.
+
+#### Decisions
+
+- The health line is a model line in `.claude/extensions.sh`, not a file in `.claude/health/` as the row first said. The coordinator's call, on reading `extensions.sh`'s own comment (OPS-220): a new file in `.claude/health/` misses an updated project and every plugin update, this line answers for the machine, and a plugin project with no binary is the road the row is about. The first build had the file, a thin caller, and it was removed with its README row. The row's wording and scope are corrected on the plan branch, which lands in the same batch; the scope now includes `specs/doctor/spec.md`.
+- A parser on each road, not doctor running the health line: doctor's machine lines need no project, and its git line then works with no readable template. The shared table is what holds the two together.
+- The tests drive `extensions.sh health`, the call session-start makes, from `framework/internal/cmd`; `TestPluginProjectGetsTheGitFloorLine` in `framework/internal/plugin` runs the same call on a scaffolded plugin project. `checks/health.sh` holds the model's lines and gained this one; `checks/health-lines.sh` holds no list of them and is unchanged. Review showed `checks/health.sh` matched only the heading, which `model_line` prints before it runs anything, so it now asserts each of `git-floor` and `sandbox-writes` gives a verdict, closing the class.
+- Below the floor is `warn` for doctor and `FAILED` for the line: the row asks for a warning, and doctor exits 1 only for what stops Stridal working. `FAILED` is the contract's verdict for a fact that is wrong.
+- A version neither road can read is a note on doctor's road and `CANNOT CHECK` on the line's, never a pass. Up to six digits a part, so what cannot be compared is not read.
+- No row in `AGENTS.md`: neither `AGENTS.md` nor `docs/conventions.md` states the floor, `gh-token-file` is the precedent, and `.claude/health/README.md` names what executes it.
+- Doctor's line has the subject `git-floor`, the health line's name, so nothing reading the tools line's `ok git` can be answered by it.
+- Doctor's install hint is OS-neutral rather than `prereqs.sh`'s, because taking it from there is not small. `prereqs.sh` prints a hint only for a missing tool, so it would need a new mode, an older template's output refused, and a fallback for no template. Its hint also names how to get a missing git, which is not always how to get a newer one.
+
+#### Surprises
+
+`stridal update` reads its review answer from stdin, so `--create-missing` alone stops at a modified framework file and cancels; it took a `y` on stdin for each. `.claude/health/README.md` is the project's, so update names it and does not write it: this repo's copy took the row by hand. A mutant of a template file passed under plain `go test`, a cached result, and failed under `-count=1`; a change only to `template/` needs `-count=1`.
+
+#### Insights
+
+None.
+
+### OPS-240 — internal/plugin gets its margin back by cutting repeated work, no limit raised
+
+- **PR**: #407
+- **Session**: S24, started 2026-11-03 12:58 ET
+- **Review**: 3 rounds, peak medium, cap 3
+- **Gate**: CANNOT CHECK — no full gate has run in this lane
+- **Cost**: CANNOT CHECK — read at the close
+- **Session start**: 218315773 tokens, 389 min
+
+#### What happened
+
+Main's macOS leg was out of both limits on the same code, and no test hung. On 803a2032 `internal/plugin` hit `go test -timeout 25m` at 1500.08 s, the stack in `plugin.Build`, two seconds into `TestScaffoldReRunMergesAMarkedProject`, a test that normally passes. On 09534733 it passed at 1495.8 s, 4 s inside that limit, and the job was cancelled at 2423 s in the process checks. On 79e9d928 every step passed and the job was cancelled at 2414 s, in the post steps. Ubuntu passed all three, `internal/plugin` at 521–542 s. Same image throughout (macos-26-arm64 20261026), and none of the trees between 803a2032 and 09534733 changed `template/`, `plugin/` or `framework/` (only records and the version), so the spread is the runner's.
+
+| Commit | macOS job s (limit 2400) | go test step s | `internal/plugin` s (limit 1500) | `internal/template` s | process checks s | Ubuntu `internal/plugin` s |
+|---|---|---|---|---|---|---|
+| 79e9d928 | 2414 cancelled | 1620 | 1429 | 1158 | 727 | 542 |
+| 09534733 | 2423 cancelled | 1655 | 1496 | 1149 | 711 cancelled | 531 |
+| 345ab9ba | 2172 | 1473 | 1314 | 1050 | 648 | 411 |
+| 803a2032 | 1753 failed | 1694 | 1500 timeout | 1254 | skipped | 522 |
+| b4644daa | 2262 | 1502 | 1360 | 1074 | 715 | 420 |
+| 0f993c8a | 1946 | 1292 | 1122 | 861 | 561 | 421 |
+| e5d26750 | 1925 | 1285 | 1101 | 864 | 582 | 397 |
+| eec33f04 | 1092 | 706 | 635 | 493 | 351 | 247 |
+| 12e7d43c | 1763 | 1147 | 1032 | 821 | 568 | 362 |
+
+The time goes on one check set run three times on that leg, and on one check inside it. `TestPluginChecksPassInScaffoldedProject` is 92% of the package without `-race` here (449 of 487 s). A failed `TestTemplateChecks` on 220f4274 took 882 of its package's 883 s on a macOS runner. Alone on this Mac, `merge-guard` is 291 of the plugin set's 727 CPU seconds, 40%, and the next largest, `change-tools`, is 53. In the process-checks step's log it holds the output for at least 465 s of 727 on macOS and 171 of 258 on Ubuntu, up from 316 and 89 on 12e7d43c; OPS-219 changed 434 of its lines. The other cost was `build(t)`: 24 tests each rebuilt the plugin, seconds apiece under `-race`, whose regexps slow most, and the timeout's stack was in one.
+
+Two cuts, no limit changed. On macOS, `go test`'s step leaves `merge-guard` to the process-checks step, through `CHECKS_SKIP` in `test.yml`, so it runs there once rather than three times. The tests share one Build and each gets its own copy. Under `-race` here, `internal/plugin` and `internal/template` together went from 1646 to 1030 CPU seconds, 37% less, with `internal/plugin` 546 to 246 s and `internal/template` 443 to 214 s, at `CHECKS_JOBS=3`, on a loaded Mac. The package's other tests went from 98.8 to 42.8 s.
+
+Two caveats on every local timing here. Each ran in the sandbox, where `gate`, `machine-quiet` and `people` fail on `ps` and the tmux fixture, so those whole-set tests failed and stopped at that point, before and after alike. And each form is one sample on a machine with other lanes running: wall time has large noise, which is why the ratio used below is CPU's and not the wall's 55%.
+
+The row's "shown over several runs" cannot be shown by this PR, and this fragment does not claim it. A PR runs Ubuntu only, where `CHECKS_SKIP` is empty, so the first macOS run of this code is the merge's own. Applying the CPU ratio predicts `internal/plugin` at about 900–950 s against 1500, and the job at about 1900 s against 2400, a margin of about 500 s, 20%. That is a prediction from a Mac, not a measurement. o.12 reads it over five main runs. #397 stays open: this PR uses no closing keyword.
+
+#### Decisions
+
+- Cut, not raise. Raising the limits would have left a 40-minute macOS leg growing at the rate it did, about 400 s on `internal/plugin` from 12e7d43c to 79e9d928, and bought time only until the next limit. Neither `timeout-minutes: 40` nor `-timeout 25m` changed; a hung run still ends at the same point.
+- `merge-guard` only. It is 5.5 times the next check, and the local ratio gets the margin. The other candidates lose more: skipping `TestTemplateChecks` and the plugin's test whole on macOS, or running the process-checks step on Ubuntu only, which `check-sets.sh` refuses (OPS-171) and which would not have helped the package's limit anyway.
+- What the cut loses, shown by mutants of rule 14 in throwaway clones. Broken in both copies, this repo's set fails, so the macOS leg still catches it. Broken in `template/` only, this repo's set passes and the template's fails. Broken in the plugin's copy only, through a `shellPatches` entry, the plugin's set fails. So in the last two the macOS leg no longer sees a defect that is in that one copy, and Ubuntu, which a merge waits for, and the full local gate on the owner's Mac both still do. What goes is the macOS leg's sight of a defect only macOS shows in only one of the two copies, and even that has the full local gate's run.
+- A second loss, stated and not closed. The process-checks step runs only after a green `go test`, so a red `go test` on macOS means no `merge-guard` run on macOS at all for that commit. No `if:` was added to run the step anyway: `check-sets.sh` part 5 refuses one, for OPS-171's reason.
+- `CHECKS_SKIP` on the step, not a `runtime.GOOS` test. `run.sh` already has it, it names what it left out, and a Mac running the full local gate keeps all three. `check-sets.sh` part 6 holds its form: only the step whose `run:` is `go test`, only macOS, only `CI_MACOS_ONCE`, a list of one with its reason, as `CHECKS_ONCE` keeps its own. No skip at all passes with a SKIPPED line, since the cost is only time. Its falsifying cases run on workflows of their own, not doctored copies of `test.yml`, so an edit to that file's spelling reaches only the reader. It refuses `&` and `*` as tokens in `env:` values, since an alias could carry the skip to the process-checks step, and it guards drift, not evasion. Part 5 keeps named anchors on `test.yml`'s spelling: the `go vet` line, the `working-directory` lines, the job's and the steps' indent. Drift in that file's named anchors fails loudly, as moving the process-checks step above `go vet` fails its GITHUB_ENV cases.
+- A due outcome row reached no one, and this row's deferral rests on one, so the coordinator folded the fix in: `digests.sh` kept the queue's first 8 lines and DUE lines print last, so with `ROADMAP_TODAY=2026-11-10` the digest held 0 of o.8, o.11 and o.12. It now always keeps a DUE line, step 2 of session-start says what to do with one (an outcome check to run, or to re-date with its reason), and `checks/session-start-digests.sh` holds both.
+- Past the row's first scope, and now in its scope cell: `.claude/checks/check-sets.sh`, a new control; `docs/plugin.md`, which describes the test; `framework/internal/template/template_test.go`, its comment and stale skip message; the digest, its check and session-start's step 2.
+- The copy's executables go through `testbin`, and `testbin.WriteFile` now sets 0755 exactly. The coordinator's decision: the quick gate's `TestNoTestWritesAnExecutableAnotherWay` flagged the copy's `os.Chmod`, and `os.CopyFS` writes executables with no fork protection, which is the hazard that rule exists for, though the scanner saw only the chmod. `testbin` could not meet the mode check, since it wrote 0750 under umask 027 and 0700 under 077 where a Build writes 0755. The fix is in its writer, with the chmod inside the same `ForkLock` read lock as the write; the rule and its exemption list are untouched. Stubs across the module become 0755 under a stricter umask. A copy costs no more: 50 ms against 59 ms plain, 56 against 70 under `-race`, a mean of 25 copies of each, one sample on a loaded Mac, beside a Build's 163 ms and 2.44 s.
+- Copies, not one shared directory: `TestBuildCopyIsAFreshBuild` fails on no copy, on a build of another version, and on modes a umask changed, and a broken rewrite still fails the tests using the copy. Its mode check only bites away from umask 022: there, `os.CopyFS` and `Build` agree, so a run at 022, the usual umask, would not catch a lost chmod. Forcing a umask in the test would be a process-wide change for one assertion, so it is left and stated. A stated limit: a run go test kills at its timeout leaves the shared build in `TMPDIR`, as it leaves any `t.TempDir`. A sweep at start could remove another run's, so there is none.
+- What owns the rest. `health_push_main` reads only the latest run's conclusion: a red run is seen while it is the latest, a green run after it hides it, and a shrinking margin says nothing until a run is cancelled. So o.12 reads five main runs against a worst macOS job under 2000 s and a worst `internal/plugin` under 1100 s, the worst and not the median, due 2026-11-10; a miss gets a fix row. OPS-244 is the health line that reads the job's seconds against its limit, `HIGH` at a threshold. OPS-245 makes `merge-guard` faster, a split so its slots overlap being a lead not yet tested. Both are planned in S26, beside OPS-28. The coordinator's decisions, from review.
+
+#### Surprises
+
+Output order hides a check's time: `run.sh` prints in name order, so a log's gaps bound a check from below and the parallel phase does not time one. Per-check time on a macOS runner cannot be read from any log. A named run of `no-stridal` runs the whole set again, 826 CPU seconds, which is why that row of the local table is left out. Without `-race` the 24 builds cost 0.2 s each, so the first timing missed them. The runner varies by about 1.6 times on one tree: 289d6cd8 took 995 s on `internal/plugin` and eec33f04 635, with nothing under `template/`, `plugin/`, `framework/`, `.claude/` or `scripts/` changed between them. `team-queue.sh --next-id` gives each `git fetch` 10 s and a fetch here took 11, so it read CANNOT CHECK until `TEAM_QUEUE_TIMEOUT=90`, its own setting.
+
+#### Insights
+
+2 row(s), moved to the insights log.
+
+### OPS-241 — a guard does not read a failed `rev-parse` as an answer
+
+- **PR**: #407
+- **Session**: S24, started 2026-11-03 12:58 ET
+- **Review**: 3 rounds, peak high, cap 3; round 3's peak was low
+- **Gate**: CANNOT CHECK — no full gate has run in this lane; the batch's gate fills it
+- **Cost**: CANNOT CHECK — read at the close
+- **Session start**: 218846684 tokens, 390 min
+
+#### What happened
+
+Below git 2.31 `rev-parse` does not know `--path-format`: it prints the flag, answers the rest and exits 0. A real git 2.30.9, built under the scratch directory from the kernel.org tarball, showed every named site wrong. `no-blind-source-rewrite` allowed `sed -i` on a tracked file in all four places tried. `cd-guard` and `no-silent-wait` kept their state under a relative name, so a hold or a task recorded from one directory was not there from another, and both allowed. `focus_file` printed the flag, `usage_main` died in `dirname`, `sandbox-writes` called git's config "not there", and `change-cost` printed `cost $0 ... over 0 message(s)` where the current git says `CANNOT CHECK`.
+
+The hooks and libraries no longer pass the flag. They ask `git -C <dir> rev-parse --git-common-dir` and resolve the answer from `<dir>` with a physical `cd`: `no-blind-source-rewrite.sh` (`common_of`, and `tracked_files` now through it), `cd-guard.sh`, `no-silent-wait.sh`, `lib/conf.sh`, `lib/usage.sh`, `lib/health.sh`; `change-cost.sh` calls `usage_main`, its second copy of the same read. `build-change.js` takes an agent's verbatim output and cannot resolve it, so it stops at preflight when `commonDir` does not start with `/`, `allowMainCheckout` included. Rerun on 2.30.9, every shell site gave the answer 2.54 gives in each state tried: a main checkout, a subdirectory, a linked worktree, a hook run from elsewhere, and a symlink of another depth, under `sh` and dash. Git below 2.13 was not tried. The floor stays at 2.31, because build-change's preflight prompt and `merge-pr` step 5 still pass the flag and `checks/change-process.sh` holds that wording.
+
+`checks/hooks.sh` has a block of its own running each site under a stub; `checks/build-change.sh` holds the stop. In the framework's own repository the block also refuses a live `rev-parse --path-format` in git's list of the model's shell and JS, `\` continuations joined, less `build-change.js`, the checks' fixtures and `.claude/local/`; seeded rows hold that scan red, green and failing on a root it cannot enter, in every project. A second read in `build-change.js` or `merge-pr/SKILL.md`, and a flag in a variable, are its stated limits. The stub is an emulation; its output matched real 2.30.9 on 16 of 16 commands, across the main checkout, a subdirectory, a linked worktree and a directory inside one. Each control was undone alone in a throwaway clone and its rows failed: the flag back, the first `cd` gone, `-P` gone, CDPATH read, the temporary-directory road gone, and the class guard's framework condition, exclusions, list, continuations and comment handling.
+
+#### Decisions
+
+- Remove the flag rather than test the output's shape, at every shell site. The row and the coordinator's brief asked for a test rejecting output that does not start with `/`. A shape test leaves a guard with nothing to answer from, so it needs an old-git road anyway; this road gave the right answer on both gits tried, 2.54 and 2.30.9, and `pr-merge-guard.sh`, `gate.sh` and `gate-wait.sh` already pass no flag. Readers then give their real answer, so no refusal or degraded message had to be written. Review confirmed the choice.
+- A physical `cd` (`cd -P`), review round 1's high. git answers relative to the physical directory, so a logical `cd` through a symlink of another depth walked the link's parents: `no-blind-source-rewrite` found no repository and allowed where the code before this row refused, on every git, and other readers sent state to another repository. Five older sites resolve a relative answer logically, and OPS-246 owns them: `pr-merge-guard.sh:778-779` and `hooks/lib/ci-receipt.sh:28-29`, which misread through a symlink of another depth, and `gate.sh:48`, `gate-wait.sh:56` and `change-approval.sh:63`, which misread only under an exported `CDPATH`.
+- No shared helper. `no-blind-source-rewrite` and `cd-guard` load no library, `no-silent-wait` loads `lib/conf.sh` only if it is there, and a plugin project keeps the `lib/conf.sh` it scaffolded, so a new function there could be missing beside a newer caller. Hence the same two steps inline at each site.
+- `CDPATH=` on each `cd`. The answer is now relative, so an exported CDPATH could send `cd .git` into another repository. It is new exposure from this fix, on any git, and the CDPATH rows hold it.
+- The temporary-directory fallback in `cd-guard` and `no-silent-wait` stays for a project directory that is no repository, as before.
+- `merge-pr` step 5 is unchanged. On 2.30.9 both commands print the flag and `.git` in the main checkout, and differ in a lane, so the test reads right. From a subdirectory of the main checkout they differ (`.git` absolute, `../.git` relative), and it reads as a lane, which skips the pull and leaves it to the owner.
+- The class guard runs only where `framework/internal/template` exists, the mark this file already uses: a project's own script passing the flag is the project's, and in the plugin the scan reads only the project's files.
+- `framework/internal/cmd` joined the row's scope. OPS-231's `git-floor` wording said a blocking hook can quietly stop recognising paths below the floor, which this row makes untrue. `doctor.go`, `lib/health.sh` and `template/docs/playbook.md` now name the true reason, those two steps. `TestGitFloorHealthLineOnAnEmulatedOldGit` required a health line to ask the flag, and now requires that none does.
+- A drive-letter path: `build-change.js`'s test refuses `C:/...`, so the run stops, naming both causes, git below 2.31 and a `git.exe` called from WSL2. The shell sites run no shape test, and git for Windows was not run. The model's Windows road is WSL2's own git, which prints `/...`.
+
+#### Surprises
+
+The check's first stub never fired: its `case` pattern wanted two spaces between `rev-parse` and the flag. Its rows passed anyway, against the current git's answer, and only the stub's own self-test row failed. The first mutant run showed the rest: with the flag back at most sites, no row but the class guard noticed.
+
+The fix for an old git brought a fail-open on every git: the first build's logical `cd` passed every row, because no fixture held a symlink. Review found it.
+
+#### Insights
+
+None.
+
 ## Session 23 — 2026-11-03 — Rich — the floor's suite and settings; project.conf as data; the first release tag
 
 **Totals.** Gate 54 min (a row's gate was CANNOT CHECK, so this is a floor); cost $0 (a row's cost was CANNOT CHECK, so this is a floor).
