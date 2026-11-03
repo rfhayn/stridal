@@ -166,9 +166,12 @@ func TestTemplatePanelMetricsCommand(t *testing.T) {
 // The template's own process checks (template/.claude/checks) hold its hooks, gate, roadmap parser
 // and model roles to what its AGENTS.md says. They are plain sh + git + jq; run them here so a
 // template change that breaks one fails this repo's CI, not the first project that adopts it.
+//
+// This one test is almost all of the package's time. On CI's macOS leg its whole-set run inherits
+// CHECKS_SKIP from test.yml and leaves out merge-guard; everywhere else it runs every check (OPS-240).
 func TestTemplateChecks(t *testing.T) {
 	if testing.Short() {
-		t.Skip("runs every template check (~50 s)")
+		t.Skip("runs every template check (minutes)")
 	}
 	for _, tool := range []string{"sh", "bash", "git", "jq"} {
 		if _, err := exec.LookPath(tool); err != nil {

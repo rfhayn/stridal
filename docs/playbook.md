@@ -481,7 +481,7 @@ Haiku for the reviewer or the planner: economy mode never drops them either.
 |---|---|---|
 | `pr-merge-guard.sh` | every Bash call | blocks `--auto`/`--admin`, a merge of a PR that is not open, a merge without gate evidence for its head, a change PR with no slice line, a duplicate journal session, a build with open tasks, an uncited scenario, an archive of an unfinished change, a squash body without provenance trailers, a changed model, agent or workflow without a passing eval receipt |
 | `no-blind-source-rewrite.sh` | every Bash call | blocks a few in-place forms (`sed -i`, `perl -pi`, and python `.replace` read-modify-write where the command names the file) on tracked source, by their words; other writes pass (limits: its header): use the Edit tool |
-| `worktree-hook-drift.sh` | every agent spawn | blocks a worktree agent while the main checkout's hooks lag `origin/main` |
+| `worktree-hook-drift.sh` | every agent spawn | blocks a worktree agent while the checkout's hooks and `.claude/lib` lag `origin/main`, are uncommitted, or cannot be compared; allows, with a note, with no remote called origin |
 | `focus-staleness.sh` | every prompt | nudges when the status-line focus is stale |
 | `format.sh` | every Write/Edit | runs the project's formatter, when configured |
 | `run-local.sh` | every gate | takes the gate lease; runs the scenario trace and the secret scan (gitleaks) before your steps; writes the receipt only for a complete, clean run |

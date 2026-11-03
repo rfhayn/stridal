@@ -391,7 +391,11 @@ health_sandbox_writes() {
   health_sandbox_try "Claude's user hooks" "$_sw_cfg/hooks"
   health_sandbox_try "a plugin's data directory" "$_sw_plug/data"
   health_sandbox_try "the plugin cache" "$_sw_plug/cache"
-  _sw_main=$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
+  # No `--path-format=absolute`: below git 2.31 rev-parse echoes it and exits 0, and these paths read
+  # as not there (OPS-241). So the answer may be relative, to $ROOT's physical path: `-P`, or a `..`
+  # walks a symlink's parents.
+  _sw_main=$(git -C "$ROOT" rev-parse --git-common-dir 2>/dev/null) \
+    && _sw_main=$(CDPATH= cd -P -- "$ROOT" 2>/dev/null && CDPATH= cd -P -- "$_sw_main" 2>/dev/null && pwd -P)
   if [ -n "$_sw_main" ]; then
     health_sandbox_try "git's config" "$_sw_main/config"
     health_sandbox_try "git's hooks" "$_sw_main/hooks"
@@ -418,9 +422,9 @@ health_sandbox_writes() {
   else echo "NOT PROVEN nothing was refused, so what a session cannot write was not tested$_sw_note"; fi
 }
 
-# health_git_floor: is the git on PATH at the floor? The model calls `git rev-parse --path-format`
-# (2.31), and below it a blocking hook can quietly stop recognising paths rather than erroring
-# (OPS-231). `stridal doctor` holds the same floor for a machine with the binary (checkGitFloor);
+# health_git_floor: is the git on PATH at the floor? build-change's preflight and merge-pr's step 5
+# pass `--path-format` (2.31), and below it build-change refuses to start, having no common directory
+# to read (OPS-241, which took the flag out of the hooks and libraries). `stridal doctor` holds the same floor for a machine with the binary (checkGitFloor);
 # framework/internal/cmd/doctor_gitfloor_test.go runs one table of versions through both. The version
 # is compared as numbers, read past whatever a distributor adds after the minor
 # ("2.54.0 (Apple Git-157)"), and up to six digits each, so what cannot be compared is not read.
@@ -436,7 +440,7 @@ health_git_floor() {
   if [ "$_gf_major" -gt "$_gf_floor_major" ] || { [ "$_gf_major" -eq "$_gf_floor_major" ] && [ "$_gf_minor" -ge "$_gf_floor_minor" ]; }; then
     echo "OK $_gf_subject, at or above the floor $_gf_floor"
   else
-    echo "FAILED $_gf_subject is below the floor $_gf_floor: the model calls \`git rev-parse --path-format\`, and below it a blocking hook can quietly stop recognising paths; upgrade git"
+    echo "FAILED $_gf_subject is below the floor $_gf_floor: build-change's preflight and merge-pr's step 5 pass \`--path-format\`, and below it build-change refuses to start; upgrade git"
   fi
 }
 

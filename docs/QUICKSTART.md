@@ -154,6 +154,11 @@ framework file: attribution and provenance are `model-roles.json`'s and the bran
 `project.conf`'s, and build-change reads both at run time (`.claude/project-config.sh`), so
 `update` sees `build-change.js` as the template's.
 
+An update run on `main` leaves `.claude/hooks` and `.claude/lib` uncommitted, and
+`worktree-hook-drift` then refuses worktree agents until they land. Keep the update by moving it
+to a branch and committing it there (the refusal lists the commands), which allows agents with a
+note, and land it by PR. No commit goes on `main`; restoring the files discards the update.
+
 ## Troubleshooting
 
 Run `stridal doctor` first, from the project. It checks the machine, the project and (on macOS)
@@ -174,7 +179,9 @@ The entries below are for what it does not cover.
   project's, and an install never overwrites the local file. Otherwise, until OPS-216 removes the
   need, run it from the orchestrating session with the sandbox off, as the gate and the full process
   checks run: `sandbox.excludedCommands` is not honoured on Claude Code 2.1.316 (spike S5h).
-- **A worktree agent is refused by worktree-hook-drift**: put the main checkout back on `main`
-  and pull.
+- **A worktree agent is refused by worktree-hook-drift**: its message names the cause and lists the
+  commands that clear it. Most often, put the main checkout back on `main`, restore any uncommitted
+  file under `.claude/hooks` or `.claude/lib`, then pull. A repository with no remote called origin
+  is allowed.
 - **The panel's cards and suggestions show nothing**: `stridal panel trust`, and see
   `docs/panel.md`, *Troubleshooting*.

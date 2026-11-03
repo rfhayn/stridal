@@ -13,7 +13,7 @@ Stridal answers that with a process the repository enforces on itself (a roadmap
 - **[Claude Code](https://claude.ai/code)** — Anthropic's CLI tool
 - **tmux** — terminal multiplexer, for the panel's lanes (installed automatically)
 - **Go 1.24+** — for building the CLI (installed automatically)
-- **Git 2.31+**, **GitHub CLI (`gh`)** and **jq** — for the git workflow, the hooks and the checks
+- **Git 2.31+** (for build-change's preflight and `merge-pr` step 5), **GitHub CLI (`gh`)** and **jq** — for the git workflow, the hooks and the checks
 
 ## Quick Start
 

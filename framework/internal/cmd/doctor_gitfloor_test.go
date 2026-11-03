@@ -282,9 +282,11 @@ func TestGitFloorHealthLineNoGitOnPath(t *testing.T) {
 // An EMULATION of a git below the floor, not a run of one: the stub answers
 // `rev-parse --path-format=...` by echoing the flag and exiting 0, as the review's reproduction
 // did. No real git below 2.31 has run here. Modern git underneath every other stub in this file
-// understands the flag, so this is the one health run that hears the old answer. sandbox-writes is
-// the line that asks, and it stops before asking in a home that takes a write, as a fixture's does;
-// so the fixture's library answers its probe as a sandbox would (plugin_test.go does the same).
+// understands the flag, so this is the one health run that could hear the old answer. sandbox-writes
+// was the line that asked, until OPS-241 took the flag out of it, and it stops before reading git in a
+// home that takes a write, as a fixture's does; so the fixture's library answers its probe as a sandbox
+// would (plugin_test.go does the same). So no line here may ask. This cannot tell a line that does not
+// ask from one that never reached git; the `ogsr` rows of checks/hooks.sh hold that it reaches it.
 func TestGitFloorHealthLineOnAnEmulatedOldGit(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join(tmplDir(t), ".claude/lib/health.sh"))
 	if err != nil {
@@ -300,7 +302,7 @@ func TestGitFloorHealthLineOnAnEmulatedOldGit(t *testing.T) {
 	if want := "    FAILED git 2.30.2 at " + filepath.Join(bin, "git"); !strings.HasPrefix(out, want) {
 		t.Errorf("want a line starting %q, got: %s", want, out)
 	}
-	if _, err := os.Stat(filepath.Join(bin, "asked")); err != nil {
-		t.Errorf("the run never asked the emulated form: %v", err)
+	if _, err := os.Stat(filepath.Join(bin, "asked")); err == nil {
+		t.Errorf("a health line asked rev-parse --path-format, whose answer below the floor is no path")
 	}
 }

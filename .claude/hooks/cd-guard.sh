@@ -96,7 +96,16 @@ payload=$(cat)
 block() { echo "BLOCKED by cd-guard: $1" >&2; exit 2; }
 FIX="Stay where you are and reach other paths without moving: absolute paths, git -C <dir>, or a subshell, ( cd <dir> && … ), which moves only the child shell."
 
-common_dir() { git -C "${CLAUDE_PROJECT_DIR:-.}" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || printf '%s\n' "${TMPDIR:-/tmp}"; }
+# No `--path-format=absolute`: below git 2.31 rev-parse echoes that flag and exits 0, so a hold landed
+# under a relative name of the flag's, where a `cd` read from another directory never saw it (OPS-241).
+# This hook loads no library. The answer may be relative, to the project directory's physical path:
+# `-P`, or a `..` walks a symlink's parents to another repository.
+common_dir() {
+  _cd_p=${CLAUDE_PROJECT_DIR:-.}
+  _cd_c=$(git -C "$_cd_p" rev-parse --git-common-dir 2>/dev/null) && [ -n "$_cd_c" ] \
+    && (CDPATH= cd -P -- "$_cd_p" 2>/dev/null && CDPATH= cd -P -- "$_cd_c" 2>/dev/null && pwd -P) \
+    || printf '%s\n' "${TMPDIR:-/tmp}"
+}
 
 if ! command -v jq >/dev/null 2>&1 || ! printf '%s' "$payload" | jq -e . >/dev/null 2>&1; then
   printf '%s' "$payload" | grep -Eq '"tool_name"[[:space:]]*:[[:space:]]*"Bash"' || exit 0

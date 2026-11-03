@@ -246,7 +246,7 @@ machine needs Claude Code, then:
 
 | Tool | Why | macOS | Linux, WSL2 (Ubuntu) |
 |---|---|---|---|
-| git 2.31 or later (the model calls `rev-parse --path-format`), jq | the hooks, checks and gate | `brew install git jq` | `sudo apt-get install git jq` |
+| git (2.31 or later for build-change's preflight and `merge-pr` step 5, which pass `rev-parse --path-format`), jq | the hooks, checks and gate | `brew install git jq` | `sudo apt-get install git jq` |
 | gh, logged in (`gh auth login`) | PRs, the merge guard, health lines | `brew install gh` (the token goes to the keychain) | GitHub's apt repository (cli.github.com); keep the token in a keyring (`gnome-keyring` or another Secret Service), not in `~/.config/gh/hosts.yml`: `gh auth status` must say `(keyring)` (below) |
 | gitleaks | the gate's secret scan (skipped locally without it, fails under CI) | `brew install gitleaks` | a release binary from github.com/gitleaks/gitleaks/releases, on `PATH` |
 | bubblewrap, socat | Claude Code's Bash sandbox | nothing: macOS has Seatbelt | `sudo apt-get install bubblewrap socat` |
@@ -585,7 +585,7 @@ Haiku for the reviewer or the planner: economy mode never drops them either.
 | `no-blind-source-rewrite.sh` | every Bash call | blocks a few in-place forms (`sed -i`, `perl -pi`, and python `.replace` read-modify-write where the command names the file) on tracked source, by their words; other writes pass (limits: its header): use the Edit tool |
 | `no-background-gate.sh` | every Bash call | blocks a gate sent to the background where nobody hears it end: `&` from anyone; `run_in_background` or a timeout under 600000 ms from a subagent. A subagent follows a long gate with `scripts/ci/gate-wait.sh` |
 | `no-silent-wait.sh` | an agent's Bash call and its turn's end, `AskUserQuestion` | blocks a subagent's or teammate's turn ending while a command it started still runs (it says how to wait in the foreground), its shell `&` that nothing waits for, and the main session's `AskUserQuestion` while an agent or a background command of the session runs: ask through the owner queue or a push instead |
-| `worktree-hook-drift.sh` | every agent spawn | blocks a worktree agent while the main checkout's hooks lag `origin/main` |
+| `worktree-hook-drift.sh` | every agent spawn | blocks a worktree agent while the checkout's hooks and `.claude/lib` lag `origin/main`, are uncommitted, or cannot be compared; allows, with a note, with no remote called origin |
 | `focus-staleness.sh` | every prompt | nudges when the status-line focus is stale |
 | `format.sh` | every Write/Edit | runs the project's formatter, when configured |
 | `run-local.sh` | every gate | takes the gate lease; runs the scenario trace and the secret scan (gitleaks) before your steps; writes the receipt only for a complete, clean run; records every run in the worktree's state file and the repository's run log |

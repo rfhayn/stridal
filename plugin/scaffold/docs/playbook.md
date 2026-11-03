@@ -246,7 +246,7 @@ machine needs Claude Code, then:
 
 | Tool | Why | macOS | Linux, WSL2 (Ubuntu) |
 |---|---|---|---|
-| git 2.31 or later (the model calls `rev-parse --path-format`), jq | the hooks, checks and gate | `brew install git jq` | `sudo apt-get install git jq` |
+| git (2.31 or later for build-change's preflight and `merge-pr` step 5, which pass `rev-parse --path-format`), jq | the hooks, checks and gate | `brew install git jq` | `sudo apt-get install git jq` |
 | gh, logged in (`gh auth login`) | PRs, the merge guard, health lines | `brew install gh` (the token goes to the keychain) | GitHub's apt repository (cli.github.com); keep the token in a keyring (`gnome-keyring` or another Secret Service), not in `~/.config/gh/hosts.yml`: `gh auth status` must say `(keyring)` (below) |
 | gitleaks | the gate's secret scan (skipped locally without it, fails under CI) | `brew install gitleaks` | a release binary from github.com/gitleaks/gitleaks/releases, on `PATH` |
 | bubblewrap, socat | Claude Code's Bash sandbox | nothing: macOS has Seatbelt | `sudo apt-get install bubblewrap socat` |

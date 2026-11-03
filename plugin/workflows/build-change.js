@@ -375,6 +375,11 @@ else if (!/^quota-gate: (below|off) /.test(quotaLine) || quotaExit == null) repo
 // only with `resume`: it finishes a run already begun there, and cannot start a new one.
 const norm = (p) => String(p || '').trim().replace(/\/+$/, '')
 if (!norm(pre.gitDir) || !norm(pre.commonDir) || !norm(pre.toplevel)) return stop('preflight', 'preflight did not report gitDir/commonDir/toplevel')
+// OPS-241: below git 2.31 rev-parse echoes --path-format=absolute and exits 0, so commonDir is no path,
+// and the main checkout, its gitDir absolute, would read as a worktree here. Only a leading / counts:
+// a drive-letter path stops too, and native Windows is no road of the model's (WSL2's own git prints
+// /..., a git.exe called from WSL2 prints C:/...).
+if (!norm(pre.commonDir).startsWith('/')) return stop('preflight', `git's common directory came back as ${JSON.stringify(norm(pre.commonDir).slice(0, 120))}, not an absolute path, so this run cannot tell the main checkout from a worktree and does not start. Two things answer this way: git below 2.31, and a git.exe called from WSL2, which prints C:/.... Use a Linux or macOS git of 2.31 or later`)
 const inMainCheckout = norm(pre.gitDir) === norm(pre.commonDir)
 if (inMainCheckout && !(args.allowMainCheckout && RESUME != null)) return stop('preflight', `running in the MAIN checkout on ${pre.branch}; it must stay on main (hooks run from it). Run: git switch main here, git worktree add .claude/worktrees/build-${change} ${BRANCH}, EnterWorktree that path, re-run. Finishing a run already begun here: pass {resume: <group>, allowMainCheckout: true}`)
 // EVERY LATER AGENT IS PINNED TO THIS ROOT. A workflow agent's cwd is the session's cwd when that

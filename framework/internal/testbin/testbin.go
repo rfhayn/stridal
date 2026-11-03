@@ -31,5 +31,9 @@ func Write(t testing.TB, path, body string) {
 func WriteFile(path, body string) error {
 	syscall.ForkLock.RLock()
 	defer syscall.ForkLock.RUnlock()
-	return os.WriteFile(path, []byte(body), 0o755)
+	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+		return err
+	}
+	// Exact, whatever the umask: a copy of a Build compares its modes (OPS-240).
+	return os.Chmod(path, 0o755)
 }
