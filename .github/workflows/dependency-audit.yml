@@ -7,6 +7,12 @@
 # web/, ...), not only the root's: a root-only audit reported nothing for a repository whose
 # module lives in a subdirectory (OPS-8 rehearsal). .claude/checks/supply-chain.sh runs the block
 # between the audit markers against a repository with nested manifests (AUDIT_DRY_RUN=1).
+#
+# govulncheck and pip-audit are versions, never @latest (.claude/checks/supply-chain.sh holds that):
+# the audit should not run what was published this morning. Dependabot cannot see a `run:` line, so
+# raising a pin is by hand: **Nothing. You.** pip-audit's own dependencies still resolve at run time.
+# pnpm names no version here: a project's packageManager key names its own, and no one pin fits every
+# project (a pin at pnpm 12 refused a 6.0 lockfile, and a project declaring pnpm 9).
 name: dependency-audit
 
 on:
@@ -34,11 +40,11 @@ jobs:
                        'requirements*.txt' '*/requirements*.txt' 'pyproject.toml' '*/pyproject.toml' | grep -Ev '(^|/)(testdata|vendor|node_modules)/|(^|/)\.claude/evals/'); do
             dir=$(dirname "$m"); n=$((n + 1))
             case $(basename "$m") in
-              go.mod) run govulncheck "$dir" go run golang.org/x/vuln/cmd/govulncheck@latest ./... ;;
+              go.mod) run govulncheck "$dir" go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./... ;;
               package-lock.json) run npm "$dir" npm audit --omit=dev --audit-level=high ;;
               pnpm-lock.yaml) run pnpm "$dir" sh -c 'corepack enable && pnpm audit --prod --audit-level high' ;;
-              requirements*.txt) run pip-audit "$dir" pipx run pip-audit -r "$(basename "$m")" ;;
-              pyproject.toml) run pip-audit "$dir" pipx run pip-audit . ;;
+              requirements*.txt) run pip-audit "$dir" pipx run --spec pip-audit==2.10.1 pip-audit -r "$(basename "$m")" ;;
+              pyproject.toml) run pip-audit "$dir" pipx run --spec pip-audit==2.10.1 pip-audit . ;;
             esac
           done
           [ "$n" -gt 0 ] || echo "no dependency manifest (go.mod, package-lock.json, pnpm-lock.yaml, requirements*.txt, pyproject.toml) is tracked in this repository"

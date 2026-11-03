@@ -136,4 +136,52 @@ fo3=$(JOURNAL=$missing INSIGHTS=$INSIGHTS ADR_INDEX=$ADR_INDEX PRAC_INDEX=$PRAC_
 has "fixture: missing journal" "$fo3" "($missing unreadable)"
 hasnt "fixture: missing journal is not an empty session" "$fo3" "($missing has no ## Session entry)"
 
+# A DUE line survives the queue's digest. The queue prints them last, past the 8 lines kept, and a due
+# outcome check has no other road to session start (OPS-240). In a project of its own, for a queue
+# long enough to cut and a date that is always the same.
+Q="$d/queue"
+mkdir -p "$Q/.claude/lib" "$Q/.claude/skills/session-start" "$Q/docs"
+cp "$ROOT/.claude/lib/conf.sh" "$Q/.claude/lib/"
+cp "$ROOT/.claude/roadmap-queue.sh" "$Q/.claude/"
+cp "$SCRIPT" "$Q/.claude/skills/session-start/"
+HEAD='| # | Change | Scope | Deps | Status |\n|---|--------|-------|------|--------|\n'
+# queue_digest: the digest of the roadmap on stdin, on a fixed date.
+queue_digest() {
+  cat > "$Q/docs/roadmap.md"
+  (cd "$Q" && JOURNAL=$JOURNAL INSIGHTS=$INSIGHTS ADR_INDEX=$ADR_INDEX PRAC_INDEX=$PRAC_INDEX ROADMAP_TODAY=2026-11-10 ROOT="$Q" sh .claude/skills/session-start/digests.sh 2>&1)
+}
+fq=$({
+  printf "# Roadmap\n\n## Phase 1 — Now\n\n$HEAD"
+  for i in 1 2 3 4 5 6 7 8; do printf '| OPS-%s | `ops/row-%s` — a row | x | — | ⬜ queued |\n' "$i" "$i"; done
+  printf "\n### DUE soon\n\n$HEAD"
+  for i in 9 10; do printf '| OPS-%s | `ops/row-%s` — a row | x | — | ⬜ queued |\n' "$i" "$i"; done
+  printf "\n## Outcome checks\n\n$HEAD"
+  printf '| o.1 | `ops/check-outcome-a` — check a (due 2026-11-10) | x | — | ⬜ queued |\n'
+  printf '| o.2 | `ops/check-outcome-b` — check b (due 2026-11-11) | x | — | ⬜ queued |\n'
+} | queue_digest)
+has "fixture: a due outcome check past the 8 lines kept" "$fq" "DUE    o.1"
+hasnt "fixture: one not due yet is not" "$fq" "DUE    o.2"
+# The 11 queue lines and one DUE: 8 kept, 1 DUE, 3 in the count, not 4.
+has "fixture: the count of what the digest leaves out does not include a DUE line it kept" "$fq" "… 3 more rows"
+has "fixture: the 8th line of the queue is kept" "$fq" "ops/row-7 "
+hasnt "fixture: the 9th is not" "$fq" "ops/row-8 "
+hasnt "fixture: a line with DUE in the middle of it is no DUE line" "$fq" "· DUE soon"
+fq=$({
+  printf "# Roadmap\n\n## Phase 1 — Now\n\n$HEAD"
+  for i in 1 2 3 4 5 6 7; do printf '| OPS-%s | `ops/row-%s` — a row | x | — | ⬜ queued |\n' "$i" "$i"; done
+  printf "\n## Outcome checks\n\n$HEAD"
+  printf '| o.1 | `ops/check-outcome-a` — check a (due 2026-11-10) | x | — | ⬜ queued |\n'
+  printf '| o.2 | `ops/check-outcome-b` — check b (due 2026-11-01) | x | — | ⬜ queued |\n'
+} | queue_digest)
+has "fixture: every line past the 8 is DUE: the first" "$fq" "DUE    o.1"
+has "fixture: ...and the second" "$fq" "DUE    o.2"
+hasnt "fixture: ...and nothing is counted as left out" "$fq" "more rows"
+
+# A DUE line reaches the block, and the step that reads the block says what to do with it. Without
+# this, the digest hands an outcome check to no one (archive-change, step 3).
+grep -qF '`DUE` line' "$ROOT/.claude/skills/session-start/SKILL.md" \
+  && grep -qF '(an outcome check to run, or to re-date with its reason)' "$ROOT/.claude/skills/session-start/SKILL.md" \
+  && ok "session-start's steps say what to do with a DUE line" \
+  || fail "session-start's SKILL.md does not say what to do with a DUE line: the digest delivers it to no one"
+
 finish
