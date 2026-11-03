@@ -259,7 +259,9 @@ Tests (`framework/internal/plugin`, `framework/internal/cmd`):
 - Layout, manifest, hooks, rewritten paths, the scaffold's settings and panel config, the scaffold
   guards, and the hooks standing aside outside a plugin project.
 - `TestPluginChecksPassInScaffoldedProject` (skipped with `-short`): scaffolds a repository and
-  runs every process check from the plugin against it.
+  runs every process check from the plugin against it. It is almost all of the package's time, so
+  on CI's macOS leg it leaves out `merge-guard`, which Ubuntu, the leg a merge waits for, and the
+  full local gate still run from the plugin (`CHECKS_SKIP` in `test.yml`; `checks/check-sets.sh` holds its form).
 - `TestResolverFetchesPinnedPluginInCI`: in CI the gate's resolver clones the pinned tag (from a
   local repository in the test), serves the second run from its cache, and fails on a ref it
   cannot clone.

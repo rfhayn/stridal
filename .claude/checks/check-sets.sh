@@ -5,7 +5,7 @@
 # repo's set, by CHECKS_SKIP, while the framework and the project.conf values those checks can read
 # match the template's. This repo's own check: the template ships one check set and no CHECKS_ONCE.
 #
-# Five parts:
+# Six parts:
 #  1. The gate's real steps, full and quick, captured by a stand-in `step`: exactly two whole-set
 #     runs, one per set, each passing its own CHECKS_SKIP (never the caller's); against the
 #     AUTHORITY, the two directories, every check runs in at least one set; a check left out of one
@@ -28,6 +28,8 @@
 #     the step's job, the job must pass, so the step must have run and passed; while it is empty
 #     (before OPS-98), nothing enforces it, a SKIPPED line under the PASS; naming other checks but
 #     not that job fails.
+#  6. test.yml's other CHECKS_SKIP: on go test's step, on macOS only, naming only CI_MACOS_ONCE,
+#     which the process-checks step runs (OPS-240); each other form shown failing.
 . "$(dirname "$0")/lib.sh"
 need git jq
 
@@ -342,7 +344,7 @@ passes() {
 }
 RUNL='        run: sh .claude/checks/run.sh' JOBL='  test:'
 doctor "CHECKS_SKIP on the step's command" sed 's|run: sh \.claude/checks/run\.sh$|run: CHECKS_SKIP="gate" sh .claude/checks/run.sh|'
-doctor "CHECKS_SKIP in the step's env" append '          CHECKS_SKIP: "gate"'
+doctor "CHECKS_SKIP in the step's env" after "$RUNL" '          CHECKS_SKIP: "gate"'
 doctor "CHECKS_SKIP in the workflow's env" append "$(printf 'env:\n  CHECKS_SKIP: gate')"
 doctor "a set run by name" sed 's|run: sh \.claude/checks/run\.sh$|run: sh .claude/checks/run.sh hooks|'
 doctor "a set whose failure is swallowed" sed 's|run: sh \.claude/checks/run\.sh$|run: sh .claude/checks/run.sh \|\| true|'
@@ -428,4 +430,125 @@ esac
 # Each value merge_half can be given, with the real file's job: empty (before OPS-98) is off.
 [ "$(merge_half "" "$(ci_job "$CI")")" = off ] && [ "$(merge_half "lint test" "$(ci_job "$CI")")" = waits ] \
   && ok "...and merge_half reads an empty GATE_PR_CHECKS as off (SKIPPED), and one naming test among others waits" || fail "GATE_PR_CHECKS empty: $(merge_half "" "$(ci_job "$CI")"); 'lint test': $(merge_half "lint test" "$(ci_job "$CI")")"
+
+# ── 6. What go test's whole-set runs may leave out on macOS, and nowhere else (OPS-240) ──────────
+# Main's macOS leg ran merge-guard three times: in TestTemplateChecks, in
+# TestPluginChecksPassInScaffoldedProject and in the process-checks step. That leg alone runs out of
+# its limits (go test's 25 m on internal/plugin, the job's 40 m), so go test's step leaves named
+# checks to that step there. That is safe only on these terms: Ubuntu, the leg a merge waits for,
+# still runs the template's and the plugin's copies, and the process-checks step (part 5) runs each
+# name on macOS. The stated loss: a red go test on macOS skips that step, so that commit has no
+# merge-guard run on macOS at all, until go test is green again; a step-level if: is not the answer
+# (part 5 refuses one). So a line of test.yml that names CHECKS_SKIP has this form, in the step whose
+# run: is go test, and names only CI_MACOS_ONCE. No skip at all passes: the cost is only time. This
+# guards drift, not evasion: it reads the file's lines as they are usually written, and a spelling
+# it cannot read, or a value an earlier step writes for a later one, gets past it.
+#
+# CI_MACOS_ONCE, like CHECKS_ONCE, is a list someone read, one reason a name:
+#   merge-guard   40% of the plugin set's CPU, 5.5 times the next check (OPS-240); its table runs the
+#                 hook's own logic, byte-identical but for path lines in the plugin's copy, and the
+#                 template's and this repo's copies match while the framework matches the template
+CI_MACOS_ONCE="merge-guard"
+ci_skip_problems() {
+  [ -f "$1" ] || { echo "is missing"; return; }
+  awk -v q="$(printf "\047")" '
+    BEGIN { envi = -1; FORM = "^[[:space:]]+CHECKS_SKIP: [$][{][{] runner[.]os == " q "macOS" q " && " q "[a-z0-9 -]+" q " [|][|] " q q " [}][}]$"
+      ENVKEY = "^[[:space:]]*(-[[:space:]]+)?[\"" q "]?env[\"" q "]?[[:space:]]*:" }
+    # flush: a step, or what lies outside any, read whole: env: may come before run: in it.
+    function flush(   i) {
+      for (i = 1; i <= nk; i++)
+        if (go) print "@names " K[i]; else print "line " L[i] " puts CHECKS_SKIP outside the step whose run: is go test"
+      nk = 0; go = 0; block = 0
+    }
+    /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
+    { match($0, /^[[:space:]]*/); ind = RLENGTH; dash = ($0 ~ /^[[:space:]]*-[[:space:]]/) }
+    # A step starts at a list item no deeper than the last, and ends at anything left of it. A list
+    # item deeper than that is inside the step.
+    dash && (!instep || ind <= si) { flush(); instep = 1; si = ind }
+    !dash && instep && ind <= si { flush(); instep = 0 }
+    # An env: alias or anchor carries a variable to a step this reading never sees it in, so neither
+    # appears in an env: value. A token, not a character: with ${{ }} expressions and quoted strings
+    # dropped, which YAML does not read as one, it starts a value or follows a space, { , or [.
+    envi >= 0 && ind <= envi { envi = -1 }
+    envi >= 0 || $0 ~ ENVKEY {
+      v = $0; sub(/^[^:]*:[[:space:]]*/, "", v); gsub(/[$][{][{][^}]*[}][}]/, "", v)
+      gsub(/"[^"]*"/, "", v); gsub(q "[^" q "]*" q, "", v); sub(/[[:space:]]+#.*$/, "", v)
+      if (v ~ /(^|[ {,\[])[&*]/) print "line " NR " holds an alias or anchor in an env: value, which could carry a CHECKS_SKIP to another step"
+    }
+    $0 ~ ENVKEY { match($0, /^[[:space:]]*(-[[:space:]]+)?/); envi = RLENGTH }
+    # The step whose run: IS go test, on the line of that key or as the first line of its block; not
+    # one that merely says it, and nothing before it that could set a variable by another spelling.
+    /^[[:space:]]*(-[[:space:]]+)?run:[[:space:]]*go test/ { go = 1; seen = 1 }
+    block { if ($0 ~ /^[[:space:]]*go test/) { go = 1; seen = 1 } block = 0 }
+    /^[[:space:]]*(-[[:space:]]+)?run:[[:space:]]*[|>][-+0-9]*[[:space:]]*$/ { block = 1 }
+    /CHECKS_SKIP/ {
+      if ($0 !~ FORM) print "line " NR " names CHECKS_SKIP in another form, which could reach Ubuntu, the leg a merge waits for"
+      else { s = $0; sub(/^[^&]*&& */, "", s); sub(/ *[|][|].*$/, "", s); gsub(q, "", s); K[++nk] = s; L[nk] = NR }
+    }
+    END { flush(); if (!seen) print "has no step whose run: is go test itself, so what its environment holds is not read" }' "$1" | while IFS= read -r _l; do
+      case $_l in
+        "@names "*)
+          for _n in ${_l#@names }; do
+            case " $CI_MACOS_ONCE " in *" $_n "*) ;; *) echo "leaves out $_n on macOS, which CI_MACOS_ONCE does not list, with its reason" ;; esac
+            [ -f "$REPO_DIR/$_n.sh" ] || echo "leaves out $_n, which this repo's set does not run, so macOS would not run it at all"
+          done ;;
+        *) printf '%s\n' "$_l" ;;
+      esac
+    done
+}
+out=$(ci_skip_problems "$CI")
+[ -z "$out" ] && ok "test.yml: a CHECKS_SKIP reaches only go test's step, only on macOS, and only names CI_MACOS_ONCE ($CI_MACOS_ONCE), which the process-checks step runs" \
+  || fail "test.yml's CHECKS_SKIP: $(printf '%s' "$out" | tr '\n' ';')"
+grep -qE '^ *CHECKS_SKIP: ' "$CI" || ok "SKIPPED the macOS skip: test.yml has none, so merge-guard runs three times on macOS too"
+grep -v '^ *CHECKS_SKIP: ' "$CI" > "$S/skip-none.yml"
+out=$(ci_skip_problems "$S/skip-none.yml")
+[ -z "$out" ] && ok "...and test.yml with no skip at all passes" || fail "test.yml with no skip at all: $(printf '%s' "$out" | tr '\n' ';')"
+# Falsified on workflows of their own, never a doctored test.yml: the reader is what is on trial, and
+# no case here holds an anchor on how test.yml spells a step today, so an edit to that file (its
+# name:, a timeout, a block run:, the order of its steps) reaches only the two readings above.
+nl='
+'
+form=$(printf '          CHECKS_SKIP: ${{ runner.os == %smacOS%s && %smerge-guard%s || %s%s }}' "'" "'" "'" "'" "'" "'")
+macos() { printf '          CHECKS_SKIP: ${{ runner.os == %smacOS%s && %s%s%s || %s%s }}' "'" "'" "'" "$1" "'" "'" "'"; }
+goenv="      - run: go test ./...$nl        env:"
+pc="      - name: process checks$nl        run: sh .claude/checks/run.sh"
+# skip_fx STEPS [TOP]: a workflow holding STEPS, TOP before its jobs; prints what the reader names.
+skip_fx() { printf '%s\njobs:\n  test:\n    steps:\n%s\n' "${2:-name: fx}" "$1" > "$S/skip-fx.yml"; ci_skip_problems "$S/skip-fx.yml"; }
+skip_bad() { [ -n "$(skip_fx "$2" "${3:-}")" ] && ok "falsified: $1 fails" || fail "falsified: $1 passes"; }
+skip_good() { _r=$(skip_fx "$2"); [ -z "$_r" ] && ok "...and $1 passes" || fail "$1 fails: $(printf '%s' "$_r" | tr '\n' ';')"; }
+skip_good "the form on go test's step" "$goenv$nl$form$nl$pc"
+skip_good "no skip" "      - run: go test ./...$nl$pc"
+skip_good "the process-checks step before go test" "$pc$nl$goenv$nl$form"
+skip_good "a go test step with a name:" "      - name: tests$nl        run: go test ./...$nl        env:$nl$form$nl$pc"
+skip_good "env: before run: in go test's step" "      - env:$nl$form$nl        run: go test -timeout 1h ./...$nl$pc"
+skip_good "a run: | block" "      - run: |$nl          go test -timeout=25m ./...$nl        env:$nl$form$nl$pc"
+skip_good "a run: >- block" "      - run: >-$nl          go test ./...$nl        env:$nl$form$nl$pc"
+skip_good "another env: value holding an expression's &&" "$goenv$nl$form$nl          X: \${{ a && b }}$nl$pc"
+skip_good "a quoted expression in an env: value" "$goenv$nl$form$nl          X: \"\${{ a && b }}\"$nl$pc"
+skip_good "a prefixed expression in an env: value" "$goenv$nl$form$nl          X: a-\${{ a && b }}$nl$pc"
+skip_good "a quoted glob in an env: value" "$goenv$nl$form$nl          GLOB: \"*.go\"$nl$pc"
+skip_good "a URL with & in an env: value" "$goenv$nl$form$nl          URL: https://x.test/?a=1&b=2$nl$pc"
+skip_good "a value with * inside it" "$goenv$nl$form$nl          RUN: -run=Test.*$nl$pc"
+skip_good "a nested list in go test's step" "      - run: go test ./...$nl        with:$nl          items:$nl            - a$nl        env:$nl$form$nl$pc"
+skip_bad "a skip with no empty value for the other legs" "$goenv$nl          CHECKS_SKIP: \${{ runner.os == 'macOS' && 'merge-guard' || 'merge-guard' }}$nl$pc"
+skip_bad "a job env: after go test's step, the last" "      - run: go test ./...$nl    env:$nl$form"
+skip_bad "a run: | block whose first line says go test" "      - run: |$nl          echo go test$nl        env:$nl$form$nl$pc"
+skip_bad "an alias under a quoted env key" "$goenv$nl$form$nl$pc$nl        \"env\": *e"
+# Only the existence test can name this one: CI_MACOS_ONCE lists it, as a list gone stale would.
+_cmo=$CI_MACOS_ONCE; CI_MACOS_ONCE="merge-guard no-such-check"
+skip_bad "a name CI_MACOS_ONCE lists and this repo's set does not run" "$goenv$nl$(macos 'merge-guard no-such-check')$nl$pc"
+CI_MACOS_ONCE=$_cmo
+skip_bad "a skip on every leg" "$goenv$nl          CHECKS_SKIP: merge-guard$nl$pc"
+skip_bad "a skip on Ubuntu" "$goenv$nl          CHECKS_SKIP: \${{ runner.os == 'Linux' && 'merge-guard' || '' }}$nl$pc"
+skip_bad "a skip read from the matrix" "$goenv$nl          CHECKS_SKIP: \${{ matrix.os == 'macos-latest' && 'merge-guard' || 'merge-guard' }}$nl$pc"
+skip_bad "a name this repo's set does not run" "$goenv$nl$(macos 'merge-guard no-such-check')$nl$pc"
+skip_bad "a real check CI_MACOS_ONCE does not list" "$goenv$nl$(macos change-tools)$nl$pc"
+skip_bad "the skip in the process-checks step" "      - run: go test ./...$nl$pc$nl        env:$nl$form"
+skip_bad "the skip in the workflow's env" "      - run: go test ./...$nl$pc" "name: fx${nl}env:$nl$form"
+skip_bad "the skip spelled apart in go test's command" "      - run: env CHECKS_\"SKIP\"=merge-guard go test ./...$nl$pc"
+skip_bad "a step that only says go test, holding the skip" "      - run: echo go test$nl        env:$nl$form$nl$pc"
+skip_bad "a block with something before go test, holding the skip" "      - run: |$nl          echo hi$nl          go test ./...$nl        env:$nl$form$nl$pc"
+skip_bad "an alias giving the process-checks step the skip" "      - run: go test ./...$nl        env: &e$nl$form$nl$pc$nl        env: *e"
+skip_bad "an alias in an env: value" "$goenv$nl$form$nl$pc$nl        env:$nl          ALSO: *e"
+skip_bad "a merge key in an env: block" "$goenv$nl$form$nl$pc$nl        env:$nl          <<: *e"
 finish
