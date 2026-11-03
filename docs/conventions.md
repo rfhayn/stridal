@@ -17,6 +17,15 @@ marked merged with it.
   however much work it is). `fix/<issue>-<slug>` for a defect, `ops/<name>` for tooling, docs and
   process, including the session-close PR. The prefixes are `BRANCH_*` in `.claude/project.conf`
   and the panel's `lanes` map; change them in both.
+- **A title names an issue; a closing keyword closes it.** GitHub's keywords (close, fix, resolve
+  and their forms: `Fix #<n>:`, `Closes GH-<n>`) close the issue when the merge lands on the default
+  branch, from the title, the PR body, the squash message or a branch commit that message copies.
+  Write one only when the PR finishes the issue; otherwise use a title with no keyword, naming `#<n>`
+  if needed. An issue labelled `team-queue` is an input its session closes: while it is open
+  `.claude/local/guard.d/team-queue.sh` refuses a keyword on it, and the PR that delivers it says so
+  in its squash body, `Delivers team-queue #<n>`, which session-start reads from commit bodies on
+  `origin/main`. A code span shelters a keyword in the PR body, once the merge sets a body of its
+  own. Whether GitHub skips one in commit text is not known, so the rule refuses it there.
 - **One PR carries the whole slice**: the change's artifacts, the implementation, and the spec
   promotion (archive), reviewed together.
 - **Squash-merge only.** Rebase-merging rewrites SHAs and auto-closes stacked PRs.
