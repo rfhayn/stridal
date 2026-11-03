@@ -1061,11 +1061,12 @@ case $ogc in "CANNOT CHECK"*) ok "common dir: change-cost with no transcript of 
 # build-change.js or merge-pr/SKILL.md, and a flag held in a variable, are not seen.
 # Nor are three contrived forms: a quoted ` # ` before the flag, a quoted `//` before it, a JS array split across lines.
 # Only the seeded rows run in a project: its own script is its own, and in the plugin this would read only its files.
+OGM=.claude   # spelt once: these name paths under a root ogscan is given, the plugin's project's too
 ogscan() {  # ogscan ROOT: "file:line" for each live line passing the flag; 2 for a root it cannot list
   _ogf=$(git -C "$1" ls-files -- .claude scripts/ci 2>/dev/null) && [ -n "$_ogf" ] || return 2
   ( cd "$1" || exit 2
     printf '%s\n' "$_ogf" | while IFS= read -r f; do
-      case $f in .claude/checks/* | .claude/local/* | .claude/workflows/build-change.js) continue ;; esac
+      case $f in "$OGM"/checks/* | "$OGM"/local/* | "$OGM"/workflows/build-change.js) continue ;; esac
       case ${f##*/} in
         *.sh) c=sh ;;
         *.js | *.mjs | *.cjs) c=js ;;
@@ -1088,30 +1089,30 @@ ogscan() {  # ogscan ROOT: "file:line" for each live line passing the flag; 2 fo
 OGD="$d/og-seed"; new_repo "$OGD"
 ogput() { mkdir -p "$OGD/$(dirname "$1")"; printf '%s\n' "$2" > "$OGD/$1"; }
 OGK='c=$(git rev-parse --path-format=absolute --git-dir)'
-ogput .claude/bin/tool "#!/bin/sh
+ogput "$OGM/bin/tool" "#!/bin/sh
 $OGK"
-ogput .claude/health/h.sh "$OGK"
-ogput .claude/lib/argc.sh '[ $# -gt 0 ] && git rev-parse --path-format=absolute --git-dir'
-ogput .claude/workflows/other.js 'const p = `git rev-parse --path-format=absolute --git-dir`'
-ogput .claude/lib/m.mjs 'const p = `git rev-parse --path-format=absolute --git-dir`'
-ogput .claude/lib/c.cjs 'const p = `git rev-parse --path-format=absolute --git-dir`'
-ogput .claude/lib/plain "$OGK"
-ogput .claude/lib/contcomment.sh "# a comment ending in a backslash \\
+ogput "$OGM/health/h.sh" "$OGK"
+ogput "$OGM/lib/argc.sh" '[ $# -gt 0 ] && git rev-parse --path-format=absolute --git-dir'
+ogput "$OGM/workflows/other.js" 'const p = `git rev-parse --path-format=absolute --git-dir`'
+ogput "$OGM/lib/m.mjs" 'const p = `git rev-parse --path-format=absolute --git-dir`'
+ogput "$OGM/lib/c.cjs" 'const p = `git rev-parse --path-format=absolute --git-dir`'
+ogput "$OGM/lib/plain" "$OGK"
+ogput "$OGM/lib/contcomment.sh" "# a comment ending in a backslash \\
 $OGK"
 ogput scripts/ci/cont.sh 'c=$(git rev-parse \
   --path-format=absolute --git-dir)'
 ogput scripts/ci/lib/x.sh "$OGK"
-ogput .claude/lib/comment.sh "# $OGK"
-ogput .claude/lib/trail.sh 'echo ok # git rev-parse --path-format=absolute'
-ogput .claude/skills/x/SKILL.md 'Run `git rev-parse --path-format=absolute`.'
-ogput .claude/skills/x/README.md "$OGK"
-ogput .claude/workflows/note.js '// git rev-parse --path-format=absolute'
-ogput .claude/checks/fixture.sh "$OGK"
-ogput .claude/local/own.sh "$OGK"
-ogput .claude/workflows/build-change.js 'const p = `git rev-parse --path-format=absolute --git-common-dir`'
+ogput "$OGM/lib/comment.sh" "# $OGK"
+ogput "$OGM/lib/trail.sh" 'echo ok # git rev-parse --path-format=absolute'
+ogput "$OGM/skills/x/SKILL.md" 'Run `git rev-parse --path-format=absolute`.'
+ogput "$OGM/skills/x/README.md" "$OGK"
+ogput "$OGM/workflows/note.js" '// git rev-parse --path-format=absolute'
+ogput "$OGM/checks/fixture.sh" "$OGK"
+ogput "$OGM/local/own.sh" "$OGK"
+ogput "$OGM/workflows/build-change.js" 'const p = `git rev-parse --path-format=absolute --git-common-dir`'
 git -C "$OGD" add -A .
 ogeq "the class guard finds each seeded live line, and no comment, prose or fixture" \
-  ".claude/bin/tool:2 .claude/health/h.sh:1 .claude/lib/argc.sh:1 .claude/lib/c.cjs:1 .claude/lib/contcomment.sh:2 .claude/lib/m.mjs:1 .claude/workflows/other.js:1 scripts/ci/cont.sh:1 scripts/ci/lib/x.sh:1 " \
+  "$OGM/bin/tool:2 $OGM/health/h.sh:1 $OGM/lib/argc.sh:1 $OGM/lib/c.cjs:1 $OGM/lib/contcomment.sh:2 $OGM/lib/m.mjs:1 $OGM/workflows/other.js:1 scripts/ci/cont.sh:1 scripts/ci/lib/x.sh:1 " \
   "$(ogscan "$OGD" | tr '\n' ' ')"
 new_repo "$d/og-empty"
 for ogcase in "a root it cannot enter:$d/og-absent" "a directory that is no repository:$OGE" "a repository with nothing tracked:$d/og-empty"; do
