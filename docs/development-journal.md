@@ -20,7 +20,7 @@ entries with one number on `main`.
 
 **Rows folded.** OPS-222 (#407); OPS-225 (#404); OPS-227 (#404, also closes OPS-239); OPS-228 (#404); OPS-231 (#404); OPS-240 (#407); OPS-241 (#407).
 
-**What happened.** The session planned to run OPS-218 first and instead landed the small rows, in two gates, after the owner agreed the re-cut. It took all day: the small rows needed three to five review rounds each. Full gates were 29 and 25 minutes (the Totals line above reads a floor, as the fragments' fields were CANNOT CHECK).
+**What happened.** The session planned to run OPS-218 first and instead landed the small rows, in two gates, after the owner agreed the re-cut. It took all day: the small rows needed two to five review rounds each. Full gates were 29 and 25 minutes (the Totals line above reads a floor, as the fragments' fields were CANNOT CHECK).
 - #404: OPS-227, OPS-228, OPS-225, OPS-231, OPS-239 and the plan, with OPS-218 split into OPS-232 to OPS-237 and OPS-218 last, and rows OPS-238, OPS-242 and OPS-243.
 - #407: OPS-222, OPS-241 and OPS-240, with rows OPS-244, OPS-245, OPS-246 and outcome check `o.12`.
 - On the owner's decisions: OPS-227's rule moved to the local layer; OPS-225, OPS-222 and OPS-240 each ended past a review cap, or with a last small fix unreviewed, as each row's Review line and #404's and #407's bodies state.
@@ -35,7 +35,7 @@ entries with one number on `main`.
 
 Team queue: #397 → OPS-240 open (#407): it stays open until `o.12` is read, and its body has no `Content-SHA256` line, so it reads UNAPPROVED.
 
-**Compound.** Three insights added; one marked an instance of PRAC-0014. The older Raw rows wait, none past its limit.
+**Compound.** Eleven insights joined the log, three from this close; one of those is marked an instance of PRAC-0014. The older Raw rows wait, none past its limit.
 
 **What's next.** S25: OPS-246, then a review of OPS-218's design, then OPS-232 onward, as `docs/roadmap.md`'s plan says. Read main's macOS timing first: `o.12` owns it, and OPS-244 and OPS-245 are queued for S26. OPS-222's and OPS-241's changes have not yet run on a macOS runner.
 
