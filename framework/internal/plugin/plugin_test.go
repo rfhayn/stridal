@@ -139,15 +139,8 @@ func build(t *testing.T) string {
 	}
 	src := filepath.Join(sharedBuild.dir, "plugin")
 	out := filepath.Join(t.TempDir(), "plugin")
-	if err := os.CopyFS(out, os.DirFS(src)); err != nil {
-		t.Fatal(err)
-	}
-	// CopyFS applies the umask, and Build sets exact modes: each entry takes its source's.
+	// An executable goes through testbin, with no fork while it is open (its package says why).
 	err := filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		info, err := d.Info()
 		if err != nil {
 			return err
 		}
@@ -155,7 +148,25 @@ func build(t *testing.T) string {
 		if err != nil {
 			return err
 		}
-		return os.Chmod(filepath.Join(out, rel), info.Mode().Perm())
+		dst := filepath.Join(out, rel)
+		if d.IsDir() {
+			return os.MkdirAll(dst, 0o755)
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		body, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		if info.Mode()&0o111 != 0 {
+			return testbin.WriteFile(dst, string(body))
+		}
+		if err := os.WriteFile(dst, body, 0o644); err != nil {
+			return err
+		}
+		return os.Chmod(dst, 0o644)
 	})
 	if err != nil {
 		t.Fatal(err)
