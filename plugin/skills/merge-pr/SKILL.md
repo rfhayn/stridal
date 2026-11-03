@@ -99,16 +99,25 @@ too. `gh pr checks` cannot see a dispatched run; poll `gh run list --workflow <f
 
 - **Gate failed**: STOP. The fix is code, not a merge flag.
 - **A reported check is red**: STOP; the guard blocks on anything reported and not passing.
-- **A required check has not reported or is not green**: the project names the PR checks a merge
+- **A required check has not reported or is not green, or the PR is a draft**: the project names the PR checks a merge
   waits for in `GATE_PR_CHECKS` (`.claude/project.conf`; empty = none). The guard blocks until each
-  has reported and passed on the head. When the Context block's PR line says `draft`, run
-  `gh pr ready <n>` first (where CI skips drafts, that starts it). Then read `gh pr checks <n>`:
-  every required name passed on the head (a bare name skipped beside its matrix job's pass counts,
-  as the guard reads it), go on; one pending, `gh pr checks <n> --watch`; none passed or pending
-  yet (a draft's skipped run leaves the bare name `skipping`: that is not yet, not red), poll
-  until one is, and if none appears within five minutes STOP and compare
-  `GATE_PR_CHECKS` with the names gh shows (or CI is not running: billing, disabled workflows).
-  If it says gh itself failed, fix gh (`gh auth status`): that is not CI.
+  has reported and passed on the head. A watch proves nothing about a check that never started, and
+  `gh pr ready` right after a push can leave the head with none, so first run
+  `stridal-model skills/merge-pr/ci-started.sh <n>` (allow it five minutes: give the tool that timeout).
+  It marks a draft ready, waits for each required name to report on the head as anything but
+  skipped, neutral or cancelled, and toggles draft and ready only for a name the head holds as one of
+  those, or a head with no checks at all, with nothing live on it.
+  Exit 1: STOP and read its message: a name absent means compare `GATE_PR_CHECKS` with the names it
+  prints, and a name still skipped after the toggles means a person must read why.
+  Exit 3: read its message: gh or the config stopped it, which says nothing about CI.
+  Exit 4: a name has not started and something is live. A check is live: `gh pr checks <n> --watch`,
+  then run it again, once; a second exit 4 is a STOP, as exit 1.
+  Only a run with no check yet is live, as its message says, and a watch would end at once:
+  `gh run list --commit <head>` until it has jobs, then run it again; that does not count as the second.
+  Exit 0 names what started, and any run live on the head that `gh pr checks` may not show yet: wait
+  for that as its message says. Then read `gh pr checks <n>`: every required name passed on the head (a
+  bare name skipped beside its matrix job's pass counts, as the guard reads it), go on; one pending,
+  `gh pr checks <n> --watch`, and read again when it ends.
 
 ### 2b. The slice line (change PRs only)
 Find the change from the PR's own diff (`git diff --name-only origin/main...HEAD` under

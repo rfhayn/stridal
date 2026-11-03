@@ -13,6 +13,7 @@
 #   health_sandbox_writes          the sandbox-writes health line: what this session's sandbox refused
 #   health_coauthor LINE           the coauthor-trailers health line: a Co-authored-by trailer on
 #                                  origin/<main> while attribution is off (local git, no gh)
+#   health_git_floor               the git-floor health line: the git on PATH against the model's floor
 #
 # The two GitHub health lines report FACTS and name their SUBJECT (the run's commit, date and URL); neither
 # draws a conclusion the facts do not carry, and neither ever degrades to silence: a lookup that
@@ -415,6 +416,28 @@ health_sandbox_writes() {
   [ -z "$_sw_absent" ] || _sw_note="$_sw_note; not there: $_sw_absent"
   if [ -n "$_sw_refused" ]; then echo "OK a write was refused at: $_sw_refused$_sw_note"
   else echo "NOT PROVEN nothing was refused, so what a session cannot write was not tested$_sw_note"; fi
+}
+
+# health_git_floor: is the git on PATH at the floor? The model calls `git rev-parse --path-format`
+# (2.31), and below it a blocking hook can quietly stop recognising paths rather than erroring
+# (OPS-231). `stridal doctor` holds the same floor for a machine with the binary (checkGitFloor);
+# framework/internal/cmd/doctor_gitfloor_test.go runs one table of versions through both. The version
+# is compared as numbers, read past whatever a distributor adds after the minor
+# ("2.54.0 (Apple Git-157)"), and up to six digits each, so what cannot be compared is not read.
+health_git_floor() {
+  _gf_floor_major=2; _gf_floor_minor=31; _gf_floor=$_gf_floor_major.$_gf_floor_minor
+  _gf_git=$(command -v git 2>/dev/null) || { echo "CANNOT CHECK — git is not on PATH; the floor $_gf_floor is UNKNOWN, not healthy"; return 0; }
+  _gf_out=$(git --version 2>/dev/null) || { echo "CANNOT CHECK — git --version failed; the floor $_gf_floor is UNKNOWN, not healthy"; return 0; }
+  _gf_nums=$(printf '%s\n' "$_gf_out" | sed -n '1s/^git version \([0-9]\{1,6\}\)\.\([0-9]\{1,6\}\)\([^0-9].*\)\{0,1\}$/\1 \2/p')
+  _gf_first=$(printf '%s\n' "$_gf_out" | sed -n '1p')
+  [ -n "$_gf_nums" ] || { echo "CANNOT CHECK — git --version printed \"$_gf_first\"; the floor $_gf_floor is UNKNOWN, not healthy"; return 0; }
+  _gf_major=${_gf_nums% *}; _gf_minor=${_gf_nums#* }
+  _gf_subject="git ${_gf_first#git version } at $_gf_git"
+  if [ "$_gf_major" -gt "$_gf_floor_major" ] || { [ "$_gf_major" -eq "$_gf_floor_major" ] && [ "$_gf_minor" -ge "$_gf_floor_minor" ]; }; then
+    echo "OK $_gf_subject, at or above the floor $_gf_floor"
+  else
+    echo "FAILED $_gf_subject is below the floor $_gf_floor: the model calls \`git rev-parse --path-format\`, and below it a blocking hook can quietly stop recognising paths; upgrade git"
+  fi
 }
 
 # health_coauthor LINE: no commit on origin/<main> after a baseline carries a Co-authored-by
