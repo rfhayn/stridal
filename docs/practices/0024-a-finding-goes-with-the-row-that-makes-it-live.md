@@ -1,6 +1,6 @@
 # PRAC 0024: A finding that cannot fire yet goes with the row that makes it live
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-11-02
 - **Tags**: review, process, planning
 - **Source**: S22, OPS-184's launcher; the insights-log row *hardening code that nothing runs*
