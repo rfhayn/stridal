@@ -25,7 +25,7 @@ entries with one number on `main`.
 - #407: OPS-222, OPS-241 and OPS-240, with rows OPS-244, OPS-245, OPS-246 and outcome check `o.12`.
 - On the owner's decisions: OPS-227's rule moved to the local layer; OPS-225, OPS-222 and OPS-240 each ended past a review cap, or with a last small fix unreviewed, as each row's Review line and #404's and #407's bodies state.
 - OPS-218's design went to the owner before it had an independent review, against what `propose` holds for a change. The review then found gaps touching decisions 2, 3 and 6. They are recorded under *Open in this design*, and a review before OPS-234 settles them. No code rests on them.
-- Seen working on real GitHub for the first time: `ci-started.sh` readied #407 and reported its run. Not yet seen: a real toggle. `.claude/local/guard.d/team-queue.sh` ran on #407's merge, and the merge passed.
+- Seen working on real GitHub for the first time: `ci-started.sh` readied #407 and reported its run. Not yet seen: a real toggle. #407 merged with `.claude/local/guard.d/team-queue.sh` on main; the guard's output did not name the rule, so that it ran is not shown.
 - GO-2026-6809 is fixed on main; `v0.1.0-rc.1`'s engines predate it.
 - A due outcome check never reached session-start until OPS-240: `o.8` shows from 2026-11-05.
 
