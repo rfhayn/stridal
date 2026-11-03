@@ -8,8 +8,9 @@ here without reading three troubleshooting lists.
 ## Requirements
 ### Requirement: Report the machine's setup
 WHEN a user runs `stridal doctor` THE SYSTEM SHALL report every tool the prerequisites list
-names, whether the binary finds a template it can use, whether `gh` is signed in, and on macOS
-the panel's state, each problem with a fix that works where it is printed.
+names, whether the git on `PATH` meets the model's floor, whether the binary finds a template it
+can use, whether `gh` is signed in, and on macOS the panel's state, each problem with a fix that
+works where it is printed.
 
 #### Scenario: [DOCTOR-1-S1] A missing required tool fails, with its install hint
 - **GIVEN** a `PATH` without `jq`
@@ -66,6 +67,15 @@ the panel's state, each problem with a fix that works where it is printed.
 - **AND** no panel line warns or fails
 - **AND** in a repository with no `panel.json`, the note names `stridal panel init --project
   <main checkout>` before `panel install`
+
+#### Scenario: [DOCTOR-1-S8] A git below the model's floor warns, and does not fail
+- **GIVEN** a `PATH` whose `git --version` prints `git version 2.30.2`
+- **WHEN** the user runs `stridal doctor`
+- **THEN** a warning, under a subject of its own (`git-floor`), names that version, the floor 2.31
+  and why the model needs it, with where to get a newer git
+- **AND** doctor exits 0
+- **AND** with `git version 2.54.0 (Apple Git-157)` the same subject is ok, and with output it
+  cannot read as a version it is a note, never ok
 
 ### Requirement: Report the project's setup
 WHEN `stridal doctor` runs inside a git repository THE SYSTEM SHALL report whose operating
