@@ -1418,6 +1418,191 @@ for h in "$H"/*.sh; do
     && ok "$(basename "$h") tests for conf.sh before sourcing it" || fail "$(basename "$h") sources conf.sh without testing it exists first (a dash exit 2 reads as a block)"
 done
 
+# ── reading the git common dir (OPS-241) ───────────────────────────────────────────────
+# Below 2.31 rev-parse does not know --path-format: it echoes the flag, answers the rest (a main
+# checkout's common dir relative, `.git`) and exits 0. Output that is no path read as an answer made
+# each guard here allow and each reader here wrong, so these sites no longer pass the flag and resolve
+# git's relative answer themselves. Each row runs under an EMULATION: a stub on PATH, whose output for
+# these commands matched a real 2.30.9 build in OPS-241's record, which ran each site on that build
+# too. A site that passes the flag again hears the old answer. The rows with CDPATH and through a symlink
+# hold the relative answer on any git: a `cd .git` must not land in another repository, and git answers
+# from the physical directory, so a logical `..` from a symlink walks the link's parents.
+OGB="$d/oldgit"; mkdir -p "$OGB"
+cat > "$OGB/git" <<EOF
+#!/bin/sh
+case " \$* " in
+  *" rev-parse "*"--path-format=absolute "*)
+    echo --path-format=absolute
+    n=\$#
+    while [ "\$n" -gt 0 ]; do a=\$1; shift; [ "\$a" = --path-format=absolute ] || set -- "\$@" "\$a"; n=\$((n - 1)); done ;;
+esac
+exec "$(command -v git)" "\$@"
+EOF
+chmod +x "$OGB/git"; OGP="$OGB:$PATH"
+OG="$d/og"; new_repo "$OG"; mkdir -p "$OG/src/deep"; echo x > "$OG/src/deep/app.ts"
+git -C "$OG" add src && git -C "$OG" commit -qm seed; OG=$(cd "$OG" && pwd -P)
+git -C "$OG" worktree add -q -b og-lane "$d/og-wt" 2>/dev/null; OGW=$(cd "$d/og-wt" && pwd -P)
+OGE="$d/og-else"; OGT="$d/og-tmp"; mkdir -p "$OGE" "$OGT"
+OGC="$d/og-cdpath"; new_repo "$OGC"; git -C "$OGC" commit -q --allow-empty -m seed   # CDPATH's lure: a .git of its own
+OGC=$(cd "$OGC" && pwd -P)
+ln -s src/deep "$OG/lnk"; mkdir -p "$d/og-x/a/b/c"; ln -s "$OG/src/deep" "$d/og-x/a/b/c/lnk"; OGX="$d/og-x/a/b/c/lnk"
+ln -s "$OG/src" "$OGC/lure"; OGL="$OGC/lure"   # a symlink's logical parent with a .git of its own, and git answers ../.git
+[ "$(PATH=$OGP; git -C "$OG" rev-parse --path-format=absolute --git-common-dir | tr '\n' ' ')" = "--path-format=absolute .git " ] \
+  && ok "common dir: the stub answers as the old git does, so the rows below are about that answer" \
+  || fail "common dir: the stub no longer echoes the flag, so the rows below prove nothing"
+
+ognb() {  # ognb WANT LABEL COMMAND CWD [HOOK'S CWD [CDPATH]]
+  rc=0; payload "$3" "$4" | (cd "${5:-$4}" && CDPATH="${6:-}" PATH="$OGP" sh "$H/no-blind-source-rewrite.sh") >/dev/null 2>&1 || rc=$?
+  expect_rc "$1" "$rc" "common dir: no-blind-source-rewrite $( [ "$1" = 2 ] && echo blocks || echo allows ): $2"
+}
+ognb 2 "a hook run from elsewhere, an absolute path" "sed -i '' s/a/b/ $OG/src/deep/app.ts" "$OG" "$OGE"
+ognb 2 "from the main checkout into a linked worktree, under CDPATH" "sed -i '' s/a/b/ $OGW/src/deep/app.ts" "$OG" "$OG" "$OGC"
+ognb 2 "with the cwd an in-repo symlink of another depth" "sed -i '' s/a/b/ app.ts" "$OG/lnk"
+ognb 2 "through an external symlink of another depth" "sed -i '' s/a/b/ $OGX/app.ts" "$OG"
+ognb 2 "a glob through that in-repo symlink" "sed -i '' s/a/b/ lnk/*.ts" "$OG"
+
+# A guard's state is read from the same place whichever directory the hook runs in. The old answer
+# made it a relative name, so a hold or a task recorded from one directory was not there from another.
+ogcd() {  # ogcd WANT LABEL PAYLOAD HOOK'S-CWD [PROJECT]
+  rc=0; ogcd_out=$(printf '%s' "$3" | (cd "$4" && CDPATH="${OG_CDPATH:-}" CLAUDE_PROJECT_DIR="${5:-$OG}" TMPDIR="$OGT" PATH="$OGP" sh "$H/cd-guard.sh") 2>&1) || rc=$?
+  [ "$1" = - ] && return 0   # a recording call: the row after it reads what it wrote
+  [ "$1" = 2 ] && [ "$rc" = 2 ] && case $ogcd_out in *"BLOCKED by cd-guard"*) ;; *) rc="2 without its refusal text" ;; esac
+  expect_rc "$1" "$rc" "common dir: cd-guard $2"
+}
+ogw() { jq -cn --arg s "$1" --arg c "$OGW" '{hook_event_name:"PostToolUse", session_id:$s, cwd:$c, tool_name:"Workflow", tool_input:{name:"build-change"}, tool_response:{status:"async_launched", taskId:"t1", runId:"r1", workflowName:"build-change"}}'; }
+ogb() { jq -cn --arg s "$1" --arg c "$OGW" '{hook_event_name:"PreToolUse", session_id:$s, cwd:$c, tool_name:"Bash", tool_input:{command:"cd /"}}'; }
+ogcd - "" "$(ogw og1)" "$OGW"
+ogcd 2 "refuses the cd out, with the hook run from the main checkout" "$(ogb og1)" "$OG"
+[ -f "$OG/.git/stridal-cd-guard/og1/holds/t1" ] && ok "common dir: cd-guard's hold is under the git common dir" || fail "common dir: cd-guard's hold is not under $OG/.git"
+ogcd - "" "$(ogw og2)" "$OGW" "$OGE"
+ogcd 2 "refuses the cd out, reading the temporary directory" "$(ogb og2)" "$OG" "$OGE"
+[ -f "$OGT/stridal-cd-guard/og2/holds/t1" ] && ok "cd-guard outside a repository keeps its hold in the temporary directory" || fail "cd-guard outside a repository: no hold under TMPDIR"
+OG_CDPATH=$OGC; ogcd - "" "$(ogw og3)" "$OGW"; OG_CDPATH=
+[ -f "$OG/.git/stridal-cd-guard/og3/holds/t1" ] && ok "common dir: cd-guard's hold under CDPATH stays in this repository" || fail "common dir: cd-guard's hold under CDPATH is not under $OG/.git"
+ogcd - "" "$(ogw og4)" "$OGW" "$OGL"
+[ -f "$OG/.git/stridal-cd-guard/og4/holds/t1" ] && ok "common dir: cd-guard's hold through a symlink stays in this repository" || fail "common dir: cd-guard's hold through a symlink is not under $OG/.git"
+
+ognw() {  # ognw WANT LABEL PAYLOAD HOOK'S-CWD [PROJECT]
+  rc=0; ognw_out=$(printf '%s' "$3" | (cd "$4" && CDPATH="${OG_CDPATH:-}" CLAUDE_PROJECT_DIR="${5:-$OG}" TMPDIR="$OGT" PATH="$OGP" sh "$H/no-silent-wait.sh") 2>&1) || rc=$?
+  [ "$1" = - ] && return 0   # a recording call: the row after it reads what it wrote
+  [ "$1" = 2 ] && [ "$rc" = 2 ] && case $ognw_out in *"BLOCKED by no-silent-wait"*) ;; *) rc="2 without its refusal text" ;; esac
+  expect_rc "$1" "$rc" "common dir: no-silent-wait $2"
+}
+OGS="$d/og-sess"; mkdir -p "$OGS/scratchpad" "$OGS/tasks"; printf 'partial\n' > "$OGS/tasks/t1.output"
+ogr() { jq -cn --arg s "$1" --arg sp "$OGS/scratchpad" '{hook_event_name:"PostToolUse", session_id:$s, agent_id:"a1", scratchpad_dir:$sp, tool_name:"Bash", tool_input:{command:"make"}, tool_response:{backgroundTaskId:"t1"}}'; }
+ogq() { jq -cn --arg s "$1" --arg sp "$OGS/scratchpad" '{hook_event_name:"SubagentStop", session_id:$s, agent_id:"a1", scratchpad_dir:$sp, background_tasks:[{id:"t1", type:"shell", status:"running", command:"make"}]}'; }
+ognw - "" "$(ogr og1)" "$OGW"
+ognw 2 "refuses the stop, with the hook run from the main checkout" "$(ogq og1)" "$OG"
+[ -f "$OG/.git/stridal-wait/og1/tasks/a1" ] && ok "common dir: no-silent-wait's record is under the git common dir" || fail "common dir: no-silent-wait's record is not under $OG/.git"
+ognw - "" "$(ogr og2)" "$OGW" "$OGE"
+ognw 2 "refuses the stop, reading the temporary directory" "$(ogq og2)" "$OG" "$OGE"
+[ -f "$OGT/stridal-wait/og2/tasks/a1" ] && ok "no-silent-wait outside a repository keeps its record in the temporary directory" || fail "no-silent-wait outside a repository: no record under TMPDIR"
+OG_CDPATH=$OGC; ognw - "" "$(ogr og3)" "$OGW"; OG_CDPATH=
+[ -f "$OG/.git/stridal-wait/og3/tasks/a1" ] && ok "common dir: no-silent-wait's record under CDPATH stays in this repository" || fail "common dir: no-silent-wait's record under CDPATH is not under $OG/.git"
+ognw - "" "$(ogr og4)" "$OGW" "$OGL"
+[ -f "$OG/.git/stridal-wait/og4/tasks/a1" ] && ok "common dir: no-silent-wait's record through a symlink stays in this repository" || fail "common dir: no-silent-wait's record through a symlink is not under $OG/.git"
+
+# The readers. Each gives the answer it gives on a current git, not a degraded one.
+ogeq() {  # ogeq LABEL WANT GOT
+  [ "$2" = "$3" ] && ok "common dir: $1" || fail "common dir: $1: got '$3', want '$2'"
+}
+ogff() { (cd "$1" && CDPATH="${3:-}" PATH="$OGP" ROOT="$ROOT" STRIDAL_FW="$STRIDAL_FW" sh -c '. "$STRIDAL_FW/lib/conf.sh" && focus_file main ${1:+"$1"}' sh "${2:-}" 2>&1); }
+OGF="$OG/.git/$BRAND_NAME/focus-main.txt"
+ogeq "focus_file given a subdirectory" "$OGF" "$(ogff "$OGE" "$OG/src")"
+ogeq "focus_file under CDPATH" "$OGF" "$(ogff "$OG" "" "$OGC")"
+ogeq "focus_file given a symlink" "$OGF" "$(ogff "$OGE" "$OGL")"
+ogum() { (. "$STRIDAL_FW/lib/usage.sh"; ROOT=$1; CDPATH=${2:-}; PATH=$OGP; usage_main 2>&1); }
+ogeq "usage_main under CDPATH" "$OG" "$(ogum "$OG" "$OGC")"
+ogeq "usage_main with ROOT a symlink" "$OG" "$(ogum "$OGL")"
+ogsw() { (. "$STRIDAL_FW/lib/health.sh"; HOME=$OGE; ROOT=$1; TMPDIR=/nonexistent/tmp; CDPATH=${2:-}; PATH=$OGP; unset CLAUDE_CONFIG_DIR CLAUDE_CODE_PLUGIN_CACHE_DIR
+  health_probe_write() { echo refused; }; health_sandbox_writes 2>&1); }
+ogsr() {  # ogsr LABEL ROOT [CDPATH]
+  case $(ogsw "$2" "${3:-}") in
+    *"git's config ($OG/.git/config), git's hooks ($OG/.git/hooks)"*) ok "common dir: sandbox-writes tries this repository's git config and hooks, $1" ;;
+    *) fail "common dir: sandbox-writes, $1: $(ogsw "$2" "${3:-}")" ;;
+  esac
+}
+ogsr "under CDPATH" "$OG" "$OGC"
+ogsr "with ROOT a symlink" "$OGL"
+# A wrong main checkout matched every project's transcripts, or none, and printed "cost $0": a figure.
+OGJ="$d/og-proj"; mkdir -p "$OGJ/-other"
+printf '{"gitBranch":"%s","sessionId":"s","cwd":"/x"}\n' "${BRANCH_CHANGE}og241" > "$OGJ/-other/s.jsonl"
+ogc=$(CLAUDE_PROJECTS_DIR="$OGJ" PATH="$OGP" sh "$STRIDAL_FW/change-cost.sh" og241 2>&1)
+case $ogc in "CANNOT CHECK"*) ok "common dir: change-cost with no transcript of its own says CANNOT CHECK" ;; *) fail "common dir: change-cost gave a reading: $ogc" ;; esac
+
+# The class: a site added later that passes the flag again is the same fail-open. The authority is git's
+# list of the model's shell and JS, `\` continuations joined, comments off; prose is not read, so
+# merge-pr/SKILL.md, where the floor stays with build-change.js's preflight, needs no exception. The
+# checks hold fixtures and .claude/local/ is this repo's own tooling. Stated limits: a second read in
+# build-change.js or merge-pr/SKILL.md, and a flag held in a variable, are not seen.
+# Nor are three contrived forms: a quoted ` # ` before the flag, a quoted `//` before it, a JS array split across lines.
+# Only the seeded rows run in a project: its own script is its own, and in the plugin this would read only its files.
+OGM=.claude   # spelt once: these name paths under a root ogscan is given, the plugin's project's too
+ogscan() {  # ogscan ROOT: "file:line" for each live line passing the flag; 2 for a root it cannot list
+  _ogf=$(git -C "$1" ls-files -- .claude scripts/ci 2>/dev/null) && [ -n "$_ogf" ] || return 2
+  ( cd "$1" || exit 2
+    printf '%s\n' "$_ogf" | while IFS= read -r f; do
+      case $f in "$OGM"/checks/* | "$OGM"/local/* | "$OGM"/workflows/build-change.js) continue ;; esac
+      case ${f##*/} in
+        *.sh) c=sh ;;
+        *.js | *.mjs | *.cjs) c=js ;;
+        *.*) continue ;;
+        *) head -n 1 "$f" 2>/dev/null | grep -q '^#!.*sh' || continue; c=sh ;;
+      esac
+      awk -v f="$f" -v c="$c" '
+        function judge(l) {
+          if (c == "js") sub(/(^|[^:])\/\/.*/, "", l); else sub(/(^|[[:space:]])#.*/, "", l)
+          if (l ~ /rev-parse.*--path-format/) print f ":" start
+        }
+        {
+          if (buf == "") { start = FNR; if (c == "sh" && $0 ~ /^[[:space:]]*#/) next }
+          if ($0 ~ /\\$/) { l = $0; sub(/\\$/, " ", l); buf = buf l; next }
+          judge(buf $0); buf = ""
+        }
+        END { if (buf != "") judge(buf) }' "$f" 2>/dev/null || :
+    done )
+}
+OGD="$d/og-seed"; new_repo "$OGD"
+ogput() { mkdir -p "$OGD/$(dirname "$1")"; printf '%s\n' "$2" > "$OGD/$1"; }
+OGK='c=$(git rev-parse --path-format=absolute --git-dir)'
+ogput "$OGM/bin/tool" "#!/bin/sh
+$OGK"
+ogput "$OGM/health/h.sh" "$OGK"
+ogput "$OGM/lib/argc.sh" '[ $# -gt 0 ] && git rev-parse --path-format=absolute --git-dir'
+ogput "$OGM/workflows/other.js" 'const p = `git rev-parse --path-format=absolute --git-dir`'
+ogput "$OGM/lib/m.mjs" 'const p = `git rev-parse --path-format=absolute --git-dir`'
+ogput "$OGM/lib/c.cjs" 'const p = `git rev-parse --path-format=absolute --git-dir`'
+ogput "$OGM/lib/plain" "$OGK"
+ogput "$OGM/lib/contcomment.sh" "# a comment ending in a backslash \\
+$OGK"
+ogput scripts/ci/cont.sh 'c=$(git rev-parse \
+  --path-format=absolute --git-dir)'
+ogput scripts/ci/lib/x.sh "$OGK"
+ogput "$OGM/lib/comment.sh" "# $OGK"
+ogput "$OGM/lib/trail.sh" 'echo ok # git rev-parse --path-format=absolute'
+ogput "$OGM/skills/x/SKILL.md" 'Run `git rev-parse --path-format=absolute`.'
+ogput "$OGM/skills/x/README.md" "$OGK"
+ogput "$OGM/workflows/note.js" '// git rev-parse --path-format=absolute'
+ogput "$OGM/checks/fixture.sh" "$OGK"
+ogput "$OGM/local/own.sh" "$OGK"
+ogput "$OGM/workflows/build-change.js" 'const p = `git rev-parse --path-format=absolute --git-common-dir`'
+git -C "$OGD" add -A .
+ogeq "the class guard finds each seeded live line, and no comment, prose or fixture" \
+  "$OGM/bin/tool:2 $OGM/health/h.sh:1 $OGM/lib/argc.sh:1 $OGM/lib/c.cjs:1 $OGM/lib/contcomment.sh:2 $OGM/lib/m.mjs:1 $OGM/workflows/other.js:1 scripts/ci/cont.sh:1 scripts/ci/lib/x.sh:1 " \
+  "$(ogscan "$OGD" | tr '\n' ' ')"
+new_repo "$d/og-empty"
+for ogcase in "a root it cannot enter:$d/og-absent" "a directory that is no repository:$OGE" "a repository with nothing tracked:$d/og-empty"; do
+  rc=0; ogscan "${ogcase#*:}" >/dev/null 2>&1 || rc=$?
+  expect_rc 2 "$rc" "common dir: the class guard fails on ${ogcase%%:*}, and does not read it as clean"
+done
+if [ -d "$ROOT/framework/internal/template" ]; then
+  rc=0; ogl=$(ogscan "$ROOT") && ogl2=$(ogscan "$ROOT/template") || rc=$?
+  ogl="$ogl${ogl2:+ $(printf '%s\n' "$ogl2" | sed 's|^|template/|')}"
+  if [ "$rc" != 0 ]; then fail "the class guard could not list the model's files here, so it read nothing"
+  elif [ -z "$ogl" ]; then ok "no shell or JS of the model passes rev-parse --path-format, but build-change's preflight"
+  else fail "rev-parse --path-format reads as an answer below git 2.31, whose rev-parse echoes the flag with exit 0: $ogl"; fi
+fi
+
 # ── no forced worktree removal, no pattern kill (ST-14) ────────────────────────────────────────
 wt() {
   rc=0; printf '%s' "$2" | sh "$H/no-worktree-force-remove.sh" >/dev/null 2>&1 || rc=$?

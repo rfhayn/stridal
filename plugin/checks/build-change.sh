@@ -283,8 +283,8 @@ attack "the REVIEW schema mutated after its line" "REVIEW as evaluated"
 #             the reviewer is asked for the group of each finding.
 #   checkout  the run stops in the MAIN checkout (comparing gitDir and commonDir itself, trailing
 #             slash normalised), starts no agent after preflight there, honours allowMainCheckout
-#             only with resume, refuses a preflight that did not report the paths, and pins every
-#             later agent to the toplevel preflight recorded.
+#             only with resume, refuses a preflight that did not report the paths or whose commonDir
+#             is no absolute path, and pins every later agent to the toplevel preflight recorded.
 cat > "$d/driver.js" <<'EOF'
 const fs = require('fs')
 const SCRIPT = fs.readFileSync(process.argv[2], 'utf8')
@@ -358,6 +358,18 @@ const t = (label, cond, got) => out.push(`${cond ? 'ok  ' : 'FAIL'} driver: ${la
   t('...allowMainCheckout with resume does', !/MAIN checkout/.test(r.report.reason || ''), r.report.reason)
   r = await run([], { where: { gitDir: '', commonDir: '', toplevel: '' } })
   t('a preflight that did not report the paths is refused', /did not report gitDir/.test(r.report.reason || ''), r.report.reason)
+  // OPS-241. The first two are what real git 2.30.9 printed for this preflight's command, in the main
+  // checkout (where gitDir is still absolute, so the old comparison read a worktree) and in a lane.
+  for (const [what, where, args] of [
+    ['the main checkout below git 2.31', { gitDir: '/repo/.git', commonDir: '--path-format=absolute\n.git', toplevel: '/repo' }, {}],
+    ['a lane below git 2.31', { gitDir: '/repo/.git/worktrees/x', commonDir: '--path-format=absolute\n/repo/.git', toplevel: '/repo/wt' }, {}],
+    ['the main checkout below git 2.31, with allowMainCheckout and resume', { gitDir: '/repo/.git', commonDir: '--path-format=absolute\n.git', toplevel: '/repo' }, { allowMainCheckout: true, resume: 3 }],
+    ['a bare relative answer', { gitDir: '/repo/.git', commonDir: '.git', toplevel: '/repo' }, {}],
+    ['a drive-letter path', { gitDir: 'C:/repo/.git', commonDir: 'C:/repo/.git', toplevel: 'C:/repo' }, {}],
+  ]) {
+    r = await run([], { where, args })
+    t(`a commonDir that is no absolute path stops the run, starting no agent after preflight: ${what}`, r.report.stoppedAt === 'preflight' && /not an absolute path/.test(r.report.reason || '') && (afterPreflight(r.calls) || ['none']).length === 0, [r.report.stoppedAt, r.report.reason])
+  }
   r = await run([])
   const later = afterPreflight(r.calls) || []
   t('every agent after preflight is pinned to the recorded root', r.report.stoppedAt === null && later.length > 3 && later.every((c) => /^Repo root: \/repo\/\.claude\/worktrees\/build-demo\./.test(c.prompt)), [r.report.stoppedAt, later.map((c) => c.prompt.slice(0, 60))])

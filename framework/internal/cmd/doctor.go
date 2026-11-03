@@ -284,8 +284,8 @@ func checkTools(rep *doctorReport, src *template.Source, resolveErr error) {
 	}
 }
 
-// The oldest git the model works on. It calls `git rev-parse --path-format` (2.31), and below that
-// a blocking hook can quietly stop recognising paths rather than erroring (OPS-231). The model's
+// The oldest git the model works on. build-change's preflight and merge-pr's step 5 pass `--path-format`
+// (2.31), and below that build-change refuses to start, having no common directory to read (OPS-241). The model's
 // health line for a project with no binary holds the same floor (health_git_floor, .claude/lib/health.sh);
 // TestDoctorGitFloor and TestGitFloorHealthLine run one table of versions through both.
 const (
@@ -344,7 +344,7 @@ func checkGitFloor(rep *doctorReport) {
 	// The install hint is not prereqs.sh's: that names how to get a missing git, which on an old
 	// machine can be the same old git, and it would tie this line to a readable template.
 	rep.add(groupMachine, doctorLine{level: levelWarn, subject: "git-floor",
-		detail:  text + " is below the floor " + floor + ": the model calls `git rev-parse --path-format`, and below it a blocking hook can quietly stop recognising paths",
+		detail:  text + " is below the floor " + floor + ": build-change's preflight and merge-pr's step 5 pass `--path-format`, and below it build-change refuses to start",
 		install: "a newer git, from your package manager or https://git-scm.com/downloads"})
 }
 
