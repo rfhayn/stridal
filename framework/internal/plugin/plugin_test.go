@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/rfhayn/stridal/internal/panel/config"
@@ -17,6 +18,7 @@ import (
 	"github.com/rfhayn/stridal/internal/template"
 	"github.com/rfhayn/stridal/internal/testbin"
 	"github.com/rfhayn/stridal/internal/testgit"
+	"github.com/rfhayn/stridal/internal/treesnap"
 )
 
 // The plugin and `stridal install`/`update` must agree on what is the framework's: a file the
@@ -51,7 +53,7 @@ func TestPluginAndInstallAgreeOnTiers(t *testing.T) {
 // repository was scaffolded from, once, into a cache, and runs the script from there.
 func TestResolverFetchesPinnedPluginInCI(t *testing.T) {
 	need(t, "git", "sh")
-	plug, _ := build(t) // Version 9.9.9-test: the resolver's default ref is v9.9.9-test
+	plug := build(t) // Version 9.9.9-test: the resolver's default ref is v9.9.9-test
 	home := t.TempDir()
 	e := env(t, home)
 
@@ -85,7 +87,7 @@ func TestResolverFetchesPinnedPluginInCI(t *testing.T) {
 // The scaffold's panel.json runs the model's scripts through the resolver; it must still be a
 // config the panel accepts, at the latest config version, as the template's ([STALL-1-S29]).
 func TestScaffoldPanelConfigLoads(t *testing.T) {
-	out, _ := build(t)
+	out := build(t)
 	raw, err := os.ReadFile(filepath.Join(out, ScaffoldDir, ".stridal", "panel.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -111,15 +113,95 @@ func repoRoot(t *testing.T) string {
 	return root
 }
 
-// build writes a fresh plugin into a temp dir and returns its root.
-func build(t *testing.T) (string, *Result) {
+// One Build for the package's tests (OPS-240). Under -race a Build takes seconds, its rewrites being
+// regexps, two dozen tests ask for one, and the template does not change during a run. TestMain
+// removes it; a run go test kills at its timeout leaves it behind in TMPDIR, as it does a t.TempDir.
+var sharedBuild struct {
+	once sync.Once
+	dir  string
+	err  error
+}
+
+// build gives the test a plugin of its own, a copy of the one Build, in a temp dir, and returns its
+// root: nothing a test writes there reaches another (TestBuildCopyIsAFreshBuild).
+func build(t *testing.T) string {
 	t.Helper()
+	// Outside once.Do: a Fatal inside it would mark the build done with no error and no build.
+	root := repoRoot(t)
+	sharedBuild.once.Do(func() {
+		sharedBuild.dir, sharedBuild.err = os.MkdirTemp("", "stridal-plugin-build-")
+		if sharedBuild.err == nil {
+			_, sharedBuild.err = Build(Options{RepoRoot: root, OutDir: filepath.Join(sharedBuild.dir, "plugin"), Version: "9.9.9-test"})
+		}
+	})
+	if sharedBuild.err != nil {
+		t.Fatal(sharedBuild.err)
+	}
+	src := filepath.Join(sharedBuild.dir, "plugin")
 	out := filepath.Join(t.TempDir(), "plugin")
-	res, err := Build(Options{RepoRoot: repoRoot(t), OutDir: out, Version: "9.9.9-test"})
+	if err := os.CopyFS(out, os.DirFS(src)); err != nil {
+		t.Fatal(err)
+	}
+	// CopyFS applies the umask, and Build sets exact modes: each entry takes its source's.
+	err := filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, p)
+		if err != nil {
+			return err
+		}
+		return os.Chmod(filepath.Join(out, rel), info.Mode().Perm())
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return out, res
+	return out
+}
+
+// What build hands a test is what a Build of its own would have written, modes included, and what
+// one test writes into its copy is in no other's: the two things a shared build could lose.
+func TestBuildCopyIsAFreshBuild(t *testing.T) {
+	out := build(t)
+	fresh := filepath.Join(t.TempDir(), "plugin")
+	if _, err := Build(Options{RepoRoot: repoRoot(t), OutDir: fresh, Version: "9.9.9-test"}); err != nil {
+		t.Fatal(err)
+	}
+	copied, built := treesnap.Take(t, out), treesnap.Take(t, fresh)
+	for p, b := range built {
+		c, ok := copied[p]
+		switch {
+		case !ok:
+			t.Errorf("%s: a fresh Build writes it, the copy lacks it", p)
+		case c.SHA256 != b.SHA256:
+			t.Errorf("%s: the copy's bytes are not a fresh Build's", p)
+		case c.Mode != b.Mode:
+			t.Errorf("%s: the copy's mode is %v, a fresh Build's %v", p, c.Mode, b.Mode)
+		}
+	}
+	for p := range copied {
+		if _, ok := built[p]; !ok {
+			t.Errorf("%s: in the copy, not in a fresh Build", p)
+		}
+	}
+	written := filepath.Join(out, "written-by-this-test")
+	if err := os.WriteFile(written, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(out, "scaffold.sh")); err != nil {
+		t.Fatal(err)
+	}
+	other := build(t)
+	if exists(filepath.Join(other, "written-by-this-test")) {
+		t.Error("what one test wrote into its plugin is in another's")
+	}
+	if !exists(filepath.Join(other, "scaffold.sh")) {
+		t.Error("what one test removed from its plugin is gone from another's")
+	}
 }
 
 func exists(p string) bool { _, err := os.Stat(p); return err == nil }
@@ -127,7 +209,7 @@ func exists(p string) bool { _, err := os.Stat(p); return err == nil }
 // The plugin carries every framework file of the template, at its plugin path, and nothing the
 // project owns outside scaffold/.
 func TestBuildPlacesEveryTemplateFile(t *testing.T) {
-	out, _ := build(t)
+	out := build(t)
 	tmpl := filepath.Join(repoRoot(t), "template")
 	files, err := listFiles(tmpl)
 	if err != nil {
@@ -192,7 +274,7 @@ func TestBuildPlacesEveryTemplateFile(t *testing.T) {
 }
 
 func TestManifestAndMarketplace(t *testing.T) {
-	out, _ := build(t)
+	out := build(t)
 	var m map[string]any
 	raw, err := os.ReadFile(filepath.Join(out, ".claude-plugin", "plugin.json"))
 	if err != nil {
@@ -227,7 +309,7 @@ func TestManifestAndMarketplace(t *testing.T) {
 // Every template hook is registered through the plugin root (or deliberately dropped), and none
 // still names the project's .claude/hooks.
 func TestHooksRewritten(t *testing.T) {
-	out, _ := build(t)
+	out := build(t)
 	raw, err := os.ReadFile(filepath.Join(out, "hooks", "hooks.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -260,7 +342,7 @@ func TestHooksRewritten(t *testing.T) {
 // registered the same way by the plugin: a plugin install whose guards fail open on a crash would
 // pass every check the template's settings.json is held to.
 func TestHooksKeepFailClosed(t *testing.T) {
-	out, _ := build(t)
+	out := build(t)
 	type handler struct {
 		Command   string `json:"command"`
 		OnFailure string `json:"onFailure"`
@@ -332,7 +414,7 @@ var fwLeft = regexp.MustCompile(`(?:"\$ROOT"?/|\bsh |^|[\s(])\.claude/(?:skills/
 // except in the scratch repositories the checks build (their own .claude/ layout, by design), a
 // diff-path pattern, and the orphan shapes, which describe paths inside lane worktrees.
 func TestNoProjectPathsLeft(t *testing.T) {
-	out, _ := build(t)
+	out := build(t)
 	allowed := regexp.MustCompile(`cd "\$[A-Za-z]+" &&|note "|echo "|fail "|ok "|^has \.claude/|for f in changes/README\.md|\$(R|F|A|B|WT|d)\b[^ ]*/\.claude/|"\$[RFAB]/|\.claude/\* \||MQ_ORPHAN_SHAPES|@WT@|\$WT/lane/\.claude`)
 	filepath.WalkDir(out, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -381,7 +463,7 @@ func TestNoProjectPathsLeft(t *testing.T) {
 // names, as the plugin's workflow spells them, and roadmap.sh's plant3 gains STRIDAL_FW
 // harmlessly, since the bypass reader it feeds (roadmap.sh's strip) cuts both spellings.
 func TestCheckHeredocsKeepTheirProject(t *testing.T) {
-	out, _ := build(t)
+	out := build(t)
 	files, err := filepath.Glob(filepath.Join(repoRoot(t), "template", ".claude", "checks", "*.sh"))
 	if err != nil || len(files) == 0 {
 		t.Fatalf("no template checks found (%v)", err)
@@ -448,7 +530,7 @@ func TestCheckHeredocsKeepTheirProject(t *testing.T) {
 // Every script path a plugin skill or agent names exists in the plugin, and a skill's context
 // line runs from the plugin root.
 func TestComponentPathsExist(t *testing.T) {
-	out, _ := build(t)
+	out := build(t)
 	ref := regexp.MustCompile(`(?:\$\{CLAUDE_PLUGIN_ROOT\}/|stridal-model )([A-Za-z0-9_./*-]+\.(?:sh|js|awk|json|md))`)
 	ctx := regexp.MustCompile("!`sh ([^`]+)`")
 	files, _ := filepath.Glob(filepath.Join(out, "skills", "*", "SKILL.md"))
@@ -486,7 +568,7 @@ func TestComponentPathsExist(t *testing.T) {
 }
 
 func TestSettingsScaffold(t *testing.T) {
-	out, _ := build(t)
+	out := build(t)
 	raw, err := os.ReadFile(filepath.Join(out, ScaffoldDir, ".claude", "settings.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -568,7 +650,7 @@ func newProject(t *testing.T, e []string) string {
 
 func TestScaffoldGuards(t *testing.T) {
 	need(t, "git", "sh")
-	plug, _ := build(t)
+	plug := build(t)
 	home := t.TempDir()
 	e := env(t, home)
 	scaffold := filepath.Join(plug, "scaffold.sh")
@@ -605,7 +687,7 @@ func TestScaffoldGuards(t *testing.T) {
 // (the last matching line wins, so the project's overrides keep working), and only once.
 func TestScaffoldMergesGitattributes(t *testing.T) {
 	need(t, "git", "sh")
-	plug, _ := build(t)
+	plug := build(t)
 	e := env(t, t.TempDir())
 	p := newProject(t, e)
 	attrs := filepath.Join(p, ".gitattributes")
@@ -651,7 +733,7 @@ func TestScaffoldMergesGitattributes(t *testing.T) {
 // project's: created when missing, kept when the project has its own.
 func TestScaffoldReportsPrereqsAndKeepsGitleaksConfig(t *testing.T) {
 	need(t, "git", "sh")
-	plug, _ := build(t)
+	plug := build(t)
 	e := env(t, t.TempDir())
 	scaffold := filepath.Join(plug, "scaffold.sh")
 
@@ -681,7 +763,7 @@ func TestScaffoldReportsPrereqsAndKeepsGitleaksConfig(t *testing.T) {
 // The plugin's hooks stand aside in a repository the plugin has not set up, and act in one it has.
 func TestHooksOnlyActInPluginProjects(t *testing.T) {
 	need(t, "git", "sh", "jq")
-	plug, _ := build(t)
+	plug := build(t)
 	home := t.TempDir()
 	e := env(t, home)
 	p := newProject(t, e)
@@ -712,7 +794,7 @@ func TestHooksOnlyActInPluginProjects(t *testing.T) {
 // keys it does give still place the gate and the panel's branches.
 func TestScaffoldReadsProjectConfAsData(t *testing.T) {
 	need(t, "git", "sh", "jq")
-	plug, _ := build(t)
+	plug := build(t)
 	home := t.TempDir()
 	e := env(t, home)
 	p := newProject(t, e)
@@ -743,7 +825,7 @@ func TestScaffoldReadsProjectConfAsData(t *testing.T) {
 // scaffold.sh records which branch of origin is main, as the merge guard takes main from it (OPS-219).
 func TestScaffoldSetsOriginHead(t *testing.T) {
 	need(t, "git", "sh", "jq")
-	plug, _ := build(t)
+	plug := build(t)
 	e := env(t, t.TempDir())
 	p := newProject(t, e)
 	bare := filepath.Join(t.TempDir(), "origin.git")
@@ -767,12 +849,15 @@ func TestScaffoldSetsOriginHead(t *testing.T) {
 // The strongest check: scaffold a repository from the plugin, then run the template's own process
 // checks FROM THE PLUGIN against it. They are the model's executable description of itself, so a
 // rewrite that broke a path breaks one of them.
+//
+// This one test is almost all of the package's time (OPS-240). On CI's macOS leg its whole-set run
+// inherits CHECKS_SKIP from test.yml and leaves out merge-guard; everywhere else it runs every check.
 func TestPluginChecksPassInScaffoldedProject(t *testing.T) {
 	if testing.Short() {
-		t.Skip("runs every process check (about 20 s)")
+		t.Skip("runs every process check (minutes)")
 	}
 	need(t, "git", "sh", "jq", "awk")
-	plug, _ := build(t)
+	plug := build(t)
 	home := t.TempDir()
 	e := env(t, home)
 	p := newProject(t, e)
@@ -947,7 +1032,7 @@ func TestClaudePluginValidate(t *testing.T) {
 	if _, err := exec.LookPath("claude"); err != nil {
 		t.Skip("the claude CLI is not installed (CI runners): claude plugin validate not run")
 	}
-	plug, _ := build(t)
+	plug := build(t)
 	home, e := claudeConfig(t)
 	if out, code := runClaude(t, home, e, "plugin", "validate", "--strict", plug); code != 0 {
 		t.Fatalf("claude plugin validate --strict: exit %d\n%s", code, out)
@@ -998,7 +1083,7 @@ func TestClaudePluginInstall(t *testing.T) {
 // plugin's status line set, and the gate's paths from the project's GATE_RUN and GATE.
 func TestScaffoldMergesSettings(t *testing.T) {
 	need(t, "git", "sh", "jq")
-	plug, _ := build(t)
+	plug := build(t)
 	home := t.TempDir()
 	e := env(t, home)
 	p := newProject(t, e)
@@ -1094,7 +1179,7 @@ func TestScaffoldMergesSettings(t *testing.T) {
 // project's branch keys.
 func TestScaffoldOverTheOldModel(t *testing.T) {
 	need(t, "git", "sh", "jq")
-	plug, _ := build(t)
+	plug := build(t)
 	e := env(t, t.TempDir())
 	p := newProject(t, e)
 	for _, s := range []string{"claim", "spawn", "supervisor"} {
@@ -1143,7 +1228,7 @@ func TestScaffoldOverTheOldModel(t *testing.T) {
 // with nothing in the project's .claude/health/: a new file there would never reach an updated one.
 func TestPluginProjectGetsTheModelsHealthLines(t *testing.T) {
 	need(t, "git", "sh", "jq")
-	plug, _ := build(t)
+	plug := build(t)
 	home := t.TempDir()
 	e := env(t, home)
 	p := newProject(t, e)
@@ -1191,7 +1276,7 @@ health_sandbox_writes`
 // nothing in the project's .claude/health/.
 func TestPluginProjectGetsTheGitFloorLine(t *testing.T) {
 	need(t, "git", "sh", "jq")
-	plug, _ := build(t)
+	plug := build(t)
 	e := env(t, t.TempDir())
 	p := newProject(t, e)
 	if out, code := run(t, p, e, "", "sh", filepath.Join(plug, "scaffold.sh")); code != 0 {
@@ -1212,7 +1297,7 @@ func TestPluginProjectGetsTheGitFloorLine(t *testing.T) {
 // marked project, with no --force, must apply what those lines ask for.
 func TestScaffoldReRunMergesAMarkedProject(t *testing.T) {
 	need(t, "git", "sh", "jq")
-	plug, _ := build(t)
+	plug := build(t)
 	e := env(t, t.TempDir())
 	p := newProject(t, e)
 	if out, code := run(t, p, e, "", "sh", filepath.Join(plug, "scaffold.sh")); code != 0 {
@@ -1247,7 +1332,7 @@ func TestScaffoldReRunMergesAMarkedProject(t *testing.T) {
 // body names it reads an empty variable, unless the builder passes it on that command line
 // (OPS-88: plugin/checks/statusline.sh, run directly, failed its two unwritable-HOME cases).
 func TestShellChildGetsPluginRoot(t *testing.T) {
-	out, _ := build(t)
+	out := build(t)
 	err := filepath.WalkDir(out, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(p, ".sh") {
 			return err

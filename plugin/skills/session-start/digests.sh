@@ -26,7 +26,9 @@ indent() { cut -c1-"$1" | sed 's/^/    /'; }
 
 echo "- Change queue (the roadmap's current phase; top = next up; the full queue: roadmap_queue --text):"
 # `2>&1` is pinned by session-start-digests: a malformed row must reach the block, not fail silently.
-roadmap_queue --text 2>&1 | awk 'NR <= 8 { print "    " substr($0, 1, 260) } END { if (NR > 8) print "    … " NR - 8 " more rows" }'
+# A DUE line stays whatever its place: the queue prints them last, and a due outcome check has no
+# other road to session start (archive-change, step 3).
+roadmap_queue --text 2>&1 | awk 'NR <= 8 || /^ *DUE / { print "    " substr($0, 1, 260); if (NR > 8) due++ } END { if (NR - 8 - due > 0) print "    … " NR - 8 - due " more rows" }'
 
 echo "- Latest journal (heading, first paragraph, What's next; the whole entry is the first ## Session in $JOURNAL):"
 if [ ! -r "$JOURNAL" ]; then

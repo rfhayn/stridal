@@ -35,8 +35,9 @@ jobs:
         # on the merge that caused it (.claude/health/push-main.sh reports it at session start).
         os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest"]') || fromJSON('["macos-latest", "ubuntu-latest"]') }}
     runs-on: ${{ matrix.os }}
-    # internal/plugin alone takes ~500 s under -race on macOS runners, near go test's 10-minute
-    # per-package default; the job ran 19m17s against a 20-minute limit (OPS-19).
+    # internal/plugin reached 1500 s under -race on a macOS runner (go test's limit below), and the
+    # macOS job 2423 s against this one, before go test's step stopped running merge-guard there
+    # (OPS-240). The roadmap's o.12 checks the margin; OPS-244, queued, is its health line.
     timeout-minutes: 40
     defaults:
       run:
@@ -81,6 +82,12 @@ jobs:
           STRIDAL_TEST_SLOW: "2"
           OPENSPEC_REQUIRED: "1"
           NODE_REQUIRED: "1"
+          # merge-guard is the set's largest check. On macOS it runs once, in the process-checks
+          # step below, not also in internal/template's and internal/plugin's whole sets, which
+          # are this step's time. Ubuntu, the leg a merge waits for, runs all three, as does the
+          # full local gate (OPS-240; check-sets.sh, part 6, holds this form). The loss: a red
+          # go test here skips that step, so that commit has no merge-guard run on macOS at all.
+          CHECKS_SKIP: ${{ runner.os == 'macOS' && 'merge-guard' || '' }}
       # This repo runs the operating model it ships (OPS-8): its own process checks, over its own
       # records, hooks and roles, the no-stridal check included (no stridal is installed here).
       - name: process checks (this repo's operating model)

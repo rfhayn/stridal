@@ -21,7 +21,8 @@ run `stridal-model skills/session-start/context.sh` yourself and read the result
    first. `CANNOT CHECK` there is not an empty queue. Then repeat the `Health: flow` line as one
    **Flow** line (cycle time, merges per week, change-fail rate, spend per week, work in flight).
 2. **Say every line that is not healthy**: each health line that is not `OK` (a `CANNOT CHECK` is
-   not a pass), a queue `ERROR` (the queue is then UNKNOWN: stop treating it as known), the main
+   not a pass), a queue `ERROR` (the queue is then UNKNOWN: stop treating it as known), a `DUE` line
+   (an outcome check to run, or to re-date with its reason), the main
    checkout not on `main`. One sentence each, even when the session is about something else. A
    panel that is not running is a normal state, not an unhealthy line (the repository works
    without stridal: `checks/no-stridal.sh`).
