@@ -10,19 +10,28 @@
 #     and one that exits non-zero (CANNOT CHECK, never silence).
 # Run with the host shell AND, where it is installed, under dash itself.
 . "$(dirname "$0")/lib.sh"
-need git bash
+need git bash awk
 
 d=$(scratch)
 R="$d/p"; new_repo "$R"
 mkdir -p "$R/.claude/lib" "$R/.claude/health" "$d/bin"
 cp "$ROOT/.claude/lib/conf.sh" "$ROOT/.claude/lib/modules.sh" "$ROOT/.claude/lib/health.sh" "$R/.claude/lib/"
 cp "$ROOT/.claude/extensions.sh" "$R/.claude/"
-# The model's two lines run with nothing of theirs in .claude/health/, and with no project's lines at
+# The model's own lines run with nothing of theirs in .claude/health/, and with no project's lines at
 # all (OPS-220). The token line reads only the fixture: CONTEXT_OFFLINE keeps it off the real file.
 mkdir -p "$d/gh"; printf 'github.com:\n    user: fixture\n' > "$d/gh/hosts.yml"
 out=$(cd "$R" && GH_CONFIG_DIR="$d/gh" sh .claude/extensions.sh health 2>&1)
 case "$out" in *"- Health: gh-token-file"*"OK no token in $d/gh/hosts.yml"*) ok "the model's gh-token-file line runs from extensions.sh, with no file in .claude/health/" ;; *) fail "gh-token-file line: $out" ;; esac
-case "$out" in *"- Health: sandbox-writes"*) ok "the model's sandbox-writes line runs from extensions.sh, with no file in .claude/health/" ;; *) fail "sandbox-writes line: $out" ;; esac
+# model_verdict NAME: the last line printed under NAME's heading in $out. model_line prints the heading
+# before it runs anything, so the heading alone proves nothing: a function that is gone still has one.
+# The last line, as sandbox-writes prints a FAILED line per path before the line that sums them.
+model_verdict() {
+  printf '%s\n' "$out" | awk -v h="- Health: $1" '$0 == h { on = 1; next } /^- Health: / { on = 0 } on { sub(/^ +/, ""); last = $0 } END { print last }'
+}
+case "$(model_verdict sandbox-writes)" in "OK a write was refused at: "*|"NOT PROVEN "*) ok "the model's sandbox-writes line runs from extensions.sh and gives its verdict, with no file in .claude/health/" ;; *) fail "sandbox-writes line: $out" ;; esac
+# A git this check runs on may print what the line cannot read; that verdict is honest. A function
+# that is gone says CANNOT CHECK too, naming the function, and must still fail here.
+case "$(model_verdict git-floor)" in "OK git "*|"FAILED git "*|"CANNOT CHECK — git --version"*) ok "the model's git-floor line runs from extensions.sh and gives its verdict, with no file in .claude/health/" ;; *) fail "git-floor line: $out" ;; esac
 out=$(cd "$R" && sh .claude/extensions.sh health 2>&1)
 case "$out" in *"CANNOT CHECK — offline: under the checks this machine's hosts.yml is not read"*) ok "under the checks, with no GH_CONFIG_DIR, the token line reads no real file and says so" ;; *) fail "the token line under the checks with no GH_CONFIG_DIR: $out" ;; esac
 mv "$R/.claude/lib/health.sh" "$d/health.sh.kept"

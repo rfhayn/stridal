@@ -4,7 +4,7 @@ STRIDAL_FW=$(cd "$(dirname "$0")/." && pwd) # stridal plugin: the plugin root (f
 # model (lib/modules.sh names the points). The template's hosts call it; nothing else needs to.
 #
 #   sh .claude/extensions.sh health              every health line: .claude/health/, then the model's
-#                                                own two, then each enabled module's health/, then
+#                                                own lines, then each enabled module's health/, then
 #                                                .claude/local/health/
 #   sh .claude/extensions.sh context <skill>     every context.d/<skill>/*.sh, each under a heading
 #   sh .claude/extensions.sh fragments <skill>   every skills/<skill>/*.md fragment, for the skill's
@@ -40,7 +40,7 @@ section() {
 }
 # model_line NAME FUNCTION: a health line the model runs itself, from lib/health.sh. A file in
 # .claude/health/ is the project's, created once, so a new one would miss an updated project and every
-# plugin update; these two answer for the machine and the sandbox, so every project gets them (OPS-220).
+# plugin update; these answer for the machine and the sandbox, so every project gets them (OPS-220, OPS-231).
 model_line() {
   echo "- Health: $1"
   if [ ! -f "$STRIDAL_FW/lib/health.sh" ]; then
@@ -75,6 +75,7 @@ case ${1:-} in
     done
     model_line gh-token-file health_gh_token
     model_line sandbox-writes health_sandbox_writes
+    model_line git-floor health_git_floor
     ext_files health .sh | while IFS="$TAB" read -r label f; do
       section "- Health: $(basename "$f" .sh)$(where "$label")" "$f"
     done
