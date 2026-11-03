@@ -2,6 +2,31 @@
 STRIDAL_FW=$(cd "$(dirname "$0")/.." && pwd) # stridal plugin: the plugin root (framework/internal/plugin)
 # PreToolUse hook (matcher: Bash). Refuses an in-place scripted REWRITE of tracked source.
 #
+# WHAT IT HOLDS (OPS-225). A few in-place forms, recognised by their words in a Bash command and in
+# a script file the command names, when it may read that file. It does not watch writes. These
+# classes of edit to tracked source pass it, a list that is not exhaustive:
+#   - a write in the command's own words that is not an in-place form it knows: output sent to the
+#     file, a copy or a move over it, a patch, an editor it does not list, or code that writes with
+#     no find-replace call;
+#   - a find-replace it does recognise, on a target the command does not name;
+#   - a script file it reads, when the script's write form is one of those, or its target is one it
+#     cannot resolve (KNOWN LIMITS);
+#   - a script file it does not read, the route two lanes took in S22 (WHICH SCRIPT FILES ARE READ,
+#     KNOWN LIMITS).
+# A pass is not permission: a refused edit of real tracked source goes through the Edit tool or is
+# reported, never rerouted. checks/hooks.sh shows each class passing in a throwaway repository, by
+# running the edit except for the recognised find-replace, a payload only. It holds these words too,
+# and, in the framework's own repository, AGENTS.md's row and the builder's paragraph.
+#
+# NO CHECK ON THE DIFF SEES WHAT PASSES. An edit from a script and the same edit from the Edit tool
+# are one git blob, so a diff, and a gate step reading one, holds nothing that tells them apart. A
+# record of the writes could: a hash before and after each Bash command on PostToolUse, or a ledger
+# of each Edit's blob. None is built. PostToolUse runs after the write and cannot undo it; formatters,
+# `git merge` and `stridal update` write tracked files as a matter of course and would fill it with
+# noise; and the harm this hook exists for (a match too many, a file that no longer parses) is in
+# the diff whatever wrote it, where S22's reviews of those two lanes found none. What reads the diff
+# is the tests and review, and review on a row outside build-change is a skill step no hook checks.
+#
 # WHY. A `python3 … s.replace(old, new)` whose anchor was not unique (Python's replace is
 # ALL-OCCURRENCES) edited two functions while one was being looked at, and a regex removal that
 # matched into a multi-line expression produced a file that no longer parsed. Neither was visible
@@ -32,10 +57,12 @@ STRIDAL_FW=$(cd "$(dirname "$0")/.." && pwd) # stridal plugin: the plugin root (
 #     paths the script names (step 0 says when). A check-only run
 #     (`sh -n`, `node --check`, `perl -c`) executes nothing and reads nothing.
 #
-# WHICH SCRIPT FILES ARE READ: an UNTRACKED, unignored file in this repository (any worktree) or a
-# temp dir, up to 64 KiB, outside node_modules and site-packages. A throwaway rewrite script is all
-# of those. A tracked script is reviewed code whose writes are the project's intent (a build step,
-# a codemod that was committed); an ignored one is build output (dist/cli.js); a large one or a
+# WHICH SCRIPT FILES ARE READ: a file not in HEAD and not ignored, in this repository (any worktree)
+# or a temp dir, up to 64 KiB, outside node_modules and site-packages. A throwaway rewrite script is
+# all of those, staged or not: staging does not review it, so HEAD decides, not the index. A
+# committed script is taken as code whose writes are the project's intent (a build step, a codemod),
+# though a lane's own commit, or an edit since its commit, is not yet reviewed and also passes; an
+# ignored one is build output (dist/cli.js); a large one or a
 # dependency is a program. Reading those would turn their incidental `.replace(` and `.write(` into
 # refusals. A script that cannot be read is ALLOWED, the
 # direction the inline path takes for what it cannot see as a rewrite: a missing or unreadable file
@@ -46,7 +73,8 @@ STRIDAL_FW=$(cd "$(dirname "$0")/.." && pwd) # stridal plugin: the plugin root (
 #   - a script written and run in ONE command (`cat > f.py <<EOF … EOF && python3 f.py`): the file
 #     does not exist yet when the hook runs, and the heredoc body fed to cat is data, not code;
 #   - a script named by a variable or a substitution (`python3 "$S"`, `bash -c "$(cat f)"`), piped
-#     in by anything but a lone `cat f`, or kept in an ignored directory (`tmp/`, when ignored);
+#     in by anything but a lone `cat f`, or kept in an ignored directory (`tmp/`, when ignored) or
+#     outside this repository and a temp dir;
 #   - a runner the hook does not know (`uv run f.py`, `deno run f.ts`, `bun f.ts`, `make`), and a
 #     script run by its path with no script extension or behind a prefix (`./edsh`,
 #     `timeout 60 ./fix.py`): a path is read as a script only when it is the command word;
@@ -64,7 +92,13 @@ STRIDAL_FW=$(cd "$(dirname "$0")/.." && pwd) # stridal plugin: the plugin root (
 #     match. One in backticks or qx IS read (the scan reads a backtick as a command), but only
 #     with a literal operand: a variable one is missed;
 #   - a rewrite the inline detection does not recognise either (perl `$^I`, ruby `gsub`).
-# And three false refusals:
+# And five false refusals:
+#   - a command that only mentions an in-place editor beside a tracked path (a search, an echo, a PR
+#     body, a test payload): the hook reads words, not intent, and telling them apart is no small
+#     change, so the refusal gives a road needing no particular tool: a search drops the flag, a body
+#     or a payload goes in a file;
+#   - an in-place edit in a throwaway clone: the file is tracked there too. The rule protects real
+#     tracked source, so a mutant there goes in as a patch or a new file, as the refusal says;
 #   - shared with the inline path: a script that reads tracked source, uses `.replace(`, and writes
 #     ELSEWHERE is refused when it names the tracked path;
 #   - the price of reading an editor run from a string: a non-shell script that execs anything,
@@ -615,7 +649,7 @@ show() { case "$1" in "$root"/*) printf '%s' "${1#"$root"/}" ;; *) printf '%s' "
 
 # ── 0. A SCRIPT FILE IS CODE TOO (#88) ────────────────────────────────────────────────────────
 # `python3 rewrite.py` carries no rewrite text, so every step below saw nothing to refuse. Each
-# script file the scan names (SCRIPT, MODULE) that is in scope (the header: untracked, unignored,
+# script file the scan names (SCRIPT, MODULE) that is in scope (the header: not in HEAD, unignored,
 # in this repository or a temp dir, up to 64 KiB, not a dependency) has its text appended to the
 # command after the same passes inline code went through, and steps 1 and 2 judge it as inline.
 # Its relative paths resolve against the same bases, which is where the interpreter resolves them.
@@ -661,7 +695,8 @@ if [ -n "$scripts" ]; then
       /tmp/*|/private/tmp/*|/var/folders/*|/private/var/folders/*|"$tmpd"/*) ;;
       *) [ -n "$ours" ] && [ "$(common_of "$sd")" = "$ours" ] || continue ;;
     esac
-    GIT_LITERAL_PATHSPECS=1 git -C "$sd" ls-files --error-unmatch -- "${f##*/}" >/dev/null 2>&1 && continue
+    # In HEAD, not merely the index: `git add` and `git add -N` do not make a script reviewed code.
+    git -C "$sd" cat-file -e "HEAD:./${f##*/}" 2>/dev/null && continue
     # Ignored is build output or a dependency (dist/cli.js): a program, not a throwaway script.
     git -C "$sd" check-ignore -q -- "${f##*/}" 2>/dev/null && continue
     [ "$(wc -c < "$f" | tr -d ' ')" -le 65536 ] || continue
@@ -727,6 +762,18 @@ esac
 # Not in a repository at all: there is no tracked source to protect. Fails open, as before.
 [ -n "$ours" ] || exit 0
 
+# The last thing a refusal says: what an agent reads at the moment it might reroute. True for what
+# the hook refuses by its words alone, a search and a clone.
+say_report() {
+  echo "" >&2
+  echo "This hook reads words, and holds only a few in-place forms." >&2
+  echo "If this command only mentions these words, nothing changed. For a search, drop the flag" >&2
+  echo "from the pattern. For a body or a payload, put the text in a file and pass the file." >&2
+  echo "The rule protects real tracked source. In a throwaway clone under \$TMPDIR, a mutant may be" >&2
+  echo "applied as a patch or written as a new file; an in-place edit is refused there too." >&2
+  echo "For real tracked source, if the Edit tool cannot make the edit or you do not hold it," >&2
+  echo "report this refusal and stop that step; never make that edit another way." >&2
+}
 block_opaque() {
   echo "BLOCKED by no-blind-source-rewrite: an in-place edit (sed -i / perl -pi / ruby -i) whose files" >&2
   echo "cannot be proven untracked — $1." >&2
@@ -735,6 +782,7 @@ block_opaque() {
   echo "For TRACKED source, use the Edit tool: it requires old_string to be UNIQUE and fails loudly." >&2
   echo "For scratch files, name each one literally — no find, xargs, variable, command substitution" >&2
   echo "or brace list in front of the in-place editor. A literal cd and a glob are resolved, not refused." >&2
+  say_report
   exit 2
 }
 
@@ -909,7 +957,7 @@ EOF
 fi
 [ -z "$tracked" ] && exit 0
 
-echo "BLOCKED by no-blind-source-rewrite: this rewrites TRACKED source in place with a scripted find-replace:$tracked" >&2
+echo "BLOCKED by no-blind-source-rewrite: this reads as a scripted find-replace of TRACKED source in place:$tracked" >&2
 [ -z "$read_scripts" ] || echo "(The rewrite was read from the script file(s) this command runs:$read_scripts.)" >&2
 echo "" >&2
 echo "Use the Edit tool. It requires old_string to be UNIQUE and fails loudly when it is not —" >&2
@@ -918,4 +966,5 @@ echo "edited two functions while only one was being looked at." >&2
 echo "" >&2
 echo "If replacing every occurrence really is the intent, say so: Edit with replace_all: true." >&2
 echo "To PREVIEW an edit, print it instead of writing it — that is not blocked." >&2
+say_report
 exit 2

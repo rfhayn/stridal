@@ -8,7 +8,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/rfhayn/stridal/internal/panel/install"
@@ -35,12 +37,13 @@ var doctorCmd = &cobra.Command{
 	Use:   "doctor",
 	Short: "Check this machine's setup and the project's, and say what to do about each problem",
 	Long: `Check that Stridal can work here, changing nothing: the tools the operating model
-uses, the template this binary reads, whether gh is signed in, and (on macOS) the panel. In a
+uses, git's version against the model's floor, the template this binary reads, whether gh is
+signed in, and (on macOS) the panel. In a
 git repository it also checks whose operating model the repository runs, whether Stridal's
 matches the template, and whether the panel serves and trusts the project.
 
 Each line is ok, FAIL, warn or note. A problem carries the command that fixes it (fix:), or
-for a missing tool this system's install hint (install:), when doctor can tell what clears it. FAIL
+for a missing tool or a git below the floor an install hint (install:), when doctor can tell what clears it. FAIL
 means Stridal cannot work here until it is fixed; warn means something is degraded; a note
 is a fact. Doctor exits 1 when any line fails. It writes nothing and runs none of the fixes it
 prints: each is a command you should see the effect of.`,
@@ -85,7 +88,7 @@ var levelLabels = map[doctorLevel]string{levelOK: "ok", levelNote: "note", level
 // doctorLine is one check's result: what it checked, what it found, and the commands that fix it.
 // A fix is a command to paste as it stands (D8). A missing tool's install hint is prereqs.sh's
 // text for people, often prose ("see https://...", "(or your distribution's package manager)"),
-// so it is install, never a fix.
+// so it is install, never a fix. Where to get a git above the floor is prose too, so it is install.
 type doctorLine struct {
 	level   doctorLevel
 	subject string
@@ -184,6 +187,7 @@ func (r *doctorReport) print(out io.Writer) {
 func checkMachine(rep *doctorReport) {
 	src, err := template.Resolve()
 	checkTools(rep, src, err)
+	checkGitFloor(rep)
 	checkTemplate(rep, src, err)
 	checkGH(rep)
 }
@@ -278,6 +282,70 @@ func checkTools(rep *doctorReport, src *template.Source, resolveErr error) {
 			install: r.where,
 		})
 	}
+}
+
+// The oldest git the model works on. It calls `git rev-parse --path-format` (2.31), and below that
+// a blocking hook can quietly stop recognising paths rather than erroring (OPS-231). The model's
+// health line for a project with no binary holds the same floor (health_git_floor, .claude/lib/health.sh);
+// TestDoctorGitFloor and TestGitFloorHealthLine run one table of versions through both.
+const (
+	gitFloorMajor = 2
+	gitFloorMinor = 31
+)
+
+// gitVersionRe reads the first line of `git --version`: "git version 2.31.0", and whatever a
+// distributor adds after the minor ("2.54.0 (Apple Git-157)", "2.43.0.windows.1"). Six digits at
+// most, so a number too long to compare is unreadable, as it is on the health line's road.
+var gitVersionRe = regexp.MustCompile(`^git version ((\d{1,6})\.(\d{1,6})(?:\D.*)?)$`)
+
+// parseGitVersion is the version as git prints it, and its major and minor as numbers.
+func parseGitVersion(out string) (text string, major, minor int, ok bool) {
+	first, _, _ := strings.Cut(out, "\n")
+	m := gitVersionRe.FindStringSubmatch(first)
+	if m == nil {
+		return "", 0, 0, false
+	}
+	// The pattern holds each to six digits, so neither conversion can fail.
+	major, _ = strconv.Atoi(m[2])
+	minor, _ = strconv.Atoi(m[3])
+	return m[1], major, minor, true
+}
+
+// checkGitFloor warns when the git on PATH is below the floor, on a subject of its own so nothing
+// reads it as the tools line. A version it cannot read is a note saying so, never an ok.
+func checkGitFloor(rep *doctorReport) {
+	floor := fmt.Sprintf("%d.%d", gitFloorMajor, gitFloorMinor)
+	note := func(why string) {
+		rep.add(groupMachine, doctorLine{level: levelNote, subject: "git-floor", detail: "could not tell whether git meets the floor " + floor + ": " + why})
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		// No git is no version to compare. The tools lines say git is missing; when they could not
+		// be read, their note says the tools were not checked, and no line names git. Any other
+		// error (`.` first on PATH: exec.ErrDot) is a git that is there and not run.
+		if !errors.Is(err, exec.ErrNotFound) {
+			note(err.Error())
+		}
+		return
+	}
+	out, err := execCommand("git", "--version").Output()
+	if err != nil {
+		note(fmt.Sprintf("git --version failed: %v", err))
+		return
+	}
+	text, major, minor, ok := parseGitVersion(string(out))
+	if !ok {
+		note(fmt.Sprintf("git --version printed %q", strings.TrimSpace(string(out))))
+		return
+	}
+	if major > gitFloorMajor || (major == gitFloorMajor && minor >= gitFloorMinor) {
+		rep.add(groupMachine, doctorLine{level: levelOK, subject: "git-floor", detail: text + ", at or above the floor " + floor})
+		return
+	}
+	// The install hint is not prereqs.sh's: that names how to get a missing git, which on an old
+	// machine can be the same old git, and it would tie this line to a readable template.
+	rep.add(groupMachine, doctorLine{level: levelWarn, subject: "git-floor",
+		detail:  text + " is below the floor " + floor + ": the model calls `git rev-parse --path-format`, and below it a blocking hook can quietly stop recognising paths",
+		install: "a newer git, from your package manager or https://git-scm.com/downloads"})
 }
 
 // checkGH says whether gh, when on PATH, is signed in, from the exit status of `gh auth token`:

@@ -33,6 +33,13 @@ credential). A guess is the expensive failure here: it passes the gate and reads
 **A classifier refusal is a stop.** If a safety or permission classifier refuses a step, return
 `blocked` naming what was refused and why it was being done; never retry that step another way.
 
+**So is a refused edit or write of real tracked source.** A hook's refusal names its road: take it.
+A sandbox refusal is only the OS error (`operation not permitted`) and names none. With no road,
+report the path and the error; never make that write another way. `no-blind-source-rewrite` holds
+a few in-place forms by their words (limits: its header), so passing it is not permission. The rule
+protects real tracked source, so a mutant goes only in a throwaway clone under `$TMPDIR`, applied as
+a patch or written as a new file; the hook refuses an in-place edit there too.
+
 **When fixing review findings or gate failures**
 - Fix the finding at its SOURCE, not where it shows. If a fix needs a new mechanism (a retry, a
   background process, a new layer), say so in `notes`; prefer deleting the thing that needs

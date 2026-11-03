@@ -13,7 +13,9 @@ import (
 	"testing"
 
 	"github.com/rfhayn/stridal/internal/panel/config"
+	"github.com/rfhayn/stridal/internal/panel/install"
 	"github.com/rfhayn/stridal/internal/template"
+	"github.com/rfhayn/stridal/internal/testbin"
 	"github.com/rfhayn/stridal/internal/testgit"
 )
 
@@ -1137,7 +1139,7 @@ func TestScaffoldOverTheOldModel(t *testing.T) {
 	}
 }
 
-// OPS-220: the model's two health lines reach a plugin project through the plugin's own extensions.sh,
+// OPS-220: the model's own health lines reach a plugin project through the plugin's own extensions.sh,
 // with nothing in the project's .claude/health/: a new file there would never reach an updated one.
 func TestPluginProjectGetsTheModelsHealthLines(t *testing.T) {
 	need(t, "git", "sh", "jq")
@@ -1181,6 +1183,28 @@ health_sandbox_writes`
 	}
 	if strings.Contains(out, "FAILED") || !strings.Contains(out, "not there: ") || !strings.Contains(out, "the main checkout's hooks") {
 		t.Errorf("a fresh plugin project's line reads:\n%s", out)
+	}
+}
+
+// OPS-231: a plugin project is the road with no binary, so no `stridal doctor` warns it of an old git.
+// The floor is the model's own line for that reason: it arrives with the plugin's extensions.sh, with
+// nothing in the project's .claude/health/.
+func TestPluginProjectGetsTheGitFloorLine(t *testing.T) {
+	need(t, "git", "sh", "jq")
+	plug, _ := build(t)
+	e := env(t, t.TempDir())
+	p := newProject(t, e)
+	if out, code := run(t, p, e, "", "sh", filepath.Join(plug, "scaffold.sh")); code != 0 {
+		t.Fatalf("scaffold: exit %d\n%s", code, out)
+	}
+	if exists(filepath.Join(p, ".claude", "health", "git-floor.sh")) {
+		t.Error("the scaffold created a project file for a line the model runs itself")
+	}
+	bin := t.TempDir()
+	testbin.Write(t, filepath.Join(bin, "git"), "#!/bin/sh\ncase ${1:-} in --version) echo 'git version 2.30.2'; exit 0 ;; esac\nexec "+install.ShellWord(testgit.Path)+" \"$@\"\n")
+	out, _ := run(t, p, append(e, "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH")), "", "sh", filepath.Join(plug, "extensions.sh"), "health")
+	if want := "- Health: git-floor\n    FAILED git 2.30.2 at " + filepath.Join(bin, "git"); !strings.Contains(out, want) {
+		t.Errorf("extensions.sh health lacks %q:\n%s", want, out)
 	}
 }
 

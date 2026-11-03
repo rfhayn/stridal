@@ -70,7 +70,7 @@ One row a line; the last row last.
 | Review a change PER TASK GROUP, not per PR | **`.claude/workflows/build-change.js`** when built through it; **Nothing. You.** by hand (`/apply-change`) |
 | The panel offers only what the roadmap allows next | **`.claude/panel-suggest.sh`** over the one parser; **`checks/panel-suggest.sh`** |
 | Claude merges only once review has CONVERGED; a proposal converges before the owner reads it | **`merge-pr`** step 3, **`propose`** step 2b: skill steps, **no hook checks them**; **`checks/change-process.sh`** holds the steps in place |
-| No scripted find-replace against tracked source | **`.claude/hooks/no-blind-source-rewrite.sh`** (blocking) |
+| A few in-place forms on tracked source are refused | **`no-blind-source-rewrite.sh`** (blocking; limits: its header) |
 | No whole read of a file over 400 lines | **`.claude/hooks/read-by-range.sh`** (blocking; fails open) |
 | No forced worktree removal, no pattern kill | **`.claude/hooks/no-worktree-force-remove.sh`**, **`.claude/hooks/no-pattern-kill.sh`** (blocking); **`pattern-kill-path.sh`** puts **`.claude/bin/pkill`** first |
 | No gate ends where nobody hears it; a subagent waits for its gate in the foreground | **`.claude/hooks/no-background-gate.sh`** (blocking); **`scripts/ci/gate-wait.sh`**; **`checks/hooks.sh`**, **`checks/gate.sh`** |
@@ -100,7 +100,7 @@ One row a line; the last row last.
 | No unmarked `date +%s` clock read in a check: each says why (`# wall-clock:`); a check waits with `wait_for` (`checks/lib.sh`), never a fixed-count poll or a guessed sleep | **`checks/wall-clock.sh`** over every check `run.sh` runs; the polls and sleeps: **Nothing. You.** |
 | A batch merges its lanes `--no-ff` in order, merges `origin/<main>` before each gate, and names its PR in each row's fragment | **`scripts/ci/batch.sh`** (the playbook's batch steps); **`checks/batch.sh`**; running it: **Nothing. You.** |
 | The owner's roadmap tracker matches `docs/roadmap.md` | **`.claude/local/roadmap-tracker.sh`** via the session-start and session-close steps; the STALE line in session-start's context; **`local:roadmap-tracker`** |
-| A team-queue issue is listed as facts, approved only by an `approved` label after its last edit, bound to its content, worked only through its row; `new-row` proposes one | **`.claude/local/context.d/session-start/team-queue.sh`** (the states); **`local:team-queue`**; the handling steps: **Nothing. You.** |
+| A team-queue issue is listed as facts, approved only by label `approved` after last edit, bound to content, worked only by its row, closed by no keyword; `new-row` proposes one | **`local/context.d/session-start/team-queue.sh`**; **`local/guard.d/team-queue.sh`**; `local:team-queue*`; handling: **Nothing. You.** |
 | The gate runs every check of both sets, and a shared one once only while the framework matches the template | **`scripts/ci/steps.sh`**; **`checks/check-sets.sh`**; keys: job `test` if in `GATE_PR_CHECKS`, else **Nothing. You.** |
 | No tracked file holds the earlier name; split only in its two named files | **`checks/name-residue.sh`** |
 | **This file stays a budget, not an archive** | **`.claude/checks/agents-md-budget.sh`** |

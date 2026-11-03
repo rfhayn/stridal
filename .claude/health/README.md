@@ -2,7 +2,7 @@
 
 `session-start` runs every `*.sh` in this directory and prints each one's output under its name.
 The directory is the list (nothing to register): add a script and it runs next session; delete it
-and it stops. After these come the model's two lines (the table below), the enabled modules'
+and it stops. After these come the model's own lines (the table below), the enabled modules'
 `health/*.sh` and the project's own
 `.claude/local/health/*.sh` (which `stridal update` never touches), all through
 `.claude/extensions.sh health`. Each runs under the interpreter its `#!` line names
@@ -46,7 +46,7 @@ The two GitHub ones and `coauthor-trailers.sh` are thin callers: their logic is 
 update` keeps current while this directory stays yours. Delete the two GitHub ones if you do not use Actions. Project-specific health (a dependency audit, a
 migration ledger, a backup's age) goes here as its own script.
 
-Two more lines are the model's, not files here: `.claude/extensions.sh` runs them itself from
+Three more lines are the model's, not files here: `.claude/extensions.sh` runs them itself from
 `.claude/lib/health.sh`, because a new file here would miss an updated project and every plugin
 update, and these answer for the machine and the sandbox rather than the project:
 
@@ -54,3 +54,4 @@ update, and these answer for the machine and the sandbox rather than the project
 |---|---|
 | `gh-token-file` | Whether gh's `hosts.yml` holds a token in plain text: `FAILED` with its path and a line count, never the token; `OK` with no file or no token; `CANNOT CHECK` when the file cannot be read. |
 | `sandbox-writes` | Where a write was refused, tried each session start: `OK` naming each path refused, `FAILED` naming a path that took a write after the home directory refused one, `NOT PROVEN` when the home directory took one or nothing was refused. A path not there is named as not there, never judged. |
+| `git-floor` | The git on `PATH`, its version as it prints it and its path, against the model's floor of 2.31 (`git rev-parse --path-format`): `FAILED` below it, `OK` at or above it, `CANNOT CHECK` for a version it cannot read or no git. `stridal doctor` warns the same on the road with the binary. Local only. |
