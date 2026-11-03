@@ -30,7 +30,7 @@ yourself and read the result before step 1.
    steps and AGENTS.md's essentials.
 4. **CI**: the gate's process-checks step (`scripts/ci/steps.sh`) runs the plugin's checks
    through `scripts/ci/stridal-model.sh`. In CI (`$CI` set), where no plugin is installed, it
-   clones `github.com/rfhayn/stridal` at tag `v0.1.0` (override with `STRIDAL_REF`) into
+   clones `github.com/rfhayn/stridal` at tag `v0.1.0-rc.1` (override with `STRIDAL_REF`) into
    `~/.cache/stridal` once; cache that directory between runs. If it cannot, the step fails, on
    purpose.
 5. **Commit** the scaffold on a branch, with the owner's go.
