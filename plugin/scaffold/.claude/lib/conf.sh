@@ -300,7 +300,7 @@ conf_main_ref() {
 }
 # The fix for conf_main_ref failing, for any reader's message.
 conf_main_fix() {
-  printf '%s' "origin's main cannot be read here, as git does not know which branch of origin is main. Run: git -C \"$ROOT\" fetch origin && git -C \"$ROOT\" remote set-head origin <this project's main branch>"
+  printf '%s' "origin's main cannot be read here, as git does not know which branch of origin is main. Run: git -C \"$ROOT\" fetch origin && git -C \"$ROOT\" remote set-head origin <this project's main branch>. A first push does not set it, so run that after one too; an origin with no main yet first needs: git -C \"$ROOT\" push origin <this project's main branch>. A single-branch or shallow clone also needs, before the fetch: git -C \"$ROOT\" remote set-branches --add origin <this project's main branch>."
 }
 
 # conf_main_blob REF PATH OUT: PATH as REF has it, into OUT. 0 written; 2 REF truly holds no PATH; 1
@@ -321,6 +321,8 @@ conf_main_blob() {
 conf_keys_from_main() {
   _ck_lib=$1; shift
   CONF_MAIN_NOTE="" CONF_MAIN_BAD_KEYS="" CONF_MAIN_ERRORS="" CONF_MAIN_READ=""
+  # Any remote means a main is expected here. worktree-hook-drift.sh exempts all but one called
+  # origin: on a repository whose only remote has another name, this notes it cannot read main.
   [ -n "$(git -C "$ROOT" remote 2>/dev/null)" ] || return 0
   CONF_MAIN_READ=1
   _ck_f=$(mktemp "${TMPDIR:-/tmp}/conf-main.XXXXXX") || { CONF_MAIN_NOTE="no temp file to read origin's main into"; _ck_f=/dev/null; }

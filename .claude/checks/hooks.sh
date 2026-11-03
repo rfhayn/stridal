@@ -876,10 +876,485 @@ drift 2 "main checkout lacks a merged hook commit: blocked" "$spawn"
 drift 0 "a spawn without worktree isolation: allowed" "$plain"
 
 git -C "$A" merge -q --ff-only origin/main
-echo '# my unmerged hook work' >> "$A/.claude/hooks/worktree-hook-drift.sh"
-out=$(printf '%s' "$spawn" | sh "$A/.claude/hooks/worktree-hook-drift.sh" 2>/dev/null); rc=$?
-expect_rc 0 "$rc" "worktree-hook-drift: a checkout only AHEAD of origin/main: allowed"
+
+# Failing closed (OPS-222). Both directions, each case from a checkout level with origin/main: a
+# wrong refusal stops every lane, and a wrong allowance is a guard out of force that nobody sees.
+drift_says() {  # drift_says WANT WORDS LABEL [CHECKOUT]: its exit and its own words
+  rc=0; out=$(printf '%s' "$spawn" | sh "${4:-$A}/.claude/hooks/worktree-hook-drift.sh" 2>&1) || rc=$?
+  expect_rc "$1" "$rc" "worktree-hook-drift: $3"
+  [ -n "$2" ] || return 0
+  case "$out" in *"$2"*) ok "worktree-hook-drift: ...saying '$2'" ;; *) fail "worktree-hook-drift: $3: did not say '$2': $out" ;; esac
+}
+drift_unsaid() {  # drift_unsaid WORDS LABEL: the last refusal's remedy must not offer this
+  case "$out" in *"$1"*) fail "worktree-hook-drift: $2: it said '$1': $out" ;; *) ok "worktree-hook-drift: $2" ;; esac
+}
+drift_level() { git -C "$A" checkout -qf main; git -C "$A" reset -q --hard origin/main; git -C "$A" clean -qfd -- .claude; }
+TW="$A/.claude/hooks/worktree-hook-drift.sh"
+# Every fix a refusal names is run as the refusal printed it, and the case then shows the refusal
+# clearing: a remedy that does not work is a refusal nobody can leave. A refusal lists its commands
+# under a heading, each on a line of its own starting `  $ `.
+drift_n=0
+drift_run() {  # drift_run HEADING LABEL: run the commands the last refusal lists under HEADING
+  drift_n=$((drift_n + 1))
+  _dr=$(printf '%s\n' "$out" | awk -v s="$1" 'index($0, s) { on = 1; next } on && /^  \$ / { print substr($0, 5); next } on { exit }')
+  [ -n "$_dr" ] || { fail "worktree-hook-drift: $2: the refusal lists no command under '$1': $out"; return 0; }
+  while IFS= read -r _dc; do
+    _dc=$(printf '%s' "$_dc" | sed "s/<branch>/drift-kept-$drift_n/g; s/<message>/kept/g")
+    sh -c "$_dc" >/dev/null 2>&1 && ok "worktree-hook-drift: $2: ran: ${_dc#git -C * }" || fail "worktree-hook-drift: $2: the named fix failed: $_dc"
+  done <<DRIFT_RUN
+$_dr
+DRIFT_RUN
+}
+# lib/conf.sh's text is one line for many readers: its commands are cut from the sentence, and only
+# the placeholder is filled.
+drift_main_fix() {  # drift_main_fix SED-EXPRESSION LABEL
+  _dm=$(printf '%s\n' "$out" | sed -n "$1" | sed "s/<this project's main branch>/main/g")
+  [ -n "$_dm" ] || { fail "worktree-hook-drift: $2: the refusal does not name this fix: $out"; return 0; }
+  sh -c "$_dm" >/dev/null 2>&1 && ok "worktree-hook-drift: $2: ran: $_dm" || fail "worktree-hook-drift: $2: the named fix failed: $_dm"
+}
+DRIFT_SETHEAD='s/.*Run: \(git .*main branch>\)\. A first push.*/\1/p'
+DRIFT_PUSH='s/.*first needs: \(git .*main branch>\)\. A single.*/\1/p'
+DRIFT_BRANCHES='s/.*before the fetch: \(git .*main branch>\)\.$/\1/p'
+drift_env() {  # drift_env WANT WORDS LABEL NAME=VALUE...: the same, with these in the hook's environment
+  _de1=$1 _de2=$2 _de3=$3; shift 3
+  rc=0; out=$(printf '%s' "$spawn" | env "$@" sh "$TW" 2>&1) || rc=$?
+  expect_rc "$_de1" "$rc" "worktree-hook-drift: $_de3"
+  case "$out" in *"$_de2"*) ok "worktree-hook-drift: ...saying '$_de2'" ;; *) fail "worktree-hook-drift: $_de3: did not say '$_de2': $out" ;; esac
+}
+
+# Commits ahead of main: on main they are unreviewed code, and only a lane's own branch may hold them.
+drift_level; echo '# my unmerged hook work' >> "$TW"; echo '# mine' > "$A/.claude/hooks/mine.sh"; git -C "$A" add "$A/.claude"; git -C "$A" commit -qm "my hook work"
+drift_says 2 "push -u origin" "on main, only AHEAD of origin/main, committed: refused, naming push"
+drift_says 2 "commits stay" "...and a restore, saying the commits stay"
+drift_unsaid "commit -m" "...and not offering a commit"
+drift_run "To run" "on main and ahead, restore"
+drift_says 0 "" "...and the restore it names clears the refusal"
+[ "$(git -C "$A" log -1 --format=%s)" = "my hook work" ] && ok "worktree-hook-drift: ...and the commit stayed, as it says" || fail "worktree-hook-drift: on main and ahead, the restore lost the commit"
+drift_level; echo '# my unmerged hook work' >> "$TW"; git -C "$A" commit -qam "my hook work"
+drift_says 2 "push -u origin" "on main and ahead, again"
+drift_run "To keep" "on main and ahead, keep"
+[ -n "$(git -C "$A" ls-remote origin "refs/heads/drift-kept-$drift_n")" ] && ok "worktree-hook-drift: ...and the push it names reached origin" || fail "worktree-hook-drift: on main and ahead, the keep road pushed nothing"
+drift_says 0 "OWN unmerged" "...and the branch and push it name clear the refusal, with the note"
+drift_level; git -C "$A" checkout -qB lane; echo '# my unmerged hook work' >> "$TW"; git -C "$A" commit -qam "my hook work"
+drift_says 0 "OWN unmerged" "a lane's own branch, only AHEAD of origin/main: allowed"
 case "$out" in *additionalContext*) ok "worktree-hook-drift: ...with a note on the channel that reaches Claude" ;; *) fail "worktree-hook-drift: ahead-only gave no additionalContext note" ;; esac
+
+# What refuses: hook files no comparison can vouch for.
+drift_level; echo '# dirty' >> "$TW"
+drift_says 2 "uncommitted" "an edited hook, level with origin/main: refused"
+case "$out" in *".claude/hooks/worktree-hook-drift.sh"*) ok "worktree-hook-drift: ...naming the file" ;; *) fail "worktree-hook-drift: the dirty refusal names no file: $out" ;; esac
+# The road that keeps the work: stridal update on main lands here. No commit on main: a branch first.
+drift_level; echo '# dirty' >> "$TW"
+drift_says 2 "stridal update" "on main and dirty, it names the road that keeps the work"
+drift_level; rm "$A/.claude/settings.json"
+drift_says 2 "uncommitted" "on main, a deleted settings.json"
+drift_run "To keep" "...keep names only what it can add"
+drift_says 0 "OWN unmerged" "...and clears the refusal"
+# A discard throws away what is uncommitted and nothing else: committed hook work survives it, and the
+# next spawn is judged on what is left.
+drift_level; git -C "$A" checkout -qB lane; echo '# committed' >> "$TW"; echo '# new' > "$A/.claude/hooks/committed.sh"; git -C "$A" add "$A/.claude"; git -C "$A" commit -qm "hook work"; echo '# dirty' >> "$TW"
+drift_says 2 "uncommitted" "a lane with a committed hook edit, a new file and a dirty edit: refused"
+drift_run "To discard" "that lane, discard"
+grep -q '# committed' "$TW" && ok "worktree-hook-drift: ...and the committed edit survives" || fail "worktree-hook-drift: the discard reversed a committed hook edit it never listed"
+[ -f "$A/.claude/hooks/committed.sh" ] && ok "worktree-hook-drift: ...and the committed new file survives" || fail "worktree-hook-drift: the discard deleted a committed file it never listed"
+grep -q '# dirty' "$TW" && fail "worktree-hook-drift: the discard left the dirty edit" || ok "worktree-hook-drift: ...and the dirty edit is gone"
+[ -z "$(git -C "$A" status --porcelain -- "$A/.claude/hooks")" ] && ok "worktree-hook-drift: ...and a next plain commit would hold no reversal" || fail "worktree-hook-drift: the discard left a reversal staged: $(git -C "$A" status --porcelain -- "$A/.claude/hooks")"
+drift_says 0 "OWN unmerged" "...and the next spawn gets the note, truthfully"
+
+# Each road from each state: a command is printed only where a case runs it. One dirty settings.json,
+# on committed work to conf.sh and committed.sh where the checkout is ahead.
+DS="$A/.claude/settings.json"; DC="$A/.claude/lib/conf.sh"; DN="$A/.claude/hooks/committed.sh"
+drift_state() {  # drift_state BRANCH POSITION
+  drift_level
+  case $1 in lane) git -C "$A" checkout -qB lane ;; detached) git -C "$A" checkout -q --detach ;; esac
+  case $2 in behind|diverged) git -C "$A" reset -q --hard origin/main~1 ;; esac
+  case $2 in ahead|diverged) echo '# committed' >> "$DC"; echo '# new' > "$DN"; git -C "$A" add "$A/.claude"; git -C "$A" commit -qm "committed work" ;; esac
+  echo '# dirty' >> "$DS"
+}
+for dby in main lane; do
+  for dpos in level ahead behind diverged; do
+    dl="$dby, $dpos, dirty"
+    drift_state "$dby" "$dpos"
+    drift_says 2 "uncommitted" "$dl: refused"
+    case "$dby $dpos" in "main behind") drift_says 2 "Then pull" "$dl: names the pull" ;; *) drift_unsaid "Then pull" "$dl: names no pull, as none would run" ;; esac
+    drift_run "To discard" "$dl, discard"
+    grep -q '# dirty' "$DS" && fail "worktree-hook-drift: $dl: the discard left the dirty edit" || ok "worktree-hook-drift: $dl: the discard removed the dirty edit"
+    case $dpos in ahead|diverged)
+      grep -q '# committed' "$DC" && [ -f "$DN" ] && ok "worktree-hook-drift: $dl: the discard kept the committed work" || fail "worktree-hook-drift: $dl: the discard reversed committed work it never listed" ;;
+    esac
+    case "$dby $dpos" in
+      *level) drift_says 0 "" "$dl: the discard clears it" ;;
+      "main ahead") drift_says 2 "push -u origin" "$dl: the discard routes to the ahead road" ;;
+      "main behind")
+        drift_run "Then pull" "$dl, then pull"
+        drift_says 0 "" "$dl: the discard and pull clear it"
+        ;;
+      "lane ahead") drift_says 0 "OWN unmerged" "$dl: the discard routes to the note" ;;
+      *)
+        drift_says 2 "lacks these hook commits" "$dl: the discard routes to the behind road"
+        drift_run "To bring" "$dl, merge"
+        case "$dby $dpos" in
+          "main diverged") drift_says 2 "push -u origin" "$dl: the merge routes to the ahead road" ;;
+          *diverged) drift_says 0 "OWN unmerged" "$dl: the merge routes to the note" ;;
+          *) drift_says 0 "" "$dl: the merge clears it" ;;
+        esac
+        ;;
+    esac
+    case $dpos in level|behind)
+      drift_state "$dby" "$dpos"
+      dmain=$(git -C "$A" rev-parse main)
+      drift_says 2 "uncommitted" "$dl, again"
+      drift_run "To keep" "$dl, keep"
+      grep -q '# dirty' "$DS" && ok "worktree-hook-drift: $dl: the keep road kept the edit" || fail "worktree-hook-drift: $dl: the keep road lost the edit"
+      case $dpos in
+        level) drift_says 0 "OWN unmerged" "$dl: the keep road gets the note" ;;
+        *)
+          drift_says 2 "lacks these hook commits" "$dl: the keep road routes to the behind road"
+          drift_run "To bring" "$dl, keep, merge"
+          drift_says 0 "OWN unmerged" "$dl: the merge routes to the note"
+          ;;
+      esac
+      [ "$(git -C "$A" rev-parse main)" = "$dmain" ] && ok "worktree-hook-drift: $dl: the keep road put no commit on main" || fail "worktree-hook-drift: $dl: the keep road committed on main"
+      ;;
+    esac
+  done
+done
+# A detached HEAD, only ahead of main, keeps the note: a decision, not a road.
+drift_level; git -C "$A" checkout -q --detach; echo '# mine' > "$A/.claude/hooks/mine.sh"; git -C "$A" add "$A/.claude/hooks/mine.sh"; git -C "$A" commit -qm mine
+drift_says 0 "OWN unmerged" "a detached HEAD, only ahead: noted, not refused"
+drift_level; echo '# dirty' >> "$TW"; git -C "$A" add "$TW"
+drift_says 2 "uncommitted" "a staged hook edit: refused"
+drift_run "To discard" "a staged hook edit, discard"
+drift_says 0 "" "...and the discard clears the index too"
+drift_level; echo '# new' > "$A/.claude/hooks/staged.sh"; git -C "$A" add "$A/.claude/hooks/staged.sh"
+drift_says 2 "uncommitted" "a staged new hook file: refused"
+drift_run "To discard" "a staged new hook file, discard"
+drift_says 0 "" "...and the discard removes it"
+drift_level; echo '# edit' >> "$A/.claude/lib/conf.sh"
+drift_says 2 "uncommitted" "an edit to the guard library, which the guards execute: refused"
+# An index flag hides an edit from status and from diff alike.
+drift_level; echo '# dirty' >> "$TW"; git -C "$A" update-index --assume-unchanged "$TW"
+drift_says 2 "assume-unchanged" "an edited hook flagged assume-unchanged: refused"
+drift_run "Clear" "assume-unchanged"
+drift_says 2 "uncommitted" "...and clearing it shows the edit it hid"
+drift_level; echo '# dirty' >> "$TW"; git -C "$A" update-index --skip-worktree "$TW"
+drift_says 2 "skip-worktree" "an edited hook flagged skip-worktree: refused"
+drift_run "Clear" "skip-worktree"
+drift_says 2 "uncommitted" "...and clearing it shows the edit it hid"
+drift_level; git -C "$A" update-index --skip-worktree "$A/.claude/settings.json"
+drift_says 2 "skip-worktree" "settings.json flagged, unedited: refused, as every compared path is read for flags"
+drift_run "Clear" "settings.json flagged"
+drift_says 0 "" "...and the commands it names clear the refusal"
+drift_level; git -C "$A" update-index --assume-unchanged "$TW"; git -C "$A" update-index --skip-worktree "$TW"
+drift_says 2 "skip-worktree" "a hook carrying both flags, unedited: refused"
+drift_run "Clear" "both flags"
+drift_says 0 "" "...and the commands it names clear both, and the refusal"
+drift_level; echo '{"a":1}' > "$A/.claude/settings.json"
+drift_says 2 "uncommitted" "an edited settings.json: refused"
+drift_level; rm "$A/.claude/settings.json"
+drift_says 2 "uncommitted" "a deleted settings.json: refused"
+drift_run "To discard" "a deleted settings.json, discard"
+drift_says 0 "" "...and the discard brings it back"
+drift_level; echo '# new' > "$A/.claude/hooks/untracked.sh"
+drift_says 2 "untracked.sh" "an untracked hook file, which a diff against origin/main never sees: refused"
+drift_run "To discard" "an untracked hook file, discard"
+drift_says 0 "" "...and the clean it names clears the refusal"
+# The clean takes what the refusal listed, in a new directory too, and leaves what git ignores.
+drift_level; printf '*.tmp\n' >> "$A/.git/info/exclude"; : > "$A/.claude/hooks/kept.tmp"; mkdir -p "$A/.claude/hooks/sub"; echo '# new' > "$A/.claude/hooks/sub/x.sh"
+drift_says 2 "sub/x.sh" "an untracked hook file in a new directory: refused"
+drift_run "To discard" "an untracked file in a new directory, discard"
+drift_says 0 "" "...and the clean it names clears the refusal"
+[ -f "$A/.claude/hooks/kept.tmp" ] && ok "worktree-hook-drift: ...and an ignored file, which the refusal never listed, survives it" || fail "worktree-hook-drift: the clean deleted an ignored file the refusal never listed"
+rm -f "$A/.claude/hooks/kept.tmp"
+drift_level; echo '# new' > "$A/.claude/hooks/untracked.sh"
+git -C "$A" config status.showUntrackedFiles no
+drift_says 2 "untracked.sh" "...and with git configured to hide untracked files: still refused"
+git -C "$A" config --unset status.showUntrackedFiles
+# Main lacks one compared path: the restore must not die whole on it (git refuses a pathspec its source lacks).
+ML="$d/driftmainlacks"; new_repo "$ML"; mkdir -p "$ML/.claude/hooks" "$ML/.claude/lib"
+cp "$H/worktree-hook-drift.sh" "$ML/.claude/hooks/"; cp "$ROOT/.claude/lib/conf.sh" "$ML/.claude/lib/"; echo '# readme' > "$ML/.claude/hooks/README.md"
+git -C "$ML" add .claude && git -C "$ML" commit -qm hooks
+git init -q --bare "$d/driftmainlacks-origin.git"; git -C "$ML" remote add origin "$d/driftmainlacks-origin.git"; git -C "$ML" push -q origin HEAD:main 2>/dev/null; git -C "$ML" fetch -q origin 2>/dev/null; git -C "$ML" remote set-head origin main
+echo '# dirty' >> "$ML/.claude/hooks/README.md"
+drift_says 2 "uncommitted" "main has no settings.json, a dirty hook: refused" "$ML"
+drift_run "To discard" "main has no settings.json, discard"
+drift_says 0 "" "...and the restore it names clears the refusal" "$ML"
+echo '# dirty' >> "$ML/.claude/hooks/README.md"
+drift_says 2 "uncommitted" "main has no settings.json, dirty again" "$ML"
+drift_run "To keep" "main has no settings.json, keep"
+drift_says 0 "OWN unmerged" "...and the add it names clears the refusal" "$ML"
+# Ahead on main with a path main lacks: a restore from main could not make the two match, so none is offered.
+git -C "$ML" checkout -qf main; echo '{}' > "$ML/.claude/settings.json"; git -C "$ML" add "$ML/.claude/settings.json"; git -C "$ML" commit -qm settings
+drift_says 2 "push -u origin" "on main and ahead with a path main lacks: refused" "$ML"
+drift_unsaid "To run" "...offering no restore that could not clear it"
+drift_run "To keep" "on main and ahead with a path main lacks, keep"
+drift_says 0 "OWN unmerged" "...and the branch it names clears the refusal" "$ML"
+# A model installed but not committed: HEAD holds none of these paths, so there is nothing to restore.
+for how in untracked staged; do
+  IN="$d/driftinstall-$how"; new_repo "$IN"; echo '# app' > "$IN/app.txt"; git -C "$IN" add app.txt; git -C "$IN" commit -qm app
+  git init -q --bare "$IN-origin.git"; git -C "$IN" remote add origin "$IN-origin.git"; git -C "$IN" push -q origin HEAD:main 2>/dev/null; git -C "$IN" fetch -q origin 2>/dev/null; git -C "$IN" remote set-head origin main
+  mkdir -p "$IN/.claude/hooks" "$IN/.claude/lib"; cp "$H/worktree-hook-drift.sh" "$IN/.claude/hooks/"; cp "$ROOT/.claude/lib/conf.sh" "$IN/.claude/lib/"
+  [ "$how" = untracked ] || git -C "$IN" add "$IN/.claude"
+  drift_says 2 "uncommitted" "a model installed but not committed, $how: refused" "$IN"
+  drift_unsaid "To discard" "...and no discard, which would delete the guards and a person's own hooks"
+  drift_run "To keep" "a model installed but not committed, $how, keep"
+  drift_says 0 "OWN unmerged" "...and the branch and commit clear it, with the note" "$IN"
+done
+# No commit yet, beside an origin: no command here would clear it, so none is printed.
+UB="$d/driftunborn"; new_repo "$UB"; mkdir -p "$UB/.claude/hooks" "$UB/.claude/lib"
+cp "$H/worktree-hook-drift.sh" "$UB/.claude/hooks/"; cp "$ROOT/.claude/lib/conf.sh" "$UB/.claude/lib/"
+git -C "$UB" remote add origin "$d/origin.git"; git -C "$UB" fetch -q origin 2>/dev/null; git -C "$UB" remote set-head origin main
+drift_says 2 "no commit yet" "a checkout with no commit, beside an origin: refused" "$UB"
+drift_unsaid '  $ ' "...listing no command, as none would clear it"
+
+# What refuses: an origin it cannot compare with.
+drift_level; git -C "$A" remote set-head origin -d
+drift_says 2 "set-head" "an origin whose main git does not know: refused, with the fix"
+drift_main_fix "$DRIFT_SETHEAD" "origin's HEAD unset"
+drift_says 0 "" "...and the fetch and set-head it names clear the refusal"
+git -C "$A" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/gone
+drift_says 2 "set-head" "origin's HEAD naming a branch this clone lacks: refused"
+drift_main_fix "$DRIFT_SETHEAD" "origin's HEAD naming a missing branch"
+drift_says 0 "" "...and the fetch and set-head it names clear the refusal"
+E="$d/driftempty"; new_repo "$E"; mkdir -p "$E/.claude/hooks" "$E/.claude/lib"
+cp "$H/worktree-hook-drift.sh" "$E/.claude/hooks/"; cp "$ROOT/.claude/lib/conf.sh" "$E/.claude/lib/"
+git -C "$E" add .claude && git -C "$E" commit -qm hooks
+git init -q --bare "$d/driftempty-origin.git"; git -C "$E" remote add origin "$d/driftempty-origin.git"
+drift_says 2 "set-head" "an origin nothing has been fetched from: refused" "$E"
+drift_main_fix "$DRIFT_PUSH" "an origin with no main yet, the push"
+drift_says 2 "set-head" "...the push alone does not clear it" "$E"
+drift_main_fix "$DRIFT_SETHEAD" "an origin with no main yet, then the set-head"
+drift_says 0 "" "...and the set-head after it clears the refusal" "$E"
+# A first push makes origin/main but not origin's HEAD: the text must say pushing is not enough.
+PF="$d/driftpushed"; new_repo "$PF"; mkdir -p "$PF/.claude/hooks" "$PF/.claude/lib"
+cp "$H/worktree-hook-drift.sh" "$PF/.claude/hooks/"; cp "$ROOT/.claude/lib/conf.sh" "$PF/.claude/lib/"
+git -C "$PF" add .claude && git -C "$PF" commit -qm hooks
+git init -q --bare "$d/driftpushed-origin.git"; git -C "$PF" remote add origin "$d/driftpushed-origin.git"; git -C "$PF" push -q origin HEAD:main 2>/dev/null; git -C "$PF" fetch -q origin 2>/dev/null
+git -C "$PF" symbolic-ref -q refs/remotes/origin/HEAD >/dev/null && git -C "$PF" remote set-head origin -d
+git -C "$PF" rev-parse -q --verify refs/remotes/origin/main >/dev/null && ok "fixture: origin/main exists, origin's HEAD does not" || fail "fixture: the first push reached no origin/main; the next case learns nothing"
+drift_says 2 "first push does not set it" "after remote add and a first push: refused, saying the push was not enough" "$PF"
+drift_main_fix "$DRIFT_SETHEAD" "after a first push"
+drift_says 0 "" "...and the set-head it names clears the refusal" "$PF"
+# A single-branch or shallow clone of another branch has no origin/main to set a HEAD to.
+drift_level; git -C "$A" push -q origin origin/main:refs/heads/feature 2>/dev/null
+for how in --single-branch; do
+  CL="$d/driftclone-$(printf '%s' "$how" | tr -d ' -')"
+  # shellcheck disable=SC2086
+  git clone -q $how -b feature "file://$d/origin.git" "$CL" 2>/dev/null
+  git -C "$CL" symbolic-ref -q refs/remotes/origin/HEAD >/dev/null && git -C "$CL" remote set-head origin -d
+  drift_says 2 "set-branches --add origin" "a $how clone of a branch that is not main: refused, naming the fix that works there" "$CL"
+  drift_main_fix "$DRIFT_BRANCHES" "a $how clone, set-branches"
+  drift_main_fix "$DRIFT_SETHEAD" "a $how clone, then the fetch and set-head"
+  drift_says 0 "" "...and the fix it names clears the refusal ($how)" "$CL"
+done
+drift_level; rm -r "$A/.claude/lib"
+drift_says 2 "lib/conf.sh" "an origin, and no lib/conf.sh to read its main with: refused"
+drift_unsaid "To restore" "...naming the file, and printing no restore"
+drift_level; git -C "$A" rm -q "$A/.claude/lib/conf.sh"
+drift_says 2 "lib/conf.sh" "a staged delete of lib/conf.sh: refused"
+drift_unsaid "To restore" "...printing no restore"
+# A conf.sh that does not parse kills a shell that sources it: a refusal naming it, not a dead hook.
+drift_level; echo 'if then' > "$A/.claude/lib/conf.sh"
+drift_says 2 "does not parse" "a conf.sh that does not parse: refused, naming the file"
+drift_unsaid "To restore" "...printing no restore, which would drop an edit no listing named"
+drift_level; echo 'if then' > "$A/.claude/lib/conf.sh"; git -C "$A" commit -qam broken
+drift_says 2 "does not parse" "a conf.sh committed broken: refused, naming the file"
+drift_level; git -C "$A" rm -q "$A/.claude/lib/conf.sh"; git -C "$A" commit -qm "no conf"
+drift_says 2 "lib/conf.sh" "a conf.sh deleted in a commit: refused, naming the file"
+drift_level
+drift_git=$(command -v git); mkdir -p "$d/driftbin"
+drift_broken() {  # drift_broken SUBCOMMAND LABEL: that git subcommand fails, and the hook refuses
+  printf '#!/bin/sh\ncase " $* " in *" %s "*) exit 128 ;; esac\nexec "%s" "$@"\n' "$1" "$drift_git" > "$d/driftbin/git"; chmod +x "$d/driftbin/git"
+  rc=0; out=$(printf '%s' "$spawn" | PATH="$d/driftbin:$PATH" sh "$TW" 2>&1) || rc=$?
+  expect_rc 2 "$rc" "worktree-hook-drift: $2"
+  case "$out" in *"BLOCKED by worktree-hook-drift"*) ok "worktree-hook-drift: ...and its refusal says so" ;; *) fail "worktree-hook-drift: $2: no refusal text: $out" ;; esac
+}
+# On a lane's own branch and ahead: there, a command that fails and reads as an empty answer allows.
+drift_level; git -C "$A" checkout -qB lane; echo '# mine' >> "$TW"; git -C "$A" commit -qam mine
+drift_broken remote "git remote fails: refused"
+drift_broken ls-files "git ls-files fails: refused"
+drift_broken status "git status fails: refused"
+drift_broken diff "git diff fails: refused"
+drift_broken branch "git branch fails, which would read as a detached HEAD: refused"
+drift_broken log "git log fails, which once read as 'no commits missing': refused"
+drift_level
+mkdir -p "$d/driftnogit"; for t in cat grep dirname sed tr sh; do ln -s "$(command -v "$t")" "$d/driftnogit/$t"; done
+rc=0; out=$(printf '%s' "$spawn" | PATH="$d/driftnogit" sh "$TW" 2>&1) || rc=$?
+expect_rc 2 "$rc" "worktree-hook-drift: no git on PATH: refused"
+case "$out" in *"git cannot read"*) ok "worktree-hook-drift: ...its own refusal, not a crash" ;; *) fail "worktree-hook-drift: no git: not its refusal: $out" ;; esac
+# A tool that fails must not read as "not a worktree spawn" or "no origin": a dirty hook, each time.
+for gone in grep cat; do
+  mkdir -p "$d/driftno$gone"; for t in cat grep dirname sed tr sh; do [ "$t" = "$gone" ] || ln -s "$(command -v "$t")" "$d/driftno$gone/$t"; done; ln -s "$drift_git" "$d/driftno$gone/git"
+  drift_level; echo '# dirty' >> "$TW"
+  rc=0; out=$(printf '%s' "$spawn" | PATH="$d/driftno$gone" sh "$TW" 2>&1) || rc=$?
+  expect_rc 2 "$rc" "worktree-hook-drift: git on PATH but no $gone, a dirty hook: refused"
+done
+mkdir -p "$d/driftbadgrep"; printf '#!/bin/sh\nexit 2\n' > "$d/driftbadgrep/grep"; chmod +x "$d/driftbadgrep/grep"
+rc=0; out=$(printf '%s' "$spawn" | PATH="$d/driftbadgrep:$PATH" sh "$TW" 2>&1) || rc=$?
+expect_rc 2 "$rc" "worktree-hook-drift: a grep that fails, a dirty hook: refused"
+NR="$d/driftnorepo"; mkdir -p "$NR/.claude/hooks"; cp "$H/worktree-hook-drift.sh" "$NR/.claude/hooks/"
+rc=0; out=$(printf '%s' "$spawn" | sh "$NR/.claude/hooks/worktree-hook-drift.sh" 2>&1) || rc=$?
+expect_rc 2 "$rc" "worktree-hook-drift: not a git repository: refused"
+case "$out" in *"BLOCKED by worktree-hook-drift"*) ok "worktree-hook-drift: ...its own refusal, not a crash" ;; *) fail "worktree-hook-drift: no repository: not its refusal: $out" ;; esac
+# A corrupt config is not "no repository": the refusal carries git's own words.
+drift_level; cp "$A/.git/config" "$d/driftconfig.saved"; printf '[broken\n' >> "$A/.git/config"
+drift_says 2 "bad config" "a corrupt config: refused, in git's own words"
+cp "$d/driftconfig.saved" "$A/.git/config"
+
+# What stays allowed. No origin first: there is no main to lag, whatever the checkout's state.
+O="$d/driftnoorigin"; new_repo "$O"; mkdir -p "$O/.claude/hooks" "$O/.claude/lib"
+cp "$H/worktree-hook-drift.sh" "$O/.claude/hooks/"; cp "$ROOT/.claude/lib/conf.sh" "$O/.claude/lib/"
+drift_says 0 "CANNOT CHECK" "no origin, no commit yet: allowed, and says so" "$O"
+case "$out" in *additionalContext*) ok "worktree-hook-drift: ...on the channel that reaches Claude" ;; *) fail "worktree-hook-drift: no origin gave no additionalContext note: $out" ;; esac
+git -C "$O" add .claude && git -C "$O" commit -qm hooks
+drift_says 0 "CANNOT CHECK" "no origin, clean: allowed" "$O"
+echo '# dirty' >> "$O/.claude/hooks/worktree-hook-drift.sh"
+drift_says 0 "CANNOT CHECK" "no origin, a dirty hook: allowed" "$O"
+git -C "$O" remote add upstream "$d/origin.git"
+drift_says 0 "CANNOT CHECK" "a remote, but none called origin: allowed" "$O"
+git -C "$O" remote rename upstream origin-fork
+drift_says 0 "CANNOT CHECK" "a remote whose name only contains origin: allowed" "$O"
+mv "$O/.claude/lib" "$O/.claude/lib.away"
+drift_says 0 "CANNOT CHECK" "no origin, no lib/conf.sh: allowed" "$O"
+case "$out" in *additionalContext*) ok "worktree-hook-drift: ...and the note still reaches Claude, with no conf.sh to help" ;; *) fail "worktree-hook-drift: no conf.sh, the note went only to stderr: $out" ;; esac
+mv "$O/.claude/lib.away" "$O/.claude/lib"
+cp "$O/.claude/lib/conf.sh" "$d/driftconf.saved"; echo 'if then' > "$O/.claude/lib/conf.sh"
+drift_says 0 "CANNOT CHECK" "no origin, a conf.sh that does not parse: allowed, as it needs nothing from it" "$O"
+cp "$d/driftconf.saved" "$O/.claude/lib/conf.sh"
+
+# Neither an inherited variable nor another repository may answer "no origin" for this checkout.
+drift_level; echo '# dirty' >> "$TW"
+drift_env 2 "uncommitted" "GIT_DIR naming an originless repository, a dirty hook: refused" "GIT_DIR=$O/.git"
+drift_env 2 "uncommitted" "GIT_DIR naming nothing, a dirty hook: refused" "GIT_DIR=$d/nothing"
+drift_env 2 "uncommitted" "GIT_WORK_TREE naming another checkout: refused" "GIT_WORK_TREE=$O"
+drift_env 2 "uncommitted" "a worktree set by environment config: refused" "GIT_CONFIG_COUNT=1" "GIT_CONFIG_KEY_0=core.worktree" "GIT_CONFIG_VALUE_0=$O"
+drift_level; git -C "$A" config core.worktree "$O"
+drift_says 2 "not the top" "core.worktree naming another checkout: refused"
+git -C "$A" config --unset core.worktree
+PR="$d/driftparent"; new_repo "$PR"; mkdir -p "$PR/sub/.claude/hooks" "$PR/sub/.claude/lib"
+cp "$H/worktree-hook-drift.sh" "$PR/sub/.claude/hooks/"; cp "$ROOT/.claude/lib/conf.sh" "$PR/sub/.claude/lib/"
+drift_says 2 "not the top" "hooks in a subdirectory of an originless parent repository: refused" "$PR/sub"
+
+# The same directory under another spelling is the same checkout, on a clean tree: no false refusal.
+drift_level; ln -s "$A" "$d/driftlink"
+drift_says 0 "" "a symlinked project directory, level with origin/main: allowed" "$d/driftlink"
+if [ -d "$d/MAIN" ]; then drift_says 0 "" "the project's path in another case, level with origin/main: allowed" "$d/MAIN"
+else ok "SKIPPED the project's path in another case: this filesystem is case-sensitive, so that path names nothing"; fi
+NFC="$d/drift-$(printf 'caf\303\251')"; NFD="$d/drift-$(printf 'cafe\314\201')"
+git clone -q -b main "$d/origin.git" "$NFC" 2>/dev/null
+git -C "$NFC" remote set-head origin main   # the bare origin's HEAD follows the runner's init.defaultBranch
+if [ -d "$NFC" ] && [ -d "$NFD" ]; then drift_says 0 "" "the project's path in another Unicode normalization, level with origin/main: allowed" "$NFD"
+else ok "SKIPPED the project's path in another Unicode normalization: this filesystem keeps the two spellings apart"; fi
+
+drift_level; echo '# elsewhere' > "$A/notes.txt"; mkdir -p "$A/.claude/skills"; echo '# edit' > "$A/.claude/skills/new.md"
+drift_says 0 "" "uncommitted files outside the hooks and the guard library: allowed"
+drift_level; printf '*.tmp\n' >> "$A/.git/info/exclude"; : > "$A/.claude/hooks/scratch.tmp"
+drift_says 0 "" "an ignored file among the hooks (.DS_Store, say): allowed"
+git -C "$A" checkout -qB lane; echo '# mine' >> "$TW"; git -C "$A" commit -qam mine
+drift_says 0 "OWN unmerged" "...and ahead of origin/main on a lane's branch: noted, not refused"
+rm -f "$A/.claude/hooks/scratch.tmp"
+drift_level; git -C "$A" reset -q --soft origin/main~1; git -C "$A" commit -qm "the fix, cherry-picked"
+drift_says 0 "" "a cherry-picked fix, the same files under another commit: allowed"
+drift_level; git -C "$A" reset -q origin/main~1
+[ "$(git -C "$A" status --porcelain -- .claude/hooks)" != "" ] && ok "fixture: the next case's hook file differs from its HEAD" || fail "fixture: nothing is dirty, so the next case learns nothing"
+drift_says 0 "" "hook files uncommitted but identical to origin/main: allowed (they ARE main's code)"
+drift_level; echo '# dirty' >> "$TW"
+rc=0; printf '%s' "$plain" | sh "$TW" >/dev/null 2>&1 || rc=$?; expect_rc 0 "$rc" "worktree-hook-drift: a dirty hook and a spawn without worktree isolation: allowed"
+drift_level; git -C "$A" worktree add -q "$d/driftlane" origin/main 2>/dev/null
+drift_says 0 "" "a lane's own worktree, level with origin/main: allowed" "$d/driftlane"
+echo '# dirty' >> "$d/driftlane/.claude/hooks/worktree-hook-drift.sh"
+drift_says 2 "uncommitted" "a lane's own worktree with a dirty hook: refused" "$d/driftlane"
+
+# Commits origin/main has and this checkout lacks, in guard code beyond .claude/hooks; and a dirty
+# refusal's words where the tracked state differs. These move origin/main, so they come last.
+git -C "$B" pull -q origin main 2>/dev/null
+echo '# added' > "$B/.claude/hooks/added.sh"; echo '# readme' > "$B/.claude/hooks/README.md"; echo '# app' > "$B/app-half.txt"
+git -C "$B" add .claude app-half.txt && git -C "$B" commit -qm "add hook files" && git -C "$B" push -q origin HEAD:main 2>/dev/null
+git -C "$A" fetch -q origin
+drift_level; git -C "$A" reset -q --hard origin/main~1; cp "$B/.claude/hooks/added.sh" "$A/.claude/hooks/added.sh"; cp "$B/app-half.txt" "$A/app-half.txt"; echo '# half' >> "$A/.claude/settings.json"
+drift_says 2 "uncommitted" "a new file identical to main's, in a checkout behind main: refused"
+drift_unsaid "differ from" "...without calling it different from main"
+# A half-applied pull that also wrote an app file: restore and clean take the compared paths only, so the
+# pull stops on the app file, as the refusal says, and goes once that is cleared.
+drift_says 2 "it stops on" "...saying what the pull stops on"
+drift_run "To discard" "a half-applied pull, discard"
+git -C "$A" pull -q --ff-only origin main >/dev/null 2>&1 && fail "worktree-hook-drift: a half-applied pull's app file did not stop the pull: the refusal's sentence is wrong" || ok "worktree-hook-drift: ...and the pull stops on the app file, as it says"
+rm -f "$A/app-half.txt"
+drift_run "Then pull" "a half-applied pull, then pull"
+[ "$(git -C "$A" rev-parse HEAD)" = "$(git -C "$A" rev-parse origin/main)" ] && ok "worktree-hook-drift: ...and the pull it names brought the checkout level" || fail "worktree-hook-drift: the named pull left the checkout behind"
+drift_says 0 "" "...and the refusal is cleared"
+drift_level; echo '# edit' >> "$A/.claude/hooks/README.md"
+drift_says 2 "uncommitted" "an edit to the tracked hooks/README.md: refused"
+drift_unsaid "clean -f" "...without offering to clean a tracked file"
+# A pull alone never clears it: the pull succeeds, and the dirty file stands.
+drift_level; git -C "$A" reset -q --hard origin/main~1; echo '# edit' >> "$A/.claude/settings.json"
+git -C "$A" pull -q --ff-only origin main 2>/dev/null
+drift_says 2 "uncommitted" "a pull alone, on a dirty file it does not touch: still refused"
+# A merge in progress touching these files: the refusal says so and prints no command, as git refuses a
+# switch or a pull then and an abort drops work. A conflict is no index flag either.
+echo '# theirs' >> "$B/.claude/hooks/README.md"; echo '# theirs' > "$B/.claude/hooks/guard.sh"; git -C "$B" add "$B/.claude"; git -C "$B" commit -qm "theirs" && git -C "$B" push -q origin HEAD:main 2>/dev/null
+git -C "$A" fetch -q origin
+drift_level; git -C "$A" checkout -qB lane; git -C "$A" reset -q --hard origin/main~1; echo '# ours' > "$A/.claude/hooks/guard.sh"; git -C "$A" add "$A/.claude/hooks/guard.sh"; git -C "$A" commit -qm "ours"
+git -C "$A" merge -q origin/main >/dev/null 2>&1
+grep -q '<<<<<<<' "$A/.claude/hooks/guard.sh" && ok "fixture: guard.sh holds conflict markers" || fail "fixture: no markers, so the next cases learn nothing"
+drift_says 2 "merge is in progress" "markers in a guard file, on a lane: refused, saying so"
+drift_says 2 "inishing it by hand" "...saying that finishing it keeps the work"
+drift_says 2 "drops its resolutions and can drop edits" "...and what an abort costs"
+drift_unsaid "Clear" "...not as an index flag"
+drift_unsaid '  $ ' "...printing no command, so no road commits the markers or drops the work"
+echo '# resolved' > "$A/.claude/hooks/guard.sh"; git -C "$A" add "$A/.claude/hooks/guard.sh"; git -C "$A" commit -q --no-edit
+drift_says 0 "OWN unmerged" "...and finishing it by hand and spawning again keeps the work, with the note"
+# A rebase on main reads as a detached HEAD: stopped in these files, it says so too.
+drift_level; git -C "$A" reset -q --hard origin/main~1; echo '# ours' > "$A/.claude/hooks/guard.sh"; git -C "$A" add "$A/.claude/hooks/guard.sh"; git -C "$A" commit -qm "ours"
+git -C "$A" rebase -q origin/main >/dev/null 2>&1
+[ -d "$A/.git/rebase-merge" ] && ok "fixture: a rebase has stopped on a conflict" || fail "fixture: no rebase in progress, so the next cases learn nothing"
+drift_says 2 "rebase is in progress" "a rebase stopped in a guard file: refused, saying so"
+drift_unsaid '  $ ' "...printing no command, as an abort can destroy an edit the refusal never listed"
+git -C "$A" rebase --abort
+# A conflict with no merge or rebase behind it (a stash pop): the same, discard only.
+drift_level; git -C "$A" checkout -qB lane; echo '# stashed' >> "$A/.claude/hooks/guard.sh"; git -C "$A" stash -q; echo '# committed' >> "$A/.claude/hooks/guard.sh"; git -C "$A" commit -qam "committed"
+git -C "$A" stash pop -q >/dev/null 2>&1
+drift_says 2 "UU" "a conflict from a stash pop: refused as dirty"
+drift_unsaid "To keep" "...and the refusal offers no road that commits the markers"
+drift_run "To discard" "a conflict from a stash pop, discard"
+grep -q '<<<<<<<' "$A/.claude/hooks/guard.sh" && fail "worktree-hook-drift: the discard left conflict markers in a guard" || ok "worktree-hook-drift: ...and the discard leaves no markers"
+drift_says 0 "OWN unmerged" "...and the next spawn gets the note, truthfully"
+git -C "$A" stash drop -q 2>/dev/null
+# A catch-up merge stopped on an app file, with nothing of main's missing from these paths. On a lane the
+# same files got the note a moment earlier, and they still do. On main hook commits are refused anyway.
+echo '# theirs' > "$B/app.txt"; git -C "$B" add "$B/app.txt"; git -C "$B" commit -qm "app work" && git -C "$B" push -q origin HEAD:main 2>/dev/null
+git -C "$A" fetch -q origin
+for dby in lane main; do
+  drift_level; [ "$dby" = main ] || git -C "$A" checkout -qB lane; git -C "$A" reset -q --hard origin/main~1; echo '# ours' > "$A/app.txt"; echo '# mine' > "$A/.claude/hooks/mine.sh"; git -C "$A" add "$A/app.txt" "$A/.claude/hooks/mine.sh"; git -C "$A" commit -qm "ours"
+  git -C "$A" merge -q origin/main >/dev/null 2>&1
+  [ -f "$A/.git/MERGE_HEAD" ] && ok "fixture: a merge has stopped on an app file" || fail "fixture: no merge in progress, so the next case learns nothing"
+  case $dby in
+    lane) drift_says 0 "OWN unmerged" "on a lane, committed hook work, a merge stopped on an app file: the note, no false refusal" ;;
+    main)
+      drift_says 2 "merge is in progress" "on main, the same: refused, saying so"
+      drift_unsaid '  $ ' "...printing no switch or pull, which git would refuse"
+      ;;
+  esac
+done
+echo '# guard change' >> "$B/.claude/lib/conf.sh"
+git -C "$B" commit -qam "a guard library change" && git -C "$B" push -q origin HEAD:main 2>/dev/null
+git -C "$A" fetch -q origin
+# A merge conflict in conf.sh fails its parse test before the merge block is reached. A restore printed
+# there would resolve the merge to our side, and a commit would reverse the merged guard change, allowed.
+drift_level; git -C "$A" checkout -qB lane; git -C "$A" reset -q --hard origin/main~1; echo '# ours' >> "$A/.claude/lib/conf.sh"; git -C "$A" commit -qam "ours"
+git -C "$A" merge -q origin/main >/dev/null 2>&1
+grep -q '<<<<<<<' "$A/.claude/lib/conf.sh" && ok "fixture: conf.sh holds conflict markers" || fail "fixture: no markers in conf.sh, so the next cases learn nothing"
+drift_says 2 "does not parse" "a merge conflict in conf.sh: refused, naming the file"
+drift_unsaid '  $ ' "...printing no command, so nothing resolves the merge to our side"
+drift_level; git -C "$A" reset -q --hard origin/main~1
+drift_says 2 "lacks these hook commits" "a commit to the guard library the checkout lacks: refused"
+drift_run "To bring" "on main and behind, merge"
+drift_says 0 "" "...and the merge it names clears the refusal"
+drift_level; git -C "$A" checkout -qB lane; git -C "$A" reset -q --hard origin/main~1
+drift_says 2 "lacks these hook commits" "on a lane and behind: refused"
+drift_unsaid "Or go back" "...and only the merge road, which works in every case"
+drift_run "To bring" "on a lane and behind, merge"
+drift_says 0 "" "...and the merge it names clears the refusal"
 
 # ── focus-staleness ────────────────────────────────────────────────────────────────────
 FH="$d/home"; mkdir -p "$FH"
