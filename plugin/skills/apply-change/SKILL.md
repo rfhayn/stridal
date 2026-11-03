@@ -30,6 +30,11 @@ do one group alone. The loop is the same, and so are its stops.
   With no reportTo, notify the owner yourself at each stop.
   If a safety or permission classifier refuses a step, park it and send what was refused and why
   it was being done (to reportTo, else the owner); never retry that step another way.
+  So too a refused edit or write of real tracked source, by a hook or by the sandbox, whose refusal
+  is only the OS error (`operation not permitted`): take the road a hook's message names; with none,
+  report the path and the error, and never make that write another way. Passing
+  `no-blind-source-rewrite` is not permission (`docs/conventions.md`). A mutant goes only in a
+  throwaway clone, as a patch or a new file, never on real tracked source.
 
 ## Preconditions
 - Branch prefixes (`.claude/project.conf`; a branch is named by its key, never a literal): !`sh ${CLAUDE_PLUGIN_ROOT}/project-config.sh prefixes`

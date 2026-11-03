@@ -17,6 +17,15 @@ marked merged with it.
   however much work it is). `fix/<issue>-<slug>` for a defect, `ops/<name>` for tooling, docs and
   process, including the session-close PR. The prefixes are `BRANCH_*` in `.claude/project.conf`
   and the panel's `lanes` map; change them in both.
+- **A title names an issue; a closing keyword closes it.** GitHub's keywords (close, fix, resolve
+  and their forms: `Fix #<n>:`, `Closes GH-<n>`) close the issue when the merge lands on the default
+  branch, from the title, the PR body, the squash message or a branch commit that message copies.
+  Write one only when the PR finishes the issue; otherwise use a title with no keyword, naming `#<n>`
+  if needed. An issue labelled `team-queue` is an input its session closes: while it is open
+  `.claude/local/guard.d/team-queue.sh` refuses a keyword on it, and the PR that delivers it says so
+  in its squash body, `Delivers team-queue #<n>`, which session-start reads from commit bodies on
+  `origin/main`. A code span shelters a keyword in the PR body, once the merge sets a body of its
+  own. Whether GitHub skips one in commit text is not known, so the rule refuses it there.
 - **One PR carries the whole slice**: the change's artifacts, the implementation, and the spec
   promotion (archive), reviewed together.
 - **Squash-merge only.** Rebase-merging rewrites SHAs and auto-closes stacked PRs.
@@ -95,6 +104,14 @@ renumbers, the insights log keeps both rows, ADRs take the next number).
 **A public record states a finding's class, never its steps.** On a public repository, a row, a
 fragment, a PR body or a journal entry names the class of an unfixed finding; the steps stay in a
 local file. Nothing checks this: it is **Nothing. You.**, and text once merged stays in history.
+
+**A refused edit or write of real tracked source is reported, not rerouted.** A hook's refusal names
+its road: take it. A sandbox refusal is only the OS error (`operation not permitted`) and names none.
+With no road, stop that step and report the path and the error; never make that write another way.
+Passing `no-blind-source-rewrite` is not permission: it holds a few in-place forms by their words
+(limits: its header), so most of what it does not recognise passes. The rule protects real tracked
+source, so a mutant goes only in a throwaway clone under `$TMPDIR`, applied as a patch or written as
+a new file; the hook refuses an in-place edit there too. Nothing checks this either: **Nothing. You.**
 
 ## Testing (yours)
 
