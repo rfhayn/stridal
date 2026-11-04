@@ -1,3 +1,6 @@
+Why: <one line>
+Roadmap: <ID or none>
+
 ## What and why
 <!-- 1-3 lines: the brief's goal -->
 

@@ -54,7 +54,7 @@ and three short skills. A new project gets 22 files plus a `.gitignore` addition
 | `.github/workflows/ci.yml` | This repo's own `ci`: gitleaks, then `kit-check.sh`. Not copied to new projects |
 | `.github/workflows/lane.yml` | The required `lane` check (merge-lane gate, ~10 s) |
 | `.github/ruleset-main.json` | Ruleset for the default branch: PR required (0 approvals), squash only, checks `ci` + `lane`, no deletion, no force push, no bypass actors |
-| `.github/pull_request_template.md` | What/why, lane, done-when evidence, decisions & assumptions with sources, review, guard |
+| `.github/pull_request_template.md` | `Why:` and `Roadmap:` lines (lane.yml fails a PR with no real `Why:`), then what/why, lane, done-when evidence, decisions & assumptions with sources, review, guard |
 | `docs/ROADMAP.md` | Items with ID, Why, Done when and Links, in three sections: Now (max 3), Next, Done (last 10) |
 | `docs/adr/0000-template.md` | Short ADR, only for decisions expensive to reverse |
 | `docs/ARCHITECTURE.md` | Live doc, installed unfilled: components, data flow, constraints. First line marks it a template until filled in |
