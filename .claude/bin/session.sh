@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Open and close worker Claude sessions in Ghostty tabs, so the main session needs no per-command prompt.
 # Usage:
-#   .claude/bin/session.sh open <type> <slug> <prompt-file> --report-to <name> [--dry-run]
+#   .claude/bin/session.sh open <type> <slug> --report-to <name> [--dry-run]
 #   .claude/bin/session.sh close <slug> [--abandon] [--dry-run]
+# The prompt is read only from .claude/review/spawn-<slug>.md in the main checkout (git-ignored): a regular
+# file, not a symlink, at most 20 KB. There is no path argument, so no other file can be read as a prompt.
 # Run from the main checkout, on Ghostty with one instance and an open window. This script is the only
 # thing allowed to run outside the sandbox for this (settings.json); the tab command it builds holds
 # only validated tokens and a fixed path, never raw user text. --dry-run prints what would run, and runs nothing.
@@ -38,12 +40,12 @@ OSA
 
 cmd=${1:-}
 [ $# -gt 0 ] && shift
-type="" slug="" prompt="" report="" dry=0 abandon=0 have_report=0
+type="" slug="" report="" dry=0 abandon=0 have_report=0
 case "$cmd" in
   open)
-    [ $# -ge 3 ] || refuse "usage: open <type> <slug> <prompt-file> --report-to <name> [--dry-run]"
-    type=$1 slug=$2 prompt=$3
-    shift 3
+    [ $# -ge 2 ] || refuse "usage: open <type> <slug> --report-to <name> [--dry-run]"
+    type=$1 slug=$2
+    shift 2
     while [ $# -gt 0 ]; do
       case "$1" in
         --dry-run) dry=1 ;;
@@ -74,7 +76,6 @@ esac
 if [ "$cmd" = open ]; then
   [ "$have_report" = 1 ] || refuse "open needs --report-to <name>"
   [[ $report =~ $NAME_RE ]] || refuse "--report-to must match $NAME_RE"
-  [ -f "$prompt" ] && [ -r "$prompt" ] || refuse "prompt file not readable: $prompt"
 fi
 
 # Everything below builds from validated values only.
@@ -82,6 +83,16 @@ top=$(git rev-parse --show-toplevel)
 gcd=$(git rev-parse --path-format=absolute --git-common-dir)
 [[ $top =~ $PATH_RE ]] || refuse "the repo path has a character outside A-Za-z0-9/._-, which the tab command cannot carry safely"
 [[ $gcd =~ $PATH_RE ]] || refuse "the git directory path has a character outside A-Za-z0-9/._-, which the tab command cannot carry safely"
+if [ "$cmd" = open ]; then
+  # The one place a prompt can come from. The name is built from the validated slug, never from an argument.
+  prompt="$top/.claude/review/spawn-$slug.md"
+  [ ! -L "$top/.claude/review" ] || refuse "$top/.claude/review is a symlink"
+  [ ! -L "$prompt" ] || refuse "the prompt file is a symlink: $prompt"
+  [ -e "$prompt" ] || refuse "no prompt file: write the brief to $prompt first"
+  [ -f "$prompt" ] || refuse "the prompt is not a regular file: $prompt"
+  [ -r "$prompt" ] || refuse "the prompt file is not readable: $prompt"
+  [ "$(wc -c < "$prompt")" -le 20480 ] || refuse "the prompt file is over 20 KB: $prompt"
+fi
 spawn="$gcd/spawn"
 wt="$top/.claude/worktrees/$slug"
 promptfile="$spawn/$slug.prompt"
