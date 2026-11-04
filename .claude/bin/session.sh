@@ -86,7 +86,15 @@ spawn="$gcd/spawn"
 wt="$top/.claude/worktrees/$slug"
 promptfile="$spawn/$slug.prompt"
 termfile="$spawn/$slug.term"
-tabcmd="claude --name $slug --permission-mode auto \"\$(cat $promptfile)\""
+# Ghostty runs the tab command with a minimal PATH that lacks ~/.local/bin, so claude goes in by absolute path.
+# A dry-run on a machine without claude (CI) falls back to the bare name.
+claude_bin=$(command -v claude || true)
+if [ -z "$claude_bin" ]; then
+  [ "$dry" = 1 ] || refuse "claude is not on PATH"
+  claude_bin=claude
+fi
+[[ $claude_bin =~ $PATH_RE ]] || refuse "the claude path has a character outside A-Za-z0-9/._-"
+tabcmd="$claude_bin --name $slug --permission-mode auto \"\$(cat $promptfile)\""
 
 if [ "$dry" = 1 ]; then
   if [ "$cmd" = open ]; then
@@ -126,7 +134,7 @@ if [ "$cmd" = open ]; then
   [ -z "$(git ls-remote --heads origin "$branch")" ] || refuse "remote branch already exists: $branch"
   [ ! -e "$promptfile" ] && [ ! -e "$termfile" ] || refuse "spawn files for $slug already exist in $spawn"
   git fetch origin
-  git worktree add "$wt" -b "$branch" origin/main
+  git worktree add --no-track "$wt" -b "$branch" origin/main
   mkdir -p "$spawn"
   {
     cat "$prompt"
