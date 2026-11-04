@@ -25,6 +25,6 @@ Almost every change here touches `.claude/settings.json` or `.github/`, which `l
 - A new dependency in `ci`, or a change to what new projects receive that alters their behaviour.
 
 ## Guards
-- Never commit secrets. `.env*` is git-ignored. Claude's Read and Edit tools and sandboxed Bash can't read it; commands excluded from the sandbox (`gh`, `git push`, `docker`) can, so keep production secrets out of a project checkout.
+- Never commit secrets. `.env*` is git-ignored. Claude's Read and Edit tools and sandboxed Bash can't read it; `git push` runs sandboxed, but `gh` needs an approved sandbox-off run, and any command run that way can read it, so keep production secrets out of a project checkout.
 - gitleaks exits 0 on a commit range git can't resolve. `ci` verifies the range first; keep that check.
 - The deny rules match command text, so they are not a boundary. The GitHub ruleset is what protects `main`.
