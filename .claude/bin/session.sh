@@ -13,7 +13,7 @@ set -euo pipefail
 refuse() { echo "session.sh: refused: $*" >&2; exit 2; }
 
 SLUG_RE='^[a-z0-9]([a-z0-9-]{0,40}[a-z0-9])?$'
-NAME_RE='^[A-Za-z0-9_-]+$'
+NAME_RE='^[A-Za-z0-9_][A-Za-z0-9_-]*$'
 PATH_RE='^[A-Za-z0-9/._-]+$'
 
 # AppleScript source. Every value arrives through argv, so none is ever parsed as AppleScript.
@@ -97,6 +97,9 @@ spawn="$gcd/spawn"
 wt="$top/.claude/worktrees/$slug"
 promptfile="$spawn/$slug.prompt"
 termfile="$spawn/$slug.term"
+branchfile="$spawn/$slug.branch"
+# Inode and link count of a path (-L: of what it points to, for /dev/fd/N).
+fileid() { if [ "$(uname)" = Darwin ]; then stat -f '%i:%l' "$@"; else stat -c '%i:%h' "$@"; fi; }
 # Ghostty runs the tab command with a minimal PATH that lacks ~/.local/bin, so claude goes in by absolute path.
 # A dry-run on a machine without claude (CI) falls back to the bare name.
 claude_bin=$(command -v claude || true)
@@ -143,14 +146,21 @@ if [ "$cmd" = open ]; then
   [ ! -e "$wt" ] || refuse "worktree already exists: $wt"
   ! git show-ref --verify --quiet "refs/heads/$branch" || refuse "local branch already exists: $branch"
   [ -z "$(git ls-remote --heads origin "$branch")" ] || refuse "remote branch already exists: $branch"
-  [ ! -e "$promptfile" ] && [ ! -e "$termfile" ] || refuse "spawn files for $slug already exist in $spawn"
+  [ ! -e "$promptfile" ] && [ ! -e "$termfile" ] && [ ! -e "$branchfile" ] || refuse "spawn files for $slug already exist in $spawn"
+  # Snapshot the prompt first, so a refusal leaves nothing behind. Open it once and check the open file, not
+  # the path: a symlink or hard link swapped in after the early checks must not get its target copied.
+  mkdir -p "$spawn"
+  exec 3<"$prompt" || refuse "could not open the prompt file: $prompt"
+  id=$(fileid -L /dev/fd/3)
+  [ -f /dev/fd/3 ] && [ ! -L "$prompt" ] && [ "$(fileid "$prompt")" = "$id" ] && [ "${id#*:}" = 1 ] \
+    || { exec 3<&-; refuse "the prompt file changed or has another link: $prompt"; }
+  head -c 20481 <&3 > "$promptfile"
+  exec 3<&-
+  if [ "$(wc -c < "$promptfile")" -gt 20480 ]; then rm -f "$promptfile"; refuse "the prompt file is over 20 KB: $prompt"; fi
+  printf '\n\nWhen you finish, or stop for any reason, SendMessage the session named %s with your summary or the reason.\n' "$report" >> "$promptfile"
   git fetch origin
   git worktree add --no-track "$wt" -b "$branch" origin/main
-  mkdir -p "$spawn"
-  {
-    cat "$prompt"
-    printf '\n\nWhen you finish, or stop for any reason, SendMessage the session named %s with your summary or the reason.\n' "$report"
-  } > "$promptfile"
+  printf '%s\n' "$branch" > "$branchfile"
   termid=$(osascript -e "$APPLE_OPEN" "$wt" "$tabcmd") || refuse "Ghostty did not open the tab; clean up with: .claude/bin/session.sh close $slug --abandon"
   printf '%s\n' "$termid" > "$termfile"
   echo "opened $branch in terminal $termid (worktree $wt)"
@@ -158,11 +168,11 @@ if [ "$cmd" = open ]; then
 fi
 
 # close
-branch=""
-for t in feat fix chore docs; do
-  git show-ref --verify --quiet "refs/heads/$t/$slug" && branch="$t/$slug"
-done
-[ -n "$branch" ] || refuse "no local branch feat|fix|chore|docs/$slug"
+# Only the branch open recorded, never a guess among feat|fix|chore|docs/<slug>.
+[ -s "$branchfile" ] || refuse "no record of a branch for $slug in $branchfile: it was not opened by session.sh, so clean up by hand"
+branch=$(cat "$branchfile")
+[[ $branch =~ ^(feat|fix|chore|docs)/$slug$ ]] || refuse "$branchfile does not hold a branch for $slug"
+git show-ref --verify --quiet "refs/heads/$branch" || refuse "the recorded branch $branch no longer exists"
 if [ "$abandon" = 0 ]; then
   # headRefOid too: an older merged PR from a reused branch name must not pass for this branch's work.
   pr=$(gh pr view "$branch" --json state,headRefOid --jq '.state + " " + .headRefOid') || refuse "GitHub shows no PR for $branch; pass --abandon to close without one"
@@ -181,5 +191,5 @@ if claude_running; then
 fi
 git worktree remove "$wt" || refuse "git worktree remove refused (is $wt dirty?); nothing forced, branch kept"
 git branch -D "$branch"
-rm -f "$promptfile" "$termfile"
+rm -f "$promptfile" "$termfile" "$branchfile"
 echo "closed $slug: worktree and $branch removed"

@@ -91,7 +91,7 @@ for bad in "a b" "Upper" 'a;b' "a\$(id)" "\$(id)" "-lead" "trail-" "a_b" "a/b" "
   refuses open feat "$bad" --report-to main --dry-run
   refuses close "$bad" --dry-run
 done
-for bad in "a b" 'a;b' "a\$(id)" "x'y" ""; do
+for bad in "a b" 'a;b' "a\$(id)" "x'y" "" "-x" "--dry-run"; do
   refuses open feat zz-ok --report-to "$bad" --dry-run
 done
 refuses open feat zz-ok --dry-run
