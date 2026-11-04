@@ -3,7 +3,7 @@ Formerly Stridal; the old project is preserved at tag stridal-final.
 
 A copy-in template for a solo developer (plus the odd collaborator) building with Claude Code.
 It replaces Stridal's operating model with native Claude Code features, GitHub's own merge controls,
-and three short skills. A new project gets 15 files plus a `.gitignore` addition (this repo tracks 25), nothing to maintain between projects.
+and three short skills. A new project gets 22 files plus a `.gitignore` addition (this repo tracks 32), nothing to maintain between projects.
 
 ## Principles
 1. **GitHub enforces, Claude follows.** main is protected by a ruleset (required checks, squash only,
@@ -55,8 +55,15 @@ and three short skills. A new project gets 15 files plus a `.gitignore` addition
 | `.github/workflows/lane.yml` | The required `lane` check (merge-lane gate, ~10 s) |
 | `.github/ruleset-main.json` | Ruleset for the default branch: PR required (0 approvals), squash only, checks `ci` + `lane`, no deletion, no force push, no bypass actors |
 | `.github/pull_request_template.md` | What/why, lane, done-when evidence, decisions & assumptions with sources, review, guard |
-| `docs/ROADMAP.md` | One checklist in three sections: Now (max 3), Next, Done (last 10) |
+| `docs/ROADMAP.md` | Items with ID, Why, Done when and Links, in three sections: Now (max 3), Next, Done (last 10) |
 | `docs/adr/0000-template.md` | Short ADR, only for decisions expensive to reverse |
+| `docs/ARCHITECTURE.md` | Live doc, installed unfilled: components, data flow, constraints. First line marks it a template until filled in |
+| `docs/RISKS.md` | Live doc, installed unfilled: risk table (ID, Risk, Impact, Likelihood, Mitigation, Owner, Status) with one example row |
+| `docs/templates/DATA-MODEL.md` | Template: entity-relationship diagram as a mermaid block |
+| `docs/templates/API.md` | Template: conventions and an endpoint table |
+| `docs/templates/INVENTORY.md` | Template: secret names and services/infra, names and locations only. Keep out of public repos |
+| `docs/templates/runbook.md` | Template: Purpose, When to use, Prereqs, Steps, Verify, Rollback, Last checked |
+| `docs/templates/spec.md` | Template: Feature, Problem, Must do, Must not do, Acceptance checks, Roadmap IDs, Related ADRs |
 | `gitignore.append` | Ignores `.claude/worktrees/`, `.claude/review/`, local settings, `.env*`, `PERSONAL_DATA/` |
 | `.gitattributes` | LF line endings on every OS, for this repo. Not copied to new projects |
 | `bootstrap.sh` | Copies the files (never overwrites), applies the runner choice, sets squash commits to carry the PR title and body, posts the ruleset first (rolls back on failure), labels; enables auto-merge only after a red PR was refused |

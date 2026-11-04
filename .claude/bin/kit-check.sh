@@ -34,6 +34,16 @@ for f in .github/ci.template.yml CLAUDE.template.md .claude/bin/kit-check.sh; do
 done
 [ -s "$d/.gitignore" ] || { echo "kit-check: installed .gitignore is empty"; exit 1; }
 
+# Docs that ship unfilled must say so on their first line, in the repo and in what a new project receives.
+marker='> TEMPLATE, not filled in. Do not treat as project fact.'
+for f in docs/ARCHITECTURE.md docs/RISKS.md docs/templates/DATA-MODEL.md docs/templates/API.md \
+         docs/templates/INVENTORY.md docs/templates/runbook.md docs/templates/spec.md; do
+  for root in . "$d"; do
+    [ -f "$root/$f" ] || { echo "kit-check: $f is missing from $root"; exit 1; }
+    [ "$(head -n 1 "$root/$f")" = "$marker" ] || { echo "kit-check: first line of $root/$f is not the TEMPLATE marker"; exit 1; }
+  done
+done
+
 # A second run must change nothing, and must leave an edited file alone.
 echo "edited" >> "$d/CLAUDE.md"
 cp "$d/CLAUDE.md" "$tmp/CLAUDE.edited"

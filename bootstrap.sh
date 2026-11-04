@@ -30,7 +30,9 @@ for f in CLAUDE.md .claude/settings.json .claude/agents/reviewer.md .claude/agen
          .claude/skills/brief/SKILL.md .claude/skills/ship/SKILL.md .claude/skills/merge/SKILL.md .claude/hooks/one-way-guard.sh \
          .claude/bin/scope-check.sh .claude/rules/EXAMPLE-migrations.md.example \
          .github/workflows/ci.yml .github/workflows/lane.yml .github/pull_request_template.md \
-         docs/ROADMAP.md docs/adr/0000-template.md; do
+         docs/ROADMAP.md docs/adr/0000-template.md docs/ARCHITECTURE.md docs/RISKS.md \
+         docs/templates/DATA-MODEL.md docs/templates/API.md docs/templates/INVENTORY.md \
+         docs/templates/runbook.md docs/templates/spec.md; do
   if [ -e "$DEST/$f" ]; then echo "skip (exists): $f"; continue; fi
   # This repo keeps its own CLAUDE.md and ci.yml; new projects get the templates.
   case "$f" in
