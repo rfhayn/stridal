@@ -36,7 +36,7 @@ Pick the lane in /brief; /ship labels the PR. CI's `lane` check forces lane 3 fo
 
 ## Conventions
 - {{style rules the formatter/linter does NOT already enforce; 3-5 lines max}}
-- Never commit secrets. `.env*` is git-ignored. Claude's Read and Edit tools and sandboxed Bash can't read it; commands excluded from the sandbox (`gh`, `git push`, `docker`) can, so keep production secrets out of a project checkout. Formatting is checked in `ci`, not by a hook.
+- Never commit secrets. `.env*` is git-ignored. Claude's Read and Edit tools and sandboxed Bash can't read it; `git push` runs sandboxed, but `gh` needs an approved sandbox-off run, and any command run that way can read it, so keep production secrets out of a project checkout. Formatting is checked in `ci`, not by a hook.
 
 ## Guards
 - One-way failures get a guard in the first design, not after a repeat: anything that cannot be undone (a commit or push of personal data or secrets, a sent message, a production write, a deletion) ships with a deny rule, a blocking check or a dry-run default before it can run once.
