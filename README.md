@@ -3,7 +3,7 @@ Formerly Stridal; the old project is preserved at tag stridal-final.
 
 A copy-in template for a solo developer (plus the odd collaborator) building with Claude Code.
 It replaces Stridal's operating model with native Claude Code features, GitHub's own merge controls,
-and three short skills. About 17 files, ~600 lines in total, nothing to maintain between projects.
+and three short skills. A new project gets 15 files plus a `.gitignore` addition (this repo tracks 25), nothing to maintain between projects.
 
 ## Principles
 1. **GitHub enforces, Claude follows.** main is protected by a ruleset (required checks, squash only,
@@ -55,7 +55,7 @@ and three short skills. About 17 files, ~600 lines in total, nothing to maintain
 | `.github/workflows/lane.yml` | The required `lane` check (merge-lane gate, ~10 s) |
 | `.github/ruleset-main.json` | Ruleset for the default branch: PR required (0 approvals), squash only, checks `ci` + `lane`, no deletion, no force push, no bypass actors |
 | `.github/pull_request_template.md` | What/why, lane, done-when evidence, decisions & assumptions with sources, review, guard |
-| `docs/ROADMAP.md` | One checklist: Now (max 3), Next, Before launch, fixed dates, Done |
+| `docs/ROADMAP.md` | One checklist in three sections: Now (max 3), Next, Done (last 10) |
 | `docs/adr/0000-template.md` | Short ADR, only for decisions expensive to reverse |
 | `gitignore.append` | Ignores `.claude/worktrees/`, `.claude/review/`, local settings, `.env*`, `PERSONAL_DATA/` |
 | `.gitattributes` | LF line endings on every OS, for this repo. Not copied to new projects |
