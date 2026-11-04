@@ -14,7 +14,7 @@ A copy-in kit for building with Claude Code: `bootstrap.sh` installs it into a p
 ## How we work
 - Every change: `/brief` -> Rich says "go" -> build on a branch -> Rich runs `/ship`.
 - Write the check first. Done means: the check exits 0, the diff touches only the files in the brief (`.claude/bin/scope-check.sh`), and every claim in the PR cites a source. "Looks good" is not a check.
-- One change = one branch = one squash PR to main. Branches: `feat/`, `fix/`, `chore/`, `docs/`. Never push to main. Build in a worktree; the main checkout stays on `main`.
+- One change = one branch = one squash PR to main. Branches: `feat/`, `fix/`, `chore/`, `docs/`. Never push to main. Build in a worktree (`claude --worktree <slug>`); the main checkout stays on `main`. On a `worktree-<slug>` branch, first run `git switch -c <type>/<slug>`.
 - Do not script a rewrite of tracked source (`sed -i`, `perl -pi`, codemods); use the Edit tool.
 
 ## Merge lanes

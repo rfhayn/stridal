@@ -11,7 +11,7 @@ Current branch and changes:
 
 Ship this change. Steps in order.
 
-0. **Refuse on main.** If the branch above is `main` (or `master`), or the two git dirs above are the same (the main checkout), stop: say "run /brief to get a worktree" and do nothing else.
+0. **Refuse on main.** If the branch above is `main` (or `master`), or the two git dirs above are the same (the main checkout), stop: say "run /brief to get a worktree" and do nothing else. If the branch is `worktree-<slug>`, first run `git switch -c <type>/<slug>` (type = feat, fix, chore, docs), so the PR has a real branch name.
 
 1. **Run the checks, not opinions.** Run every done-when command from the brief, including the CLAUDE.md check command and `.claude/bin/scope-check.sh <Files globs>`. Record each result as evidence (exit code, test name, output line).
    - A stray file in scope-check: remove it from the diff, or stop and ask Rich to widen the brief. Do not widen it yourself.
@@ -24,8 +24,11 @@ Ship this change. Steps in order.
    - Lane 3: run the `reviewer` subagent once with the per-call `model: opus` parameter, passing the brief.
    - On FIX FIRST: fix each blocking finding you agree with as its own unit (step 1's scope-line rule and 3-attempt cap apply), and note any rejected finding with a one-line reason. **No second review round**, unless CLAUDE.md's project section allows one for this lane. If a fix needs a design change, stop and ask Rich.
 
-3. **Rebase and push.** `git fetch origin && git rebase origin/main`, rerun the check if the rebase pulled in changes, then `git push -u origin HEAD` (`--force-with-lease` if the branch was already pushed).
-   If the rebase stops with `Operation not permitted` under `.claude/` (the sandbox protects those paths), run `git rebase --abort` and retry once unsandboxed. That retry always asks Rich. Never add a standing allow rule for it.
+3. **Rebase and push.** Commit everything first. Run `git fetch origin`, then check for paths the sandbox protects: `git diff --name-only HEAD origin/main | grep -E '^(\.mcp\.json$|\.claude/(settings|skills/|agents/|commands/|hooks/|workflows/))'`.
+   - No match: `git rebase origin/main`.
+   - A match: a sandboxed rebase would fail partway and leave the tree half-applied, so run `git rebase origin/main` unsandboxed from the start. That always asks Rich. If he declines, stop and report. Never add a standing allow rule for it.
+   - If a rebase still stops with `Operation not permitted`: it leaves files changed and no rebase in progress, so `git rebase --abort` fails. Run `git restore .`, then retry once unsandboxed.
+   Rerun the check if the rebase pulled in changes, then `git push -u origin HEAD` (`--force-with-lease` if the branch was already pushed).
 
 4. **Open the PR**: `gh pr create --label lane:<N>-<name> --body-file -` with a conventional title (`feat: weekly standings email`) and the body from `.github/pull_request_template.md`: goal; each done-when item ticked with its evidence; decisions and assumptions, each with a source line (file:line, test, command output, or the reviewer's check); review result; lane and reason. A claim without a source is removed or marked "unverified". Leave out the template's HTML comments: the body becomes the squash commit message.
 

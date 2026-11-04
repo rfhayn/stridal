@@ -29,7 +29,7 @@ and two short skills. About 17 files, ~600 lines in total, nothing to maintain b
 7. **Deterministic work is code, not a model call**: merging, ranking, dedup, comparisons, scope and
    lane checks.
 8. **Sonnet builds, Opus plans and reviews lane 3.** Medium effort by default.
-9. **One change at a time per builder.** Each builder works in its own worktree, which `/brief` creates;
+9. **One change at a time per builder.** Each builder works in its own worktree (`claude --worktree <slug>`);
    the main checkout stays on `main`. Run at most 2-3 builders at once, fewer if the check suite slows or
    flakes under load. Never "several in parallel".
 10. **Rich's human steps:** choosing what ships (saying "go" on a brief), typing `/ship`, which Claude can't
@@ -95,10 +95,10 @@ Do not add `paths:` filters to required workflows: a skipped required check stay
 ```
 claude                                   # in the main checkout (stays on main)
 /brief weekly standings email to league members
-   ... Rich says "go"; /brief creates .claude/worktrees/<slug> and stops
-cd .claude/worktrees/<slug> && claude    # one change in this worktree; at most 2-3 builders at once
-   ... Rich reads the brief (goal, checks, files, lane) and says "go"
-   ... Claude writes the failing test, builds on Sonnet, commits
+   ... Rich says "go"; /brief fetches, gives the next command and stops
+claude --worktree <slug>                 # one change in this worktree; at most 2-3 builders at once
+   ... Rich pastes the brief (goal, checks, files, lane) and says "go"
+   ... Claude moves to feat/<slug>, writes the failing test, builds on Sonnet, commits
 /ship
    ... checks -> review by lane -> PR with evidence -> auto-merge (lanes 1-2) or "Rich: merge-ok?" (lane 3)
 ```
@@ -140,8 +140,10 @@ timeout block too; without it the guard fails open. Use the slot for whatever yo
   `disabled` in Settings → Rules; it can't be deleted from a Claude session (denied).
 - Permission rules evaluate deny, then ask, then allow; a deny always wins. They match command text, so `git -C . push` or
   `sh -c` gets past them. The ruleset is what protects `main`.
-- The sandbox protects `.claude/` settings, `skills`, `agents`, `commands` and `hooks`. Updating the main checkout across
-  a change to those is Rich's step; `/ship` retries a blocked rebase once, and that retry always asks.
+- The sandbox protects `.claude/` settings, `skills`, `agents`, `commands` and `hooks`, and `.git/config`. That is why
+  `/brief` uses `claude --worktree`: `git worktree add` fails under the sandbox. A `worktree-<slug>` branch stays behind
+  locally after `git switch -c`; it is never pushed. Updating the main checkout across a change to protected paths is
+  Rich's step, and `/ship` runs a rebase over them unsandboxed, which always asks.
 - A session in `.claude/worktrees/<slug>` also loads the main checkout's `CLAUDE.md`, so an older copy can appear beside
   the branch's own.
 - The old Stridal plugin marketplace entry is gone from this repo; it is preserved at tag `stridal-final`.

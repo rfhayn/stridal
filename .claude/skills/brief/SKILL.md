@@ -41,10 +41,9 @@ Questions for Rich: <only if a wrong guess would waste the change; else "none">
 Lanes (blast radius): 1 = reversible and contained (copy, tests, isolated covered code). 2 = reversible but wide (shared utilities, schema additions, config). 3 = hard to reverse (migrations, deletions, production data, money, plus anything CLAUDE.md or `.claude/rules` lists as lane 3). If unsure between two lanes, pick the higher one.
 
 Then stop and wait. Rich replies "go" (or edits). On "go":
-1. **Never build in the main checkout.** If the git dir and common dir above are the same, this is the main checkout (production checkouts stay on `main`). Do not switch branches here. Run
-   `git fetch origin && git worktree add .claude/worktrees/<slug> -b <type>/<slug> origin/main` (type = feat, fix, chore, docs),
-   then stop and tell Rich: "Worktree ready: `cd .claude/worktrees/<slug> && claude`, then paste the brief." Do not edit files in this session.
-   If you are already in a worktree (the git dir differs from the common dir) and it is on a fresh branch from origin/main, continue there.
+1. **Never build in the main checkout.** If the git dir and common dir above are the same, this is the main checkout (production checkouts stay on `main`). Do not switch branches here. Run `git fetch origin` (`--worktree` starts from the local `origin/main`, so it must be current),
+   then stop and tell Rich: "Run `claude --worktree <slug>`, then paste the brief." Do not edit files in this session. Do not run `git worktree add`: the sandbox blocks it at `.git/config` and `.claude/agents`.
+   If you are already in a worktree (the git dir differs from the common dir): on a `worktree-<slug>` branch, run `git switch -c <type>/<slug>` (type = feat, fix, chore, docs), then continue. Do not use `git branch -m`: the sandbox makes it exit with an error after renaming. On a fresh branch that already has its name, continue there.
 2. Write the failing test(s) first, then build on Sonnet (`/model sonnet` if this session is on Opus). Commit in small steps.
 3. When every done-when item is checkable, tell Rich to run `/ship` (only he can start it). Keep the brief in the conversation; /ship puts it in the PR.
 

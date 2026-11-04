@@ -16,7 +16,7 @@
 - Return the unit, not the batch: when a check fails, fix only the failing file/test ("fix X only"), rerun only that check, then the full check. After 3 failed attempts on the same unit, stop and re-brief. Do not keep looping.
 - Deterministic work is code, not a model call: merging, sorting, ranking, dedup, diffing, comparisons, counting. Write or use a script and cite its output.
 - One change = one branch = one squash PR to main. Branches: `feat/`, `fix/`, `chore/`, `docs/`. Never push to main.
-- One change at a time per builder, each in its own worktree (`/brief` creates it). At most 2-3 builders at once, and fewer if the check suite slows or flakes under load. Never build in the main checkout; it stays on `main`.
+- One change at a time per builder, each in its own worktree (`claude --worktree <slug>`, which `/brief` tells Rich to run). On a `worktree-<slug>` branch, first run `git switch -c <type>/<slug>`. At most 2-3 builders at once, and fewer if the check suite slows or flakes under load. Never build in the main checkout; it stays on `main`.
 - Do not script a rewrite of tracked source (`sed -i`, `perl -pi`, codemods); use the Edit tool.
 - New logic gets a test. Fix the code, not the test, unless the test is wrong (say so in the PR).
 - Architecture decisions: `docs/adr/NNNN-title.md` (copy 0000-template). Next work: `docs/ROADMAP.md`.
