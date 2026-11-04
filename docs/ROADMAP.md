@@ -1,20 +1,28 @@
 # Roadmap
 
-One list. Top = next. An item is done when its PR merges (tick it in that PR).
-Owner and date only when it matters. Ideas go to GitHub issues, not here.
+One list. The section is the status: Now / Next / Done. There is no in-progress section; an open PR whose body carries `Roadmap: <ID>` shows the item is in progress.
+An item moves to Done in the PR that completes it (`/brief` lists this file in Files). Ideas go to GitHub issues, not here.
+
+Item format (copy this):
+
+```
+### R-001 {{Title}}
+- Why: {{the reason, 1-2 lines}}
+- Done when: {{one observable, machine-checkable outcome}}
+- Links: {{specs/<file>.md, docs/adr/NNNN-*.md, issues; optional}}
+```
 
 ## Now (at most 3)
-- [ ] {{item}} — done when: {{one observable outcome}}
+### R-001 {{Title}}
+- Why: {{...}}
+- Done when: {{...}}
+- Links: {{...}}
 
 ## Next
-- [ ] {{item}}
-- [ ] {{item}}
-
-## Before launch (hard requirements)
-- [ ] {{e.g. production deploy, privacy policy, backups tested}}
-
-## Dates that don't move
-- {{YYYY-MM-DD}}: {{external deadline, e.g. trial ends, season starts}}
+### R-002 {{Title}}
+- Why: {{...}}
+- Done when: {{...}}
+- Links: {{...}}
 
 ## Done (last 10; delete older)
-- [x] {{item}} (#PR)
+- R-000 {{Title}} (#PR)
