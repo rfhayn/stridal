@@ -18,7 +18,7 @@ A copy-in kit for building with Claude Code: `bootstrap.sh` installs it into a p
 - Do not script a rewrite of tracked source (`sed -i`, `perl -pi`, codemods); use the Edit tool.
 
 ## Merge lanes
-Almost every change here touches `.claude/settings.json` or `.github/`, which `lane.yml` forces to lane 3: Rich adds `merge-ok` and merges. Claude never adds `merge-ok`.
+Almost every change here touches `.claude/settings.json` or `.github/`, which `lane.yml` forces to lane 3: Rich adds `merge-ok` and merges, either by hand or by typing `/merge <PR#>`. Claude adds `merge-ok` only inside that command, and its permission prompt must be confirmed; never on its own.
 
 ## Ask Rich first
 - Anything irreversible or outward: GitHub settings, rulesets, releases.
