@@ -18,7 +18,7 @@ and three short skills. A new project gets 15 files plus a `.gitignore` addition
    | `lane:2-wide` | reversible but wide: shared utilities, schema additions, config | CI + one reviewer round, auto-merge |
    | `lane:3-hard` | hard to reverse: migrations, deletions, production data, money | never auto-merges; Rich adds `merge-ok` and merges, by hand or with `/merge <PR#>` |
    The `lane` CI check is code: it forces lane 3 for `HARD_PATHS` and fails lane 3 until `merge-ok` is on the PR.
-   New commits after `merge-ok` remove the label. Any Claude command containing `merge-ok` stops at a permission prompt, and Claude adds the label only inside Rich's `/merge`.
+   New commits after `merge-ok` remove the label. Any Claude command containing `merge-ok` stops at a permission prompt; `/merge` is the intended way to add it, and outside it the prompt is Rich's chance to say no.
 4. **One review round, blocking findings only, with evidence.** No severity-convergence loops.
 5. **Return the unit, not the batch.** A failed check goes back as "fix this file only". After 3 failed
    attempts on one unit, stop and re-brief.

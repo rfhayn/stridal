@@ -1,7 +1,7 @@
 # Merge-lane gate (deterministic, ~10 s). Required check "lane" in the ruleset.
 # A PR is lane 3 (hard to reverse) if it has the lane:3-hard label OR touches HARD_PATHS.
 # Lane 3 fails until Rich adds the `merge-ok` label, so auto-merge can never land it.
-# Claude's commands containing "merge-ok" stop at a permission prompt (ask list in .claude/settings.json); Rich's /merge is the way to add it.
+# Claude's commands containing "merge-ok" stop at a permission prompt (ask list in .claude/settings.json); Rich's /merge is the intended way to add it.
 # runs-on is set by bootstrap.sh from your runner choice. This job bills 1 hosted minute per run.
 name: Lane
 
