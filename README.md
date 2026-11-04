@@ -3,7 +3,7 @@ Formerly Stridal; the old project is preserved at tag stridal-final.
 
 A copy-in template for a solo developer (plus the odd collaborator) building with Claude Code.
 It replaces Stridal's operating model with native Claude Code features, GitHub's own merge controls,
-and two short skills. About 17 files, ~600 lines in total, nothing to maintain between projects.
+and three short skills. About 17 files, ~600 lines in total, nothing to maintain between projects.
 
 ## Principles
 1. **GitHub enforces, Claude follows.** main is protected by a ruleset (required checks, squash only,
@@ -16,9 +16,9 @@ and two short skills. About 17 files, ~600 lines in total, nothing to maintain b
    |---|---|---|
    | `lane:1-contained` | reversible and contained: copy, tests, isolated covered code | CI green, auto-merge |
    | `lane:2-wide` | reversible but wide: shared utilities, schema additions, config | CI + one reviewer round, auto-merge |
-   | `lane:3-hard` | hard to reverse: migrations, deletions, production data, money | never auto-merges; Rich adds `merge-ok` and merges |
+   | `lane:3-hard` | hard to reverse: migrations, deletions, production data, money | never auto-merges; Rich adds `merge-ok` and merges, by hand or with `/merge <PR#>` |
    The `lane` CI check is code: it forces lane 3 for `HARD_PATHS` and fails lane 3 until `merge-ok` is on the PR.
-   New commits after `merge-ok` remove the label. Claude is denied any command containing `merge-ok`.
+   New commits after `merge-ok` remove the label. Any Claude command containing `merge-ok` stops at a permission prompt, and Claude adds the label only inside Rich's `/merge`.
 4. **One review round, blocking findings only, with evidence.** No severity-convergence loops.
 5. **Return the unit, not the batch.** A failed check goes back as "fix this file only". After 3 failed
    attempts on one unit, stop and re-brief.
@@ -40,7 +40,7 @@ and two short skills. About 17 files, ~600 lines in total, nothing to maintain b
 |---|---|
 | `CLAUDE.template.md` | ~48-line template, installed as `CLAUDE.md`: commands, how we work, merge lanes, ask-first list, guards (one-way + learned), extension point |
 | `CLAUDE.md` | This repo's own, filled in. Not copied to new projects |
-| `.claude/settings.json` | Sonnet + medium effort; `acceptEdits`; deny list (secrets, `--admin` merges, pushes to main, ruleset edits, `merge-ok`); unsandboxed retries always ask; Bash sandbox with GitHub/npm network |
+| `.claude/settings.json` | Sonnet + medium effort; `acceptEdits`; deny list (secrets, `--admin` merges, pushes to main, ruleset edits); ask list (`merge-ok`, `gh label`, unsandboxed retries); Bash sandbox with GitHub/npm network |
 | `.claude/hooks/one-way-guard.sh` | OPTIONAL, not wired by default. The one hook slot, for a blocking guard on the project's one-way failure (example: blocks `git add/commit/push` of personal-data or secret paths) |
 | `.claude/bin/scope-check.sh` | Deterministic check that the branch touches only the brief's files |
 | `.claude/bin/kit-check.sh` | This repo's own check: shellcheck, JSON, and `bootstrap.sh` in copy-only mode. Not copied to new projects |
@@ -48,6 +48,7 @@ and two short skills. About 17 files, ~600 lines in total, nothing to maintain b
 | `.claude/agents/researcher.md` | Read-only research agent (no Edit, Write or Bash); answers with sources |
 | `.claude/skills/brief/SKILL.md` | `/brief <task>`: Opus writes goal, machine-checkable done-when, Files, lane, plan, decisions, assumptions. Waits for "go" |
 | `.claude/skills/ship/SKILL.md` | `/ship`: run the checks, review by lane, rebase, labeled PR with evidence, auto-merge for lanes 1-2 |
+| `.claude/skills/merge/SKILL.md` | `/merge <PR#>`: Rich's lane 3 green light. Adds `merge-ok` (one permission prompt), waits for `lane`, squash-merges. User-only |
 | `.claude/rules/EXAMPLE-migrations.md.example` | Example path-scoped domain rule (inactive until renamed to `.md`) |
 | `.github/ci.template.yml` | Installed as `.github/workflows/ci.yml`, the required `ci` check: one job, 10-minute timeout, cancels superseded runs, gitleaks secret scan, then your stack's check |
 | `.github/workflows/ci.yml` | This repo's own `ci`: gitleaks, then `kit-check.sh`. Not copied to new projects |
@@ -102,7 +103,7 @@ claude --worktree <slug>                 # one change in this worktree; at most 
 /ship
    ... checks -> review by lane -> PR with evidence -> auto-merge (lanes 1-2) or "Rich: merge-ok?" (lane 3)
 ```
-Rich's day: pick the next items from `docs/ROADMAP.md`, say "go" on briefs, add `merge-ok` to lane-3 PRs
+Rich's day: pick the next items from `docs/ROADMAP.md`, say "go" on briefs, type `/merge <PR#>` for lane-3 PRs
 after reading the one thing `/ship` flagged. Everything else merges itself or stops and asks.
 
 ## Extension point: project-specific add-ons
