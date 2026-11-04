@@ -1,82 +1,30 @@
-# CLAUDE.md — Stridal framework repo
+# Lean Claude Code kit
 
-This repo builds Stridal (an operating model for Claude Code, its local panel and its plugin)
-and runs that same model on itself. The working conventions every session applies are in
-`AGENTS.md`, imported below. This file adds only what is specific to the framework repo.
+A copy-in kit for building with Claude Code: `bootstrap.sh` installs it into a project. Formerly Stridal; the old project is at tag `stridal-final`.
 
-**Two AGENTS.md files.** The root one governs work in this repo. `template/AGENTS.md` is the
-product: what every project receives. Change the template with care; it ships.
+## Stack and layout
+- POSIX-style shell, JSON, Markdown and GitHub Actions. There is no application code.
+- This repo is both the kit and a project using it. `CLAUDE.template.md` and `.github/ci.template.yml` are what new projects receive, as `CLAUDE.md` and `.github/workflows/ci.yml`. The `CLAUDE.md` and `ci.yml` here are this repo's own.
+- Everything else in `bootstrap.sh`'s file list ships as it is here, so a change to it reaches every new project.
 
-## Architecture
+## Commands
+- Check (the one command CI runs; must exit 0 before /ship): `.claude/bin/kit-check.sh`
+- It needs `shellcheck` and `jq`. CI also runs the gitleaks scan.
 
-```
-stridal/
-├── AGENTS.md, .claude/       ← this repo's own operating model (installed from template/)
-├── framework/                ← Go source: the CLI and the panel
-│   ├── cmd/stridal/       ← CLI entrypoint
-│   └── internal/
-│       ├── cmd/              ← commands: install, update, plugin, panel, lock-run, ...
-│       ├── panel/            ← the local panel (server, lanes, web UI; docs/panel.md)
-│       ├── plugin/           ← builds plugin/ from template/ (docs/plugin.md)
-│       ├── template/         ← reads template/ for install and update
-│       ├── leakcheck/        ← test support: fails a run that leaves tmux or a helper behind
-│       ├── testbin/          ← test support: writes a stand-in executable no parallel fork holds open
-│       ├── treesnap/         ← test support: a snapshot of a repository's files, to prove a command left them untouched
-│       ├── testgit/          ← test support: every test binary imports it, and its init drops the GIT_ variables, so a hook's repository stays untouched
-│       └── testwait/         ← test support: waits with deadlines scaled by STRIDAL_TEST_SLOW
-├── template/                 ← the operating model projects receive (`stridal install`)
-│   ├── AGENTS.md, CLAUDE.md  ← project-level instructions
-│   ├── .claude/              ← skills, agents, hooks, checks, workflows, project.conf
-│   ├── scripts/ci/           ← the gate: run-local.sh, gate.sh, lease.sh, steps.sh
-│   └── docs/, changes/, specs/  ← record templates
-├── plugin/                   ← GENERATED from template/ (scripts/build-plugin.sh): the plugin
-├── .claude-plugin/           ← marketplace.json listing plugin/ (docs/plugin.md)
-├── docs/                     ← this repo's records (roadmap, journal, insights, ADRs) and PRDs
-└── install.sh                ← build + install script
-```
+## How we work
+- Every change: `/brief` -> Rich says "go" -> build on a branch -> Rich runs `/ship`.
+- Write the check first. Done means: the check exits 0, the diff touches only the files in the brief (`.claude/bin/scope-check.sh`), and every claim in the PR cites a source. "Looks good" is not a check.
+- One change = one branch = one squash PR to main. Branches: `feat/`, `fix/`, `chore/`, `docs/`. Never push to main. Build in a worktree (`claude --worktree <slug>`); the main checkout stays on `main`. On a `worktree-<slug>` branch, first run `git switch -c <type>/<slug>`.
+- Do not script a rewrite of tracked source (`sed -i`, `perl -pi`, codemods); use the Edit tool.
 
-## Build, test, gate
+## Merge lanes
+Almost every change here touches `.claude/settings.json` or `.github/`, which `lane.yml` forces to lane 3: Rich adds `merge-ok` and merges. Claude never adds `merge-ok`.
 
-```bash
-go -C framework build -o stridal ./cmd/stridal
-go -C framework test -short ./...              # seconds, while working
-scripts/ci/gate.sh                             # the full gate (steps: scripts/ci/steps.sh); a lane: -C <worktree>
-sh .claude/checks/run.sh                       # this repo's process checks
-sh template/.claude/checks/run.sh              # the template's checks
-scripts/build-plugin.sh                        # after ANY template/ change (TestCommittedPluginIsCurrent)
-```
+## Ask Rich first
+- Anything irreversible or outward: GitHub settings, rulesets, releases.
+- A new dependency in `ci`, or a change to what new projects receive that alters their behaviour.
 
-CI (`.github/workflows/test.yml`) runs gofmt, vet, `go test -race` and the process checks on Ubuntu
-for every PR, and on macOS and Ubuntu for every push to `main` (OPS-26, temporary until OPS-28;
-the local gate's short suite and scoped race run on the owner's Mac for a PR).
-
-After a template change, bring this repo's own copy along: `framework/stridal update` from the
-repo root, with the binary built from this checkout. It reads the template beside it, unless
-`STRIDAL_FRAMEWORK` is set, which wins (`resolve.go`); it prints which. Attribution and
-provenance are off in `.claude/model-roles.json` alone: build-change reads them at run time, so
-no framework file differs on purpose.
-
-## Tech stack
-
-- **Go**: the CLI, the panel server, the plugin builder
-- **POSIX sh + git + jq**: the operating model's hooks, checks and gate (no binary needed: ADR-0006)
-- **tmux**: the panel's lanes (never kill a tmux server from a script: ADR-0005)
-- **HTML/JS** (vendored xterm): the panel's web UI
-
-## Git workflow
-
-- Branches: the model's lanes, `change/<id>`, `fix/<n>-<slug>`, `ops/<name>`.
-- Commits and PR titles: `PREFIX-N:` in the imperative mood. **No Co-Authored-By.**
-- Milestone prefixes: PANEL (the panel and its terminal UI), OPS (the operating model and this repo's
-  process), PROD (the product module), REL (releases), ST (Standing Tee practices ported into the
-  template; before the direction shift of 2026-10-27, Standing Tee convergence). Older history uses
-  M1–M7 and LIFE-n.
-
-## Code standards
-
-```go
-// Comments explain WHY, not WHAT
-// TODOs must include milestone context: TODO (PANEL-19): description
-```
-
-@AGENTS.md
+## Guards
+- Never commit secrets. `.env*` is git-ignored. Claude's Read and Edit tools and sandboxed Bash can't read it; commands excluded from the sandbox (`gh`, `git push`, `docker`) can, so keep production secrets out of a project checkout.
+- gitleaks exits 0 on a commit range git can't resolve. `ci` verifies the range first; keep that check.
+- The deny rules match command text, so they are not a boundary. The GitHub ruleset is what protects `main`.

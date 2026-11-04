@@ -1,18 +1,10 @@
-# Stridal runtime state (local only, not committed)
-orchestration/
 
-# OS files
-.DS_Store
-Thumbs.db
-
-# Editor files
-*.swp
-*.swo
-*~
-.idea/
-.vscode/
-framework/stridal
-
-# Stridal runtime state
+# lean-kit (Claude Code)
 .claude/worktrees/
+.claude/review/
 .claude/settings.local.json
+CLAUDE.local.md
+.env
+.env.*
+!.env.example
+PERSONAL_DATA/

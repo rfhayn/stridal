@@ -1,8 +1,0 @@
-{
-  "loggedIn": true,
-  "authMethod": "none",
-  "apiProvider": "bedrock",
-  "analyticsDisabled": false,
-  "projectsDirectory": "/home/dev/.claude/projects",
-  "configDirectory": "/home/dev/.claude"
-}
