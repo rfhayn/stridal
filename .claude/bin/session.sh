@@ -94,7 +94,7 @@ if [ -z "$claude_bin" ]; then
   claude_bin=claude
 fi
 [[ $claude_bin =~ $PATH_RE ]] || refuse "the claude path has a character outside A-Za-z0-9/._-"
-tabcmd="$claude_bin --name $slug --permission-mode auto \"\$(cat $promptfile)\""
+tabcmd="$claude_bin --name $slug --permission-mode auto -- \"\$(cat $promptfile)\""
 
 if [ "$dry" = 1 ]; then
   if [ "$cmd" = open ]; then
@@ -153,8 +153,11 @@ for t in feat fix chore docs; do
 done
 [ -n "$branch" ] || refuse "no local branch feat|fix|chore|docs/$slug"
 if [ "$abandon" = 0 ]; then
-  state=$(gh pr view "$branch" --json state --jq .state) || refuse "GitHub shows no PR for $branch; pass --abandon to close without one"
+  # headRefOid too: an older merged PR from a reused branch name must not pass for this branch's work.
+  pr=$(gh pr view "$branch" --json state,headRefOid --jq '.state + " " + .headRefOid') || refuse "GitHub shows no PR for $branch; pass --abandon to close without one"
+  state=${pr%% *} head=${pr##* }
   [ "$state" = MERGED ] || refuse "the PR for $branch is $state, not MERGED; pass --abandon to close anyway"
+  [ "$head" = "$(git rev-parse "$branch")" ] || refuse "the merged PR for $branch ended at $head, but the local branch is at $(git rev-parse "$branch"): unpushed or different commits; pass --abandon to discard them"
 fi
 if claude_running; then
   [ -s "$termfile" ] || refuse "claude --name $slug is running but $termfile has no terminal id"
