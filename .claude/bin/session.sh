@@ -106,12 +106,18 @@ fi
 
 # Real run: main checkout only, on Ghostty with one instance and a window.
 [ "$(git rev-parse --absolute-git-dir)" = "$gcd" ] || refuse "run this from the main checkout, not a worktree"
-n=$(pgrep -xi ghostty | wc -l | tr -d ' ')
+# ps, not pgrep: pgrep did not list Ghostty on the tested Mac although ps did.
+procs=$(ps -axo command=)
+n=$(printf '%s\n' "$procs" | grep -c '^/Applications/Ghostty.app/Contents/MacOS/ghostty$' || true)
 [ "$n" = 1 ] || refuse "need exactly one Ghostty instance, found $n"
 w=$(osascript -e 'tell application "Ghostty" to count windows') || refuse "could not ask Ghostty for its windows"
 [ "${w:-0}" -ge 1 ] || refuse "Ghostty has no open window"
 
-claude_running() { pgrep -f "claude --name $slug( |\$)" >/dev/null 2>&1; }
+claude_running() {
+  local p
+  p=$(ps -axo command=) || return 1
+  grep -Eq "(^|/)claude --name $slug( |\$)" <<<"$p"
+}
 
 if [ "$cmd" = open ]; then
   branch="$type/$slug"
