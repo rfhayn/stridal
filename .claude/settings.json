@@ -25,13 +25,16 @@
       "Bash(gh issue view*)",
       "Bash(gh pr merge --auto --squash --delete-branch)",
       "Bash(gh pr merge --auto --squash --delete-branch *)",
+      "Bash(gh pr merge * --squash --delete-branch)",
       "Bash(git worktree list*)"
     ],
     "ask": [
       "Edit(./.claude/settings.json)",
       "Edit(./.claude/hooks/**)",
       "Edit(./.github/**)",
-      "Bash(dangerouslyDisableSandbox:true)"
+      "Bash(dangerouslyDisableSandbox:true)",
+      "Bash(*merge-ok*)",
+      "Bash(gh label*)"
     ],
     "deny": [
       "Read(./.env)",
@@ -63,8 +66,6 @@
       "Bash(gh gist *)",
       "Bash(rm -rf /*)",
       "Bash(rm -rf ~*)",
-      "Bash(*merge-ok*)",
-      "Bash(gh label*)",
       "Bash(sed -i*)",
       "Bash(perl -pi*)",
       "Bash(git worktree remove -f*)",

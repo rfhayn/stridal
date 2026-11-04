@@ -26,7 +26,7 @@
 Pick the lane in /brief; /ship labels the PR. CI's `lane` check forces lane 3 for the paths below.
 1. `lane:1-contained`, reversible and contained (copy, tests, isolated covered code): auto-merge when CI is green.
 2. `lane:2-wide`, reversible but wide (shared utilities, schema additions, config): CI + one `reviewer` round, then auto-merge.
-3. `lane:3-hard`, hard to reverse (migrations, deletions, production data, money): never auto-merges. Reviewer runs on Opus; Rich adds `merge-ok` and merges. Claude never adds `merge-ok`.
+3. `lane:3-hard`, hard to reverse (migrations, deletions, production data, money): never auto-merges. Reviewer runs on Opus; Rich adds `merge-ok` and merges, either by hand or by typing `/merge <PR#>`. Claude adds `merge-ok` only inside that command, and its permission prompt must be confirmed; never on its own.
 - Lane 3 paths here: {{every one-way path: migrations/schema, outbound email/SMS/webhooks, production-data writers (import, export, sync, delete scripts), credential handling, money, deploy/infra}} (keep in sync with `HARD_PATHS` in `.github/workflows/lane.yml`)
 
 ## Ask Rich first
