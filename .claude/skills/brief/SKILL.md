@@ -23,6 +23,10 @@ Write the check first. Every done-when item must be machine-checkable: a command
 
 Every doc named in Files also gets its own done-when line, e.g. `git diff --name-only origin/main...HEAD | grep -qx docs/ROADMAP.md` exits 0.
 
+Docs live in `docs/templates` (copy-in templates), `docs/runbooks` and `docs/specs`; do not add README files or a DOCS-MAP.md.
+If the brief names a template, list its destination in Files; the build step copies the template there in the worktree.
+If the brief fills a doc that starts with `> TEMPLATE`, add the done-when `! grep -q '^> TEMPLATE' <doc>` (filling it means deleting the marker).
+
 Output exactly this shape, at most ~30 lines:
 
 ```
