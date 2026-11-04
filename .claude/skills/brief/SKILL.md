@@ -11,6 +11,9 @@ Write a brief for: $ARGUMENTS
 Where this session is running (git dir, common dir, branch):
 !`git rev-parse --git-dir --git-common-dir; git branch --show-current`
 
+Recent work (hash and subject, then each PR's Why/Roadmap):
+!`git log -10 --format='%h %s%n%b' | grep -E '^[0-9a-f]{7,} |^(Why|Roadmap):'`
+
 Read only what you need: CLAUDE.md, the files you expect to touch, and the matching `.claude/rules/*.md`. Do not write or edit code in this step.
 
 If the argument is a roadmap ID, read that item in `docs/ROADMAP.md` and any spec it links under Links, and brief from them. List `docs/ROADMAP.md` in Files so the item moves to Done in the same PR, and say the PR body carries `Roadmap: <ID>`.

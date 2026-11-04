@@ -7,7 +7,7 @@ name: Lane
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    types: [opened, synchronize, reopened, labeled, unlabeled, edited]
 
 permissions:
   contents: read
@@ -30,6 +30,15 @@ jobs:
         run: |
           gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --remove-label merge-ok
           echo "::error::New commits after merge-ok. Rich re-adds merge-ok after looking again."; exit 1
+      - name: PR body has a Why
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          why=$(printf '%s\n' "$PR_BODY" | sed -n 's/^Why:[[:space:]]*//p' | head -n1 | sed 's/[[:space:]]*$//')
+          if [ -z "$why" ] || [ "$why" = "<one line>" ]; then
+            echo "::error::PR body needs a real 'Why:' line (one line, not the <one line> placeholder). Edit the body to re-run."; exit 1
+          fi
       - name: Check lane
         env:
           # {{Extended regex of this project's ONE-WAY paths. Keep in sync with "Merge lanes" in CLAUDE.md.}}
