@@ -19,7 +19,8 @@
 - One change at a time per builder, each in its own worktree (`claude --worktree <slug>`, which `/brief` tells Rich to run). On a `worktree-<slug>` branch, first run `git switch -c <type>/<slug>`. At most 2-3 builders at once, and fewer if the check suite slows or flakes under load. Never build in the main checkout; it stays on `main`.
 - Do not script a rewrite of tracked source (`sed -i`, `perl -pi`, codemods); use the Edit tool.
 - New logic gets a test. Fix the code, not the test, unless the test is wrong (say so in the PR).
-- Architecture decisions: `docs/adr/NNNN-title.md` (copy 0000-template). Next work: `docs/ROADMAP.md`.
+- Architecture decisions: `docs/adr/NNNN-title.md` (copy 0000-template). Read an area's ADRs before changing it; supersede, don't contradict. There is no ADR index; list them and their status with `grep -HE '^(# |Date:)' docs/adr/*.md`.
+- Next work: `docs/ROADMAP.md` (Now/Next/Done is the status). `/brief <ID>` reads the item; the PR body says `Roadmap: <ID>` and the same PR moves the item to Done.
 
 ## Merge lanes (by blast radius, not confidence)
 Pick the lane in /brief; /ship labels the PR. CI's `lane` check forces lane 3 for the paths below.

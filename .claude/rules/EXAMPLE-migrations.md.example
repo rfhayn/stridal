@@ -12,4 +12,5 @@ paths:
 - Claim the next number in the migrations README ledger in the same PR.
 - Never run migrations against production. That is Rich's step (ask first).
 - Any PR touching this path is lane 3 (also listed in HARD_PATHS in .github/workflows/lane.yml): Rich adds merge-ok and merges.
+- Read the ADRs for this area first (e.g. `docs/adr/NNNN-database.md`) and the migrations README; supersede an ADR with a new one, don't contradict it.
 - Reviewer checklist: locks on large tables, NOT NULL without default, data backfills, destructive DROP/RENAME.
