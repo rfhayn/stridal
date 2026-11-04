@@ -13,9 +13,15 @@ Where this session is running (git dir, common dir, branch):
 
 Read only what you need: CLAUDE.md, the files you expect to touch, and the matching `.claude/rules/*.md`. Do not write or edit code in this step.
 
+If the argument is a roadmap ID, read that item in `docs/ROADMAP.md` and any spec it links under Links, and brief from them. List `docs/ROADMAP.md` in Files so the item moves to Done in the same PR, and say the PR body carries `Roadmap: <ID>`.
+
+Name the ADRs governing the touched files (`grep -HE '^(# |Date:)' docs/adr/*.md`, then read the relevant ones) and say whether the change conflicts with any. A conflict means a new ADR that supersedes the old one, not a quiet contradiction. If the change makes a real decision (expensive to reverse), put a new ADR in Files.
+
 Read the code before believing the issue. If the task comes from an issue or a bug report, confirm the stated cause in the code and cite file:line in Decisions. If the code disagrees with the write-up, say so and brief what the code shows.
 
 Write the check first. Every done-when item must be machine-checkable: a command that exits 0, a named test that passes, or an exact output. "Looks good", "the model is confident" and "no errors raised" are not checks; rewrite any item that reads like one.
+
+Every doc named in Files also gets its own done-when line, e.g. `git diff --name-only origin/main...HEAD | grep -qx docs/ROADMAP.md` exits 0.
 
 Output exactly this shape, at most ~30 lines:
 
@@ -26,9 +32,11 @@ Done when (each one machine-checkable):
 - [ ] `<check command from CLAUDE.md>` exits 0
 - [ ] `.claude/bin/scope-check.sh <the Files globs below>` exits 0
 - [ ] <named test> passes: `<command>`  (write this test first, see it fail, then build)
-- [ ] <...> (2-5 more; each a command, test name, or exact output)
+- [ ] <...> (2-5 more, incl. one per doc in Files; each a command, test name, or exact output)
 - [ ] every claim in the PR cites a source (file:line, test name, or command output)
-Files: <exact paths or globs this change may touch, space-separated>
+Files: <exact paths or globs this change may touch, space-separated; docs/ROADMAP.md for a roadmap item, a new ADR if a real decision>
+ADRs: <ADRs governing the touched files, and "no conflict" or how it conflicts>
+Roadmap: <ID, if any; the PR body says "Roadmap: <ID>">
 Out of scope: <what this change will NOT do>
 Lane: 1-contained | 2-wide | 3-hard  -- <one-line reason based on blast radius, not confidence>
 Plan:

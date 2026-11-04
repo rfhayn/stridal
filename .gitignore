@@ -8,3 +8,4 @@ CLAUDE.local.md
 .env.*
 !.env.example
 PERSONAL_DATA/
+.DS_Store

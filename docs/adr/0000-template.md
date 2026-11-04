@@ -13,5 +13,8 @@ Date: {{YYYY-MM-DD}} · Status: proposed | accepted | superseded by NNNN
 - Cost / risk: {{...}}
 - Revisit if: {{the condition that would change this}}
 
+## Links
+{{Related ADRs (supersedes / superseded by NNNN), roadmap IDs, specs, PRs.}}
+
 <!-- Write one only for decisions that are expensive to reverse: data model, hosting, auth, a framework,
      a public API. To change one, edit Status and write a new ADR; no amendment logs. -->
