@@ -11,12 +11,12 @@
 - Single test: `{{pnpm test -- path/to/file}}` · Dev: `{{pnpm dev}}` · Install: `{{pnpm install}}`
 
 ## How we work
-- Every change: `/brief` -> Rich says "go" -> build on a branch -> `/ship`. Rich chooses what ships; he does not review intermediate output.
+- Every change: `/brief` (it opens the worker itself when it has no open questions; `plan only` stops at the brief) -> build on a branch -> `/ship`. Rich chooses what ships by running `/brief`; he does not review intermediate output.
 - Write the check first. Done means: the tests exit 0, the diff touches only files listed in the brief (`.claude/bin/scope-check.sh`), and every claim in the PR cites a source (file:line, test name or command output). "Looks good", "I'm confident" and "no errors raised" are not checks.
 - Return the unit, not the batch: when a check fails, fix only the failing file/test ("fix X only"), rerun only that check, then the full check. After 3 failed attempts on the same unit, stop and re-brief. Do not keep looping.
 - Deterministic work is code, not a model call: merging, sorting, ranking, dedup, diffing, comparisons, counting. Write or use a script and cite its output.
 - One change = one branch = one squash PR to main. Branches: `feat/`, `fix/`, `chore/`, `docs/`. Never push to main.
-- One change at a time per builder, each in its own worktree: on "go", `/brief` opens a worker tab with `.claude/bin/session.sh` (macOS and Ghostty), and if that refuses it tells Rich to run `claude --worktree <slug>`. On a `worktree-<slug>` branch, first run `git switch -c <type>/<slug>`. At most 2-3 builders at once, and fewer if the check suite slows or flakes under load. Never build in the main checkout; it stays on `main`.
+- One change at a time per builder, each in its own worktree: `/brief` opens a worker tab with `.claude/bin/session.sh` (macOS and Ghostty), and if that refuses it tells Rich to run `claude --worktree <slug>`. On a `worktree-<slug>` branch, first run `git switch -c <type>/<slug>`. At most 2-3 builders at once, and fewer if the check suite slows or flakes under load. Never build in the main checkout; it stays on `main`.
 - Do not script a rewrite of tracked source (`sed -i`, `perl -pi`, codemods); use the Edit tool.
 - New logic gets a test. Fix the code, not the test, unless the test is wrong (say so in the PR).
 - Architecture decisions: `docs/adr/NNNN-title.md` (copy 0000-template). Read an area's ADRs before changing it; supersede, don't contradict. There is no ADR index; list them and their status with `grep -HE '^(# |Date:)' docs/adr/*.md`.

@@ -32,7 +32,7 @@ and four short skills. A new project gets 24 files plus a `.gitignore` addition 
 9. **One change at a time per builder.** Each builder works in its own worktree (`/brief` opens it in a Ghostty tab
    with `session.sh`, or Rich runs `claude --worktree <slug>`); the main checkout stays on `main`. Run at most 2-3 builders at once, fewer if the check suite slows or
    flakes under load. Never "several in parallel".
-10. **Rich's human steps:** choosing what ships (saying "go" on a brief), typing `/ship`, which Claude can't
+10. **Rich's human steps:** choosing what ships (running `/brief` is the go; `plan only` stops at the brief), typing `/ship`, which Claude can't
    start itself, and approving lane-3 merges. He does not review intermediate output.
 
 ## Files
@@ -47,7 +47,7 @@ and four short skills. A new project gets 24 files plus a `.gitignore` addition 
 | `.claude/bin/kit-check.sh` | This repo's own check: shellcheck, JSON, and `bootstrap.sh` in copy-only mode. Not copied to new projects |
 | `.claude/agents/reviewer.md` | Fresh-context reviewer with no shell: one round, blocking findings with file:line evidence, lane check, decisions and assumptions check. Sonnet by default, Opus for lane 3 |
 | `.claude/agents/researcher.md` | Read-only research agent (no Edit, Write or Bash); answers with sources |
-| `.claude/skills/brief/SKILL.md` | `/brief <task>`: Opus writes goal, machine-checkable done-when, Files, lane, plan, decisions, assumptions. Waits for "go", then opens a worker tab with `session.sh` (or falls back to `claude --worktree`) |
+| `.claude/skills/brief/SKILL.md` | `/brief <task>`: Opus writes goal, machine-checkable done-when, Files, lane, plan, decisions, assumptions, then opens a worker tab with `session.sh` itself when there are no open questions (or falls back to `claude --worktree`). `plan only` stops at the brief |
 | `.claude/skills/land/SKILL.md` | `/land <slug> [--abandon]`: after the merge, closes the worker tab, removes its worktree and branch, then `git pull --ff-only` in the main checkout. User-only |
 | `.claude/skills/ship/SKILL.md` | `/ship`: run the checks, review by lane, rebase, labeled PR with evidence, auto-merge for lanes 1-2 |
 | `.claude/skills/merge/SKILL.md` | `/merge <PR#>`: Rich's lane 3 green light. Adds `merge-ok` (one permission prompt), waits for `lane`, squash-merges. User-only |
@@ -105,7 +105,8 @@ Do not add `paths:` filters to required workflows: a skipped required check stay
 ```
 claude                                   # in the main checkout (stays on main)
 /brief weekly standings email to league members
-   ... Rich says "go"; /brief writes the brief to .claude/review/spawn-<slug>.md and runs session.sh open
+   ... no second "go": with no open questions /brief writes the brief to .claude/review/spawn-<slug>.md and runs
+       session.sh open ("/brief plan only ..." stops at the brief until Rich says "go")
    ... a worker opens in a new Ghostty tab on feat/<slug> (at most 2-3 builders at once), starts in auto mode,
        writes the failing test, builds on Sonnet, commits, and reports back to the main session
 /ship                                    # Rich types this in the worker's tab
@@ -118,7 +119,7 @@ Requirement: macOS, and Ghostty running with exactly one instance and a window. 
 Workers started by `session.sh` run in auto mode (`--permission-mode auto`). If a worker never reports and
 `ListAgents` shows it stuck, look for a trust or permission prompt in its tab.
 
-Rich's day: pick the next items from `docs/ROADMAP.md`, say "go" on briefs, type `/ship` in each worker's tab, type
+Rich's day: pick the next items from `docs/ROADMAP.md`, run `/brief` on them, type `/ship` in each worker's tab, type
 `/merge <PR#>` for lane-3 PRs after reading the one thing `/ship` flagged, and `/land <slug>` once merged.
 Everything else merges itself or stops and asks.
 
