@@ -32,10 +32,16 @@ for f in CLAUDE.md .claude/settings.json .claude/agents/reviewer.md .claude/agen
          .github/workflows/ci.yml .github/workflows/lane.yml .github/pull_request_template.md \
          docs/ROADMAP.md docs/adr/0000-template.md; do
   if [ -e "$DEST/$f" ]; then echo "skip (exists): $f"; continue; fi
-  mkdir -p "$DEST/$(dirname "$f")"; cp -p "$f" "$DEST/$f"; echo "added: $f"
+  # This repo keeps its own CLAUDE.md and ci.yml; new projects get the templates.
+  case "$f" in
+    CLAUDE.md) src=CLAUDE.template.md ;;
+    .github/workflows/ci.yml) src=.github/ci.template.yml ;;
+    *) src="$f" ;;
+  esac
+  mkdir -p "$DEST/$(dirname "$f")"; cp -p "$src" "$DEST/$f"; echo "added: $f"
   # 2. Runner choice is applied to the two required-check workflows we just copied.
   if [ "$RUNNER" = self-hosted ] && [[ "$f" == .github/workflows/* ]]; then
-    sed -i.bak 's/runs-on: ubuntu-latest/runs-on: [self-hosted]/' "$DEST/$f" && rm -f "$DEST/$f.bak"
+    sed -i.bak 's/runs-on: ubuntu-[^ ]*/runs-on: [self-hosted]/' "$DEST/$f" && rm -f "$DEST/$f.bak"
   fi
 done
 grep -qF '.claude/worktrees/' "$DEST/.gitignore" 2>/dev/null || cat gitignore.append >> "$DEST/.gitignore"
@@ -45,16 +51,19 @@ echo "Runner: $RUNNER for ci and lane."
 [ -n "$REPO" ] || { echo "Files copied. Pass owner/repo as the 3rd argument to protect main."; exit 0; }
 
 # 3. GitHub: ruleset FIRST. Auto-merge stays OFF until a red PR has been refused (--enable-auto-merge).
-prev=$(gh api "repos/$REPO" --jq '[.allow_merge_commit,.allow_rebase_merge,.allow_squash_merge,.delete_branch_on_merge,.allow_auto_merge]|map(tostring)|join(" ")')
-read -r p_merge p_rebase p_squash p_delete p_auto <<<"$prev"
+prev=$(gh api "repos/$REPO" --jq '[.allow_merge_commit,.allow_rebase_merge,.allow_squash_merge,.delete_branch_on_merge,.allow_auto_merge,.squash_merge_commit_title,.squash_merge_commit_message]|map(tostring)|join(" ")')
+read -r p_merge p_rebase p_squash p_delete p_auto p_title p_message <<<"$prev"
 rollback() {
   echo "GitHub setup failed. Restoring previous merge settings." >&2
   gh api -X PATCH "repos/$REPO" -F allow_merge_commit="$p_merge" -F allow_rebase_merge="$p_rebase" \
-    -F allow_squash_merge="$p_squash" -F delete_branch_on_merge="$p_delete" -F allow_auto_merge="$p_auto" >/dev/null
+    -F allow_squash_merge="$p_squash" -F delete_branch_on_merge="$p_delete" -F allow_auto_merge="$p_auto" \
+    -f squash_merge_commit_title="$p_title" -f squash_merge_commit_message="$p_message" >/dev/null
   exit 1
 }
 gh repo edit "$REPO" --enable-squash-merge --enable-merge-commit=false --enable-rebase-merge=false \
   --delete-branch-on-merge --enable-auto-merge=false || rollback
+# Squash commits carry the PR title and body, so the history keeps each PR's why.
+gh api -X PATCH "repos/$REPO" -f squash_merge_commit_title=PR_TITLE -f squash_merge_commit_message=PR_BODY >/dev/null || rollback
 gh api -X POST "repos/$REPO/rulesets" --input "$KIT/.github/ruleset-main.json" >/dev/null || rollback
 
 for l in "lane:1-contained|0e8a16|Reversible, contained: auto-merge on green CI" \

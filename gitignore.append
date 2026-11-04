@@ -1,6 +1,7 @@
 
 # lean-kit (Claude Code)
 .claude/worktrees/
+.claude/review/
 .claude/settings.local.json
 CLAUDE.local.md
 .env

@@ -32,29 +32,33 @@ and two short skills. About 17 files, ~600 lines in total, nothing to maintain b
 9. **One change at a time per builder.** Each builder works in its own worktree, which `/brief` creates;
    the main checkout stays on `main`. Run at most 2-3 builders at once, fewer if the check suite slows or
    flakes under load. Never "several in parallel".
-10. **Rich's human steps:** choosing what ships (saying "go" on a brief) and approving lane-3 merges.
-   He does not review intermediate output.
+10. **Rich's human steps:** choosing what ships (saying "go" on a brief), typing `/ship`, which Claude can't
+   start itself, and approving lane-3 merges. He does not review intermediate output.
 
 ## Files
 | Path | What it does |
 |---|---|
-| `CLAUDE.md` | ~48-line template: commands, how we work, merge lanes, ask-first list, guards (one-way + learned), extension point |
-| `.claude/settings.json` | Sonnet + medium effort; `acceptEdits`; deny list (secrets, `--admin` merges, pushes to main, ruleset edits, `merge-ok`); Bash sandbox with GitHub/npm network; the one hook |
+| `CLAUDE.template.md` | ~48-line template, installed as `CLAUDE.md`: commands, how we work, merge lanes, ask-first list, guards (one-way + learned), extension point |
+| `CLAUDE.md` | This repo's own, filled in. Not copied to new projects |
+| `.claude/settings.json` | Sonnet + medium effort; `acceptEdits`; deny list (secrets, `--admin` merges, pushes to main, ruleset edits, `merge-ok`); unsandboxed retries always ask; Bash sandbox with GitHub/npm network |
 | `.claude/hooks/one-way-guard.sh` | OPTIONAL, not wired by default. The one hook slot, for a blocking guard on the project's one-way failure (example: blocks `git add/commit/push` of personal-data or secret paths) |
 | `.claude/bin/scope-check.sh` | Deterministic check that the branch touches only the brief's files |
-| `.claude/agents/reviewer.md` | Fresh-context reviewer: one round, blocking findings with file:line evidence, lane check, decisions and assumptions check. Sonnet by default, Opus for lane 3 |
+| `.claude/bin/kit-check.sh` | This repo's own check: shellcheck, JSON, and `bootstrap.sh` in copy-only mode. Not copied to new projects |
+| `.claude/agents/reviewer.md` | Fresh-context reviewer with no shell: one round, blocking findings with file:line evidence, lane check, decisions and assumptions check. Sonnet by default, Opus for lane 3 |
 | `.claude/agents/researcher.md` | Read-only research agent (no Edit, Write or Bash); answers with sources |
 | `.claude/skills/brief/SKILL.md` | `/brief <task>`: Opus writes goal, machine-checkable done-when, Files, lane, plan, decisions, assumptions. Waits for "go" |
 | `.claude/skills/ship/SKILL.md` | `/ship`: run the checks, review by lane, rebase, labeled PR with evidence, auto-merge for lanes 1-2 |
 | `.claude/rules/EXAMPLE-migrations.md.example` | Example path-scoped domain rule (inactive until renamed to `.md`) |
-| `.github/workflows/ci.yml` | The required `ci` check: one job, 10-minute timeout, cancels superseded runs |
+| `.github/ci.template.yml` | Installed as `.github/workflows/ci.yml`, the required `ci` check: one job, 10-minute timeout, cancels superseded runs, gitleaks secret scan, then your stack's check |
+| `.github/workflows/ci.yml` | This repo's own `ci`: gitleaks, then `kit-check.sh`. Not copied to new projects |
 | `.github/workflows/lane.yml` | The required `lane` check (merge-lane gate, ~10 s) |
 | `.github/ruleset-main.json` | Ruleset for the default branch: PR required (0 approvals), squash only, checks `ci` + `lane`, no deletion, no force push, no bypass actors |
 | `.github/pull_request_template.md` | What/why, lane, done-when evidence, decisions & assumptions with sources, review, guard |
 | `docs/ROADMAP.md` | One checklist: Now (max 3), Next, Before launch, fixed dates, Done |
 | `docs/adr/0000-template.md` | Short ADR, only for decisions expensive to reverse |
-| `gitignore.append` | Ignores `.claude/worktrees/`, local settings, `.env*`, `PERSONAL_DATA/` |
-| `bootstrap.sh` | Copies the files (never overwrites), applies the runner choice, posts the ruleset first (rolls back on failure), labels; enables auto-merge only after a red PR was refused |
+| `gitignore.append` | Ignores `.claude/worktrees/`, `.claude/review/`, local settings, `.env*`, `PERSONAL_DATA/` |
+| `.gitattributes` | LF line endings on every OS, for this repo. Not copied to new projects |
+| `bootstrap.sh` | Copies the files (never overwrites), applies the runner choice, sets squash commits to carry the PR title and body, posts the ruleset first (rolls back on failure), labels; enables auto-merge only after a red PR was refused |
 
 Not in the kit on purpose: session numbers, journals, session-close PRs, local CI receipts, merge-guard
 wrappers, a review loop, a worktree launcher, a roadmap queue engine, practice records, bot fleets.
@@ -62,6 +66,9 @@ Claude Code already ships worktrees (`claude --worktree`), `/plan` mode, `/code-
 permissions and a sandbox. GitHub already ships rulesets and auto-merge.
 
 ## Install into a new project (under 30 minutes)
+`bootstrap.sh` is the only real install route. GitHub's "Use this template" skips the ruleset, runner choice and
+labels, and copies this repo's own `CLAUDE.md` and `ci.yml` instead of the templates.
+
 1. **Choose the runner.** `hosted` bills Actions minutes (`lane` ~1 minute per run, 2-4 runs per PR, plus every
    `ci` run). If this account has ever run out of minutes or paused `pull_request` CI, choose `self-hosted`
    (a machine you own that is on while you work; never a production box).
@@ -118,17 +125,23 @@ on the project's one-way failure. `.claude/hooks/one-way-guard.sh` is an example
 of personal-data or secret paths (set `GUARD`). To wire it, add to `.claude/settings.json`:
 ```json
 "hooks": { "PreToolUse": [ { "matcher": "Bash", "hooks": [
-  { "type": "command", "command": "\"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/one-way-guard.sh", "timeout": 10 } ] } ] }
+  { "type": "command", "command": "\"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/one-way-guard.sh", "timeout": 10, "onFailure": "block" } ] } ] }
 ```
-Exit code 2 blocks the call and tells Claude why. Use the slot for whatever your project's one-way action is.
+Exit code 2 blocks the call and tells Claude why. `onFailure: block` (Claude Code v2.1.295+) makes a crash or a
+timeout block too; without it the guard fails open. Use the slot for whatever your project's one-way action is.
 
 ## Optional, when a project needs it
 - A weekly dependency audit workflow (`pnpm audit --prod --audit-level high`) and grouped Dependabot config.
 - A local runner script that calls the same steps file as CI, for the inner loop when Actions minutes are scarce. It never writes a receipt a merge trusts.
-- A real-project example of the extension point: `standingtee-addons/`.
 
 ## Costs and limits to know
 - On hosted runners each `lane` run bills one rounded-up minute (2-4 runs per PR). The runner choice is install step 1.
 - `bypass_actors` is empty, so even admins merge through PRs. To pause the ruleset, set `enforcement` to
   `disabled` in Settings → Rules; it can't be deleted from a Claude session (denied).
-- Permission rules evaluate deny, then ask, then allow; a deny always wins.
+- Permission rules evaluate deny, then ask, then allow; a deny always wins. They match command text, so `git -C . push` or
+  `sh -c` gets past them. The ruleset is what protects `main`.
+- The sandbox protects `.claude/` settings, `skills`, `agents`, `commands` and `hooks`. Updating the main checkout across
+  a change to those is Rich's step; `/ship` retries a blocked rebase once, and that retry always asks.
+- A session in `.claude/worktrees/<slug>` also loads the main checkout's `CLAUDE.md`, so an older copy can appear beside
+  the branch's own.
+- The old Stridal plugin marketplace entry is gone from this repo; it is preserved at tag `stridal-final`.

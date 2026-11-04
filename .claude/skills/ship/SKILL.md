@@ -19,13 +19,15 @@ Ship this change. Steps in order.
 
 2. **Review by lane** (lane from the brief; if the diff now looks wider than the brief said, move up a lane, never down).
    - Lane 1: no reviewer. CI is the check.
+   - Lanes 2 and 3: the reviewer has no shell, so first write what it reads: `mkdir -p .claude/review && git diff origin/main...HEAD > .claude/review/diff.txt && git log --oneline origin/main..HEAD > .claude/review/log.txt`.
    - Lane 2: run the `reviewer` subagent once, passing the brief.
    - Lane 3: run the `reviewer` subagent once with the per-call `model: opus` parameter, passing the brief.
    - On FIX FIRST: fix each blocking finding you agree with as its own unit (step 1's scope-line rule and 3-attempt cap apply), and note any rejected finding with a one-line reason. **No second review round**, unless CLAUDE.md's project section allows one for this lane. If a fix needs a design change, stop and ask Rich.
 
 3. **Rebase and push.** `git fetch origin && git rebase origin/main`, rerun the check if the rebase pulled in changes, then `git push -u origin HEAD` (`--force-with-lease` if the branch was already pushed).
+   If the rebase stops with `Operation not permitted` under `.claude/` (the sandbox protects those paths), run `git rebase --abort` and retry once unsandboxed. That retry always asks Rich. Never add a standing allow rule for it.
 
-4. **Open the PR**: `gh pr create --label lane:<N>-<name> --body-file -` with a conventional title (`feat: weekly standings email`) and the body from `.github/pull_request_template.md`: goal; each done-when item ticked with its evidence; decisions and assumptions, each with a source line (file:line, test, command output, or the reviewer's check); review result; lane and reason. A claim without a source is removed or marked "unverified".
+4. **Open the PR**: `gh pr create --label lane:<N>-<name> --body-file -` with a conventional title (`feat: weekly standings email`) and the body from `.github/pull_request_template.md`: goal; each done-when item ticked with its evidence; decisions and assumptions, each with a source line (file:line, test, command output, or the reviewer's check); review result; lane and reason. A claim without a source is removed or marked "unverified". Leave out the template's HTML comments: the body becomes the squash commit message.
 
 5. **Merge by lane.**
    - Lane 1 and 2: run exactly `gh pr merge --auto --squash --delete-branch` (the allow rule matches this exact command). GitHub merges when `ci` and `lane` pass and the branch is up to date with main; if main moved, rebase, push, and let it re-run.

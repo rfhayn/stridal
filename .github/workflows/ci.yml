@@ -1,16 +1,16 @@
-# The one required check. Keep it under 10 minutes; move slow suites (e2e, load) to nightly.yml or run them locally.
+# This repo's own required check. New projects get .github/ci.template.yml instead (bootstrap.sh installs it as ci.yml).
 # The ruleset requires the status check named "ci" (the job name below). Rename both together or not at all.
 # Do NOT add paths/paths-ignore filters here: a skipped required check stays "pending" and blocks the merge.
 name: CI
 
 on:
   pull_request:
-  merge_group:        # harmless if you never enable a merge queue
+  merge_group:
   workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true   # a new push cancels the old run, saving minutes
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -18,18 +18,38 @@ permissions:
 jobs:
   ci:
     name: ci
-    runs-on: ubuntu-latest   # bootstrap.sh sets this from your runner choice (hosted | self-hosted)
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-
-      # ---- {{STACK SETUP}}: replace for your stack. Node + pnpm example: ----
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
         with:
-          node-version-file: .nvmrc
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+          fetch-depth: 0   # the secret scan needs the PR's commits
 
-      # ---- The same command as "Check" in CLAUDE.md. Formatting is checked here, not by a hook. ----
-      - run: pnpm check   # {{e.g. format check (prettier --check / biome ci / gofmt -l) + lint + typecheck + unit tests}}
+      # ---- Secret scan. A missing binary or a bad checksum fails the job, so ci cannot pass without the scan. ----
+      - name: Install gitleaks
+        env:
+          VERSION: 8.30.1
+          SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          set -euo pipefail
+          curl -fsSL -o "$RUNNER_TEMP/gitleaks.tar.gz" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
+          echo "$SHA256  $RUNNER_TEMP/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: Scan files for secrets
+        run: gitleaks dir --no-banner --redact .
+      - name: Scan the PR's commits for secrets
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # gitleaks exits 0 on a range git cannot resolve, so a bad range would read as "no leaks". Check first.
+          git rev-parse --verify --quiet "$BASE^{commit}" >/dev/null || { echo "::error::Base commit not found: $BASE"; exit 1; }
+          git rev-parse --verify --quiet "$HEAD^{commit}" >/dev/null || { echo "::error::Head commit not found: $HEAD"; exit 1; }
+          gitleaks git --no-banner --redact --log-opts="$BASE..$HEAD" .
+
+      # ---- The same command as "Check" in CLAUDE.md. ----
+      - run: .claude/bin/kit-check.sh

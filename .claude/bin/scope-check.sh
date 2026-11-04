@@ -6,6 +6,7 @@ set -uo pipefail
 [ $# -gt 0 ] || { echo "usage: scope-check.sh <glob>..."; exit 2; }
 base=$(git merge-base origin/main HEAD) || exit 2
 stray=0
+# shellcheck disable=SC2053  # $g stays unquoted on purpose: quoting it would stop every glob matching.
 while IFS= read -r f; do
   ok=0; for g in "$@"; do [[ "$f" == $g ]] && { ok=1; break; }; done
   [ $ok -eq 1 ] || { echo "OUT OF SCOPE: $f"; stray=1; }

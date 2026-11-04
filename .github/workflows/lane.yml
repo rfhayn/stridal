@@ -16,10 +16,10 @@ permissions:
 jobs:
   lane:
     name: lane
-    runs-on: ubuntu-latest   # bootstrap.sh: hosted | self-hosted
+    runs-on: ubuntu-26.04   # bootstrap.sh: hosted | self-hosted
     timeout-minutes: 2
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: New commits void merge-ok

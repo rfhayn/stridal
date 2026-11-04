@@ -31,7 +31,8 @@
     "ask": [
       "Edit(./.claude/settings.json)",
       "Edit(./.claude/hooks/**)",
-      "Edit(./.github/**)"
+      "Edit(./.github/**)",
+      "Bash(dangerouslyDisableSandbox:true)"
     ],
     "deny": [
       "Read(./.env)",
@@ -40,6 +41,9 @@
       "Read(./secrets/**)",
       "Read(~/.ssh/**)",
       "Read(~/.aws/**)",
+      "Read(~/.git-credentials)",
+      "Read(~/.netrc)",
+      "Read(~/.npmrc)",
       "Edit(./PERSONAL_DATA/**)",
       "Read(./PERSONAL_DATA/**)",
       "Bash(gh pr merge * --admin*)",
@@ -49,6 +53,15 @@
       "Bash(git push origin main*)",
       "Bash(git push origin HEAD:main*)",
       "Bash(git push --force origin main*)",
+      "Bash(git push * main)",
+      "Bash(git push * main *)",
+      "Bash(git push * +main)",
+      "Bash(git push * *:main)",
+      "Bash(git push * *:refs/heads/main)",
+      "Bash(gh * --body-file *.env*)",
+      "Bash(gh * --body-file=*.env*)",
+      "Bash(gh * -F *.env*)",
+      "Bash(gh gist *)",
       "Bash(rm -rf /*)",
       "Bash(rm -rf ~*)",
       "Bash(*merge-ok*)",
@@ -83,11 +96,23 @@
     "credentials": {
       "files": [
         {
-          "path": "~/.aws/credentials",
+          "path": "~/.aws",
           "mode": "deny"
         },
         {
           "path": "~/.ssh",
+          "mode": "deny"
+        },
+        {
+          "path": "~/.git-credentials",
+          "mode": "deny"
+        },
+        {
+          "path": "~/.netrc",
+          "mode": "deny"
+        },
+        {
+          "path": "~/.npmrc",
           "mode": "deny"
         }
       ]

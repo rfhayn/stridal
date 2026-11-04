@@ -46,7 +46,7 @@ Then stop and wait. Rich replies "go" (or edits). On "go":
    then stop and tell Rich: "Worktree ready: `cd .claude/worktrees/<slug> && claude`, then paste the brief." Do not edit files in this session.
    If you are already in a worktree (the git dir differs from the common dir) and it is on a fresh branch from origin/main, continue there.
 2. Write the failing test(s) first, then build on Sonnet (`/model sonnet` if this session is on Opus). Commit in small steps.
-3. When every done-when item is checkable, run `/ship`. Keep the brief in the conversation; /ship puts it in the PR.
+3. When every done-when item is checkable, tell Rich to run `/ship` (only he can start it). Keep the brief in the conversation; /ship puts it in the PR.
 
 One-way actions: if the change can do something that cannot be undone (send a message, push personal data, write production data, delete, charge money), the brief must name its guard in the first design: a deny rule, a blocking check, a dry-run default, or a test that fails before the action. Do not wait for it to fail twice.
 
