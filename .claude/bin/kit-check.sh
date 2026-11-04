@@ -63,4 +63,53 @@ for f in ci lane; do
   fi
 done
 
+# session.sh drives Ghostty and git worktrees outside the sandbox, so its arguments are checked before
+# anything runs. Every call here passes --dry-run, so even a script that wrongly accepted one starts nothing.
+sess=.claude/bin/session.sh
+[ -x "$sess" ] || { echo "kit-check: $sess is missing or not executable"; exit 1; }
+pf="$tmp/spawn-prompt"
+echo "SECRET-PROMPT-TEXT" > "$pf"
+refuses() {
+  local out
+  if out=$("$sess" "$@" 2>&1); then echo "kit-check: session.sh accepted: $*"; exit 1; fi
+  case "$out" in
+    *"session.sh: refused"*) ;;
+    *) echo "kit-check: session.sh failed without a refusal message for: $*"; exit 1 ;;
+  esac
+}
+long43=$(printf 'a%.0s' $(seq 1 43))
+long42=$(printf 'a%.0s' $(seq 1 42))
+for bad in "bug" "feat/x" "FEAT" ""; do
+  refuses open "$bad" zz-ok "$pf" --report-to main --dry-run
+done
+# "\$(" is literal text that must be refused, never expanded.
+for bad in "a b" "Upper" 'a;b' "a\$(id)" "\$(id)" "-lead" "trail-" "a_b" "a/b" "$long43" ""; do
+  refuses open feat "$bad" "$pf" --report-to main --dry-run
+  refuses close "$bad" --dry-run
+done
+for bad in "a b" 'a;b' "a\$(id)" "x'y" ""; do
+  refuses open feat zz-ok "$pf" --report-to "$bad" --dry-run
+done
+refuses open feat zz-ok "$pf" --dry-run
+refuses open feat zz-ok "$tmp/no-such-prompt" --report-to main --dry-run
+refuses open feat zz-ok "$pf" --report-to main --bogus --dry-run
+refuses close zz-ok --bogus --dry-run
+refuses frobnicate zz-ok --dry-run
+
+gcd=$(git rev-parse --path-format=absolute --git-common-dir)
+out=$("$sess" open feat zz-ok "$pf" --report-to main --dry-run 2>&1) \
+  || { echo "kit-check: session.sh good dry-run open failed: $out"; exit 1; }
+want="claude --name zz-ok --permission-mode auto \"\$(cat $gcd/spawn/zz-ok.prompt)\""
+[ "$(printf '%s\n' "$out" | grep '^tab command: ')" = "tab command: $want" ] \
+  || { echo "kit-check: session.sh tab command is not exactly: $want"; printf '%s\n' "$out"; exit 1; }
+case "$out" in *SECRET-PROMPT-TEXT*) echo "kit-check: session.sh dry-run printed the prompt text"; exit 1 ;; esac
+case "$out" in *"tell application \"Ghostty\""*) ;; *) echo "kit-check: session.sh dry-run did not print the AppleScript"; exit 1 ;; esac
+"$sess" open fix "$long42" "$pf" --report-to a_B-9 --dry-run >/dev/null \
+  || { echo "kit-check: session.sh refused a 42-character slug"; exit 1; }
+out=$("$sess" close zz-ok --abandon --dry-run 2>&1) \
+  || { echo "kit-check: session.sh good dry-run close failed: $out"; exit 1; }
+[ ! -e "$gcd/spawn/zz-ok.prompt" ] && [ ! -e "$gcd/spawn/zz-ok.term" ] \
+  || { echo "kit-check: session.sh dry-run wrote files"; exit 1; }
+git worktree list | grep -q 'zz-ok' && { echo "kit-check: session.sh dry-run created a worktree"; exit 1; }
+
 echo "kit-check: all checks passed ($count shell scripts)"

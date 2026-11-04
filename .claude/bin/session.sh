@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+# Open and close worker Claude sessions in Ghostty tabs, so the main session needs no per-command prompt.
+# Usage:
+#   .claude/bin/session.sh open <type> <slug> <prompt-file> --report-to <name> [--dry-run]
+#   .claude/bin/session.sh close <slug> [--abandon] [--dry-run]
+# Run from the main checkout, on Ghostty with one instance and an open window. This script is the only
+# thing allowed to run outside the sandbox for this (settings.json); the tab command it builds holds
+# only validated tokens and a fixed path, never raw user text. --dry-run prints what would run, and runs nothing.
+set -euo pipefail
+
+refuse() { echo "session.sh: refused: $*" >&2; exit 2; }
+
+SLUG_RE='^[a-z0-9]([a-z0-9-]{0,40}[a-z0-9])?$'
+NAME_RE='^[A-Za-z0-9_-]+$'
+PATH_RE='^[A-Za-z0-9/._-]+$'
+
+# AppleScript source. Every value arrives through argv, so none is ever parsed as AppleScript.
+IFS= read -r -d '' APPLE_OPEN <<'OSA' || true
+on run argv
+  tell application "Ghostty"
+    set cfg to new surface configuration
+    set initial working directory of cfg to item 1 of argv
+    set command of cfg to item 2 of argv
+    set t to new tab in front window with configuration cfg
+    return id of focused terminal of t
+  end tell
+end run
+OSA
+IFS= read -r -d '' APPLE_CLOSE <<'OSA' || true
+on run argv
+  tell application "Ghostty"
+    set term to terminal id (item 1 of argv)
+    input text "/exit" to term
+    send key "enter" to term
+  end tell
+end run
+OSA
+
+cmd=${1:-}
+[ $# -gt 0 ] && shift
+type="" slug="" prompt="" report="" dry=0 abandon=0 have_report=0
+case "$cmd" in
+  open)
+    [ $# -ge 3 ] || refuse "usage: open <type> <slug> <prompt-file> --report-to <name> [--dry-run]"
+    type=$1 slug=$2 prompt=$3
+    shift 3
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --dry-run) dry=1 ;;
+        --report-to) [ $# -ge 2 ] || refuse "--report-to needs a name"; report=$2; have_report=1; shift ;;
+        *) refuse "unknown argument for open: $1" ;;
+      esac
+      shift
+    done
+    case "$type" in feat|fix|chore|docs) ;; *) refuse "type must be feat, fix, chore or docs" ;; esac
+    ;;
+  close)
+    [ $# -ge 1 ] || refuse "usage: close <slug> [--abandon] [--dry-run]"
+    slug=$1
+    shift
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --dry-run) dry=1 ;;
+        --abandon) abandon=1 ;;
+        *) refuse "unknown argument for close: $1" ;;
+      esac
+      shift
+    done
+    ;;
+  *) refuse "first argument must be open or close" ;;
+esac
+
+[[ $slug =~ $SLUG_RE ]] || refuse "slug must match $SLUG_RE"
+if [ "$cmd" = open ]; then
+  [ "$have_report" = 1 ] || refuse "open needs --report-to <name>"
+  [[ $report =~ $NAME_RE ]] || refuse "--report-to must match $NAME_RE"
+  [ -f "$prompt" ] && [ -r "$prompt" ] || refuse "prompt file not readable: $prompt"
+fi
+
+# Everything below builds from validated values only.
+top=$(git rev-parse --show-toplevel)
+gcd=$(git rev-parse --path-format=absolute --git-common-dir)
+[[ $top =~ $PATH_RE ]] || refuse "the repo path has a character outside A-Za-z0-9/._-, which the tab command cannot carry safely"
+[[ $gcd =~ $PATH_RE ]] || refuse "the git directory path has a character outside A-Za-z0-9/._-, which the tab command cannot carry safely"
+spawn="$gcd/spawn"
+wt="$top/.claude/worktrees/$slug"
+promptfile="$spawn/$slug.prompt"
+termfile="$spawn/$slug.term"
+tabcmd="claude --name $slug --permission-mode auto \"\$(cat $promptfile)\""
+
+if [ "$dry" = 1 ]; then
+  if [ "$cmd" = open ]; then
+    echo "branch: $type/$slug (new, from origin/main)"
+    echo "worktree: $wt"
+    echo "tab command: $tabcmd"
+    echo "AppleScript (arguments: worktree, tab command):"
+    printf '%s\n' "$APPLE_OPEN"
+  else
+    echo "would type /exit into the terminal id in $termfile, wait for claude --name $slug to end,"
+    echo "then git worktree remove $wt, git branch -D <type>/$slug, and delete $spawn/$slug.*"
+    echo "AppleScript (argument: terminal id):"
+    printf '%s\n' "$APPLE_CLOSE"
+  fi
+  exit 0
+fi
+
+# Real run: main checkout only, on Ghostty with one instance and a window.
+[ "$(git rev-parse --absolute-git-dir)" = "$gcd" ] || refuse "run this from the main checkout, not a worktree"
+n=$(pgrep -xi ghostty | wc -l | tr -d ' ')
+[ "$n" = 1 ] || refuse "need exactly one Ghostty instance, found $n"
+w=$(osascript -e 'tell application "Ghostty" to count windows') || refuse "could not ask Ghostty for its windows"
+[ "${w:-0}" -ge 1 ] || refuse "Ghostty has no open window"
+
+claude_running() { pgrep -f "claude --name $slug( |\$)" >/dev/null 2>&1; }
+
+if [ "$cmd" = open ]; then
+  branch="$type/$slug"
+  [ ! -e "$wt" ] || refuse "worktree already exists: $wt"
+  ! git show-ref --verify --quiet "refs/heads/$branch" || refuse "local branch already exists: $branch"
+  [ -z "$(git ls-remote --heads origin "$branch")" ] || refuse "remote branch already exists: $branch"
+  [ ! -e "$promptfile" ] && [ ! -e "$termfile" ] || refuse "spawn files for $slug already exist in $spawn"
+  git fetch origin
+  git worktree add "$wt" -b "$branch" origin/main
+  mkdir -p "$spawn"
+  {
+    cat "$prompt"
+    printf '\n\nWhen you finish, or stop for any reason, SendMessage the session named %s with your summary or the reason.\n' "$report"
+  } > "$promptfile"
+  termid=$(osascript -e "$APPLE_OPEN" "$wt" "$tabcmd") || refuse "Ghostty did not open the tab; clean up with: .claude/bin/session.sh close $slug --abandon"
+  printf '%s\n' "$termid" > "$termfile"
+  echo "opened $branch in terminal $termid (worktree $wt)"
+  exit 0
+fi
+
+# close
+branch=""
+for t in feat fix chore docs; do
+  git show-ref --verify --quiet "refs/heads/$t/$slug" && branch="$t/$slug"
+done
+[ -n "$branch" ] || refuse "no local branch feat|fix|chore|docs/$slug"
+if [ "$abandon" = 0 ]; then
+  state=$(gh pr view "$branch" --json state --jq .state) || refuse "GitHub shows no PR for $branch; pass --abandon to close without one"
+  [ "$state" = MERGED ] || refuse "the PR for $branch is $state, not MERGED; pass --abandon to close anyway"
+fi
+if claude_running; then
+  [ -s "$termfile" ] || refuse "claude --name $slug is running but $termfile has no terminal id"
+  osascript -e "$APPLE_CLOSE" "$(cat "$termfile")" || refuse "could not type /exit into terminal $(cat "$termfile")"
+  deadline=$(($(date +%s) + 20))
+  while claude_running; do
+    [ "$(date +%s)" -lt "$deadline" ] || refuse "claude --name $slug is still running 20 s after /exit; nothing was removed"
+    sleep 1
+  done
+fi
+git worktree remove "$wt" || refuse "git worktree remove refused (is $wt dirty?); nothing forced, branch kept"
+git branch -D "$branch"
+rm -f "$promptfile" "$termfile"
+echo "closed $slug: worktree and $branch removed"
