@@ -3,6 +3,9 @@
 # Usage:
 #   .claude/bin/session.sh open <type> <slug> --report-to <name> [--dry-run]
 #   .claude/bin/session.sh close <slug> [--abandon] [--dry-run]
+#   .claude/bin/session.sh send <slug> ship [--dry-run]
+# send types the one fixed text /ship and Enter into the worker's recorded terminal; it takes no other command
+# and no text, because typing arbitrary text into a terminal would be a keystroke-injection primitive.
 # The prompt is read only from .claude/review/spawn-<slug>.md in the main checkout (git-ignored): a regular
 # file, not a symlink, at most 20 KB. There is no path argument, so no other file can be read as a prompt.
 # Run from the main checkout, on Ghostty with one instance and an open window. This script is the only
@@ -37,10 +40,19 @@ on run argv
   end tell
 end run
 OSA
+IFS= read -r -d '' APPLE_SEND <<'OSA' || true
+on run argv
+  tell application "Ghostty"
+    set term to terminal id (item 1 of argv)
+    input text "/ship" to term
+    send key "enter" to term
+  end tell
+end run
+OSA
 
 cmd=${1:-}
 [ $# -gt 0 ] && shift
-type="" slug="" report="" dry=0 abandon=0 have_report=0
+sendcmd="" type="" slug="" report="" dry=0 abandon=0 have_report=0
 case "$cmd" in
   open)
     [ $# -ge 2 ] || refuse "usage: open <type> <slug> --report-to <name> [--dry-run]"
@@ -69,7 +81,20 @@ case "$cmd" in
       shift
     done
     ;;
-  *) refuse "first argument must be open or close" ;;
+  send)
+    [ $# -ge 2 ] || refuse "usage: send <slug> ship [--dry-run]"
+    slug=$1 sendcmd=$2
+    shift 2
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --dry-run) dry=1 ;;
+        *) refuse "unknown argument for send: $1" ;;
+      esac
+      shift
+    done
+    [ "$sendcmd" = ship ] || refuse "send accepts only the command ship"
+    ;;
+  *) refuse "first argument must be open, close or send" ;;
 esac
 
 [[ $slug =~ $SLUG_RE ]] || refuse "slug must match $SLUG_RE"
@@ -108,10 +133,37 @@ if [ -z "$claude_bin" ]; then
   claude_bin=claude
 fi
 [[ $claude_bin =~ $PATH_RE ]] || refuse "the claude path has a character outside A-Za-z0-9/._-"
-tabcmd="$claude_bin --name $slug --permission-mode auto -- \"\$(cat $promptfile)\""
+# Ghostty runs the tab command without a login shell, so the worker would lack /opt/homebrew/bin (gh, shellcheck).
+# zsh -l reads the user's profile first. Every token inside the quotes is validated above or fixed.
+tabcmd="/bin/zsh -lc 'exec $claude_bin --name $slug --permission-mode auto -- \"\$(cat $promptfile)\"'"
+
+# A recorded terminal id is data from a file, so it is checked before it reaches osascript.
+TERM_RE='^[A-Za-z0-9_-]+$'
+if [ "$cmd" = send ]; then
+  [ -s "$termfile" ] || refuse "no terminal recorded for $slug in $termfile: it was not opened by session.sh"
+  [[ $(cat "$termfile") =~ $TERM_RE ]] || refuse "$termfile does not hold a terminal id"
+fi
+# close with the worktree and the recorded branch both already gone (merged and cleaned up by hand).
+gone=0
+if [ "$cmd" = close ] && [ -s "$branchfile" ]; then
+  b=$(cat "$branchfile")
+  if [[ $b =~ ^(feat|fix|chore|docs)/$slug$ ]] && [ ! -e "$wt" ] && ! git show-ref --verify --quiet "refs/heads/$b"; then
+    gone=1
+  fi
+fi
 
 if [ "$dry" = 1 ]; then
-  if [ "$cmd" = open ]; then
+  if [ "$cmd" = send ]; then
+    echo "would type /ship and Enter into the terminal id in $termfile"
+    echo "AppleScript (argument: terminal id):"
+    printf '%s\n' "$APPLE_SEND"
+  elif [ "$gone" = 1 ]; then
+    echo "worktree $wt and branch $(cat "$branchfile") are already gone: nothing to remove."
+    echo "would type /exit into the terminal id in $termfile if claude --name $slug is still running, wait up to 20 s,"
+    echo "then delete $spawn/$slug.* (no branch or worktree is removed)"
+    echo "AppleScript (argument: terminal id):"
+    printf '%s\n' "$APPLE_CLOSE"
+  elif [ "$cmd" = open ]; then
     echo "branch: $type/$slug (new, from origin/main)"
     echo "worktree: $wt"
     echo "tab command: $tabcmd"
@@ -141,6 +193,13 @@ claude_running() {
   grep -Eq "(^|/)claude --name $slug( |\$)" <<<"$p"
 }
 
+if [ "$cmd" = send ]; then
+  claude_running || refuse "claude --name $slug is not running, so there is nothing to type /ship into"
+  osascript -e "$APPLE_SEND" "$(cat "$termfile")" || refuse "could not type /ship into terminal $(cat "$termfile")"
+  echo "typed /ship into terminal $(cat "$termfile") for $slug"
+  exit 0
+fi
+
 if [ "$cmd" = open ]; then
   branch="$type/$slug"
   [ ! -e "$wt" ] || refuse "worktree already exists: $wt"
@@ -168,6 +227,22 @@ if [ "$cmd" = open ]; then
 fi
 
 # close
+if [ "$gone" = 1 ]; then
+  # Worktree and recorded branch are both gone: end the worker if it is still up, drop the records, remove nothing else.
+  if claude_running; then
+    [ -s "$termfile" ] || refuse "claude --name $slug is running but $termfile has no terminal id"
+    [[ $(cat "$termfile") =~ $TERM_RE ]] || refuse "$termfile does not hold a terminal id"
+    osascript -e "$APPLE_CLOSE" "$(cat "$termfile")" || refuse "could not type /exit into terminal $(cat "$termfile")"
+    deadline=$(($(date +%s) + 20))
+    while claude_running; do
+      [ "$(date +%s)" -lt "$deadline" ] || refuse "claude --name $slug is still running 20 s after /exit; records kept"
+      sleep 1
+    done
+  fi
+  rm -f "$promptfile" "$termfile" "$branchfile"
+  echo "closed $slug: worktree and branch were already gone; deleted the spawn records only"
+  exit 0
+fi
 # Only the branch open recorded, never a guess among feat|fix|chore|docs/<slug>.
 [ -s "$branchfile" ] || refuse "no record of a branch for $slug in $branchfile: it was not opened by session.sh, so clean up by hand"
 branch=$(cat "$branchfile")
