@@ -83,7 +83,7 @@ long42=$(printf 'a%.0s' $(seq 1 42))
 # The prompt comes only from the git-ignored review folder; the test files are removed on exit.
 rev=.claude/review
 mkdir -p "$rev"
-trap 'rm -rf "$tmp" "$rev"/spawn-zz-* "$rev/spawn-$long42.md"' EXIT
+trap 'rm -rf "$tmp" "$rev"/spawn-zz-* "$rev/spawn-$long42.md" "${gcd:-/nonexistent}"/spawn/zz-*' EXIT
 echo "SECRET-PROMPT-TEXT" > "$rev/spawn-zz-ok.md"
 cp "$rev/spawn-zz-ok.md" "$rev/spawn-$long42.md"
 refuses() {
@@ -130,7 +130,8 @@ refuses frobnicate zz-ok --dry-run
 gcd=$(git rev-parse --path-format=absolute --git-common-dir)
 out=$("$sess" open feat zz-ok --report-to main --dry-run 2>&1) \
   || { echo "kit-check: session.sh good dry-run open failed: $out"; exit 1; }
-want="$(command -v claude || echo claude) --name zz-ok --permission-mode auto -- \"\$(cat $gcd/spawn/zz-ok.prompt)\""
+# The tab runs through the login shell so a worker gets the user's PATH (gh, shellcheck); only validated tokens go in.
+want="/bin/zsh -lc 'exec $(command -v claude || echo claude) --name zz-ok --permission-mode auto -- \"\$(cat $gcd/spawn/zz-ok.prompt)\"'"
 [ "$(printf '%s\n' "$out" | grep '^tab command: ')" = "tab command: $want" ] \
   || { echo "kit-check: session.sh tab command is not exactly: $want"; printf '%s\n' "$out"; exit 1; }
 case "$out" in *SECRET-ENV-TEXT*) echo "kit-check: session.sh dry-run printed .env text"; exit 1 ;; esac
@@ -143,5 +144,41 @@ out=$("$sess" close zz-ok --abandon --dry-run 2>&1) \
 [ ! -e "$gcd/spawn/zz-ok.prompt" ] && [ ! -e "$gcd/spawn/zz-ok.term" ] \
   || { echo "kit-check: session.sh dry-run wrote files"; exit 1; }
 git worktree list | grep -q 'zz-ok' && { echo "kit-check: session.sh dry-run created a worktree"; exit 1; }
+
+# send types one fixed command, /ship, into a worker's recorded terminal. Everything else is refused.
+refuses send zz-ok ship --dry-run   # no .term record yet
+mkdir -p "$gcd/spawn"
+echo "FAKE-TERM-ID-1" > "$gcd/spawn/zz-ok.term"
+for bad in "merge" "exit" "/ship" "ship x" "ship;id" "ship\$(id)" ""; do
+  refuses send zz-ok "$bad" --dry-run
+done
+refuses send zz-ok --dry-run
+refuses send zz-ok ship x --dry-run
+refuses send zz-ok ship --bogus --dry-run
+refuses send zz-none ship --dry-run
+for bad in "a b" 'a;b' "a\$(id)" "Upper" "-lead" "$long43" ""; do
+  refuses send "$bad" ship --dry-run
+done
+out=$("$sess" send zz-ok ship --dry-run 2>&1) \
+  || { echo "kit-check: session.sh good dry-run send failed: $out"; exit 1; }
+case "$out" in *'input text "/ship" to term'*'send key "enter" to term'*) ;; *) echo "kit-check: send dry-run did not print the /ship AppleScript"; printf '%s\n' "$out"; exit 1 ;; esac
+case "$out" in *'input text "/exit"'*) echo "kit-check: send dry-run printed the /exit AppleScript"; exit 1 ;; esac
+
+# The open tab command starts with the login shell and holds only validated tokens.
+out=$("$sess" open feat zz-ok --report-to main --dry-run 2>&1)
+tabline=$(printf '%s\n' "$out" | grep '^tab command: ')
+case "$tabline" in "tab command: /bin/zsh -lc '"*) ;; *) echo "kit-check: tab command does not start with /bin/zsh -lc: $tabline"; exit 1 ;; esac
+rest=${tabline#"tab command: /bin/zsh -lc '"}
+[[ $rest =~ ^exec\ [A-Za-z0-9/._-]+\ --name\ zz-ok\ --permission-mode\ auto\ --\ \"\$\(cat\ [A-Za-z0-9/._-]+\)\"\'$ ]] \
+  || { echo "kit-check: tab command holds something other than validated tokens: $tabline"; exit 1; }
+
+# close when the worktree and the recorded branch are already gone: a cleanup plan, not a refusal.
+echo "feat/zz-ok" > "$gcd/spawn/zz-ok.branch"
+out=$("$sess" close zz-ok --dry-run 2>&1) \
+  || { echo "kit-check: close --dry-run refused when worktree and branch are gone: $out"; exit 1; }
+case "$out" in *"already gone"*"delete $gcd/spawn/zz-ok."*) ;; *) echo "kit-check: close --dry-run did not print the cleanup plan"; printf '%s\n' "$out"; exit 1 ;; esac
+case "$out" in *"git worktree remove"*|*"git branch -D"*) echo "kit-check: cleanup plan removes a branch or worktree"; exit 1 ;; esac
+[ -e "$gcd/spawn/zz-ok.term" ] || { echo "kit-check: close --dry-run deleted records"; exit 1; }
+rm -f "$gcd/spawn/zz-ok.term" "$gcd/spawn/zz-ok.branch"
 
 echo "kit-check: all checks passed ($count shell scripts)"
