@@ -1,82 +1,48 @@
-# CLAUDE.md — Stridal framework repo
+# {{PROJECT_NAME}}
 
-This repo builds Stridal (an operating model for Claude Code, its local panel and its plugin)
-and runs that same model on itself. The working conventions every session applies are in
-`AGENTS.md`, imported below. This file adds only what is specific to the framework repo.
+{{ONE_LINE: what this is and who uses it.}}
 
-**Two AGENTS.md files.** The root one governs work in this repo. `template/AGENTS.md` is the
-product: what every project receives. Change the template with care; it ships.
+## Stack and layout
+- {{e.g. pnpm monorepo, Next.js app in apps/web, Postgres via packages/db}}
+- {{where the important code lives; 3-6 lines max}}
 
-## Architecture
+## Commands
+- Check (the one command CI runs; must exit 0 before /ship): `{{pnpm check}}`
+- Single test: `{{pnpm test -- path/to/file}}` · Dev: `{{pnpm dev}}` · Install: `{{pnpm install}}`
 
-```
-stridal/
-├── AGENTS.md, .claude/       ← this repo's own operating model (installed from template/)
-├── framework/                ← Go source: the CLI and the panel
-│   ├── cmd/stridal/       ← CLI entrypoint
-│   └── internal/
-│       ├── cmd/              ← commands: install, update, plugin, panel, lock-run, ...
-│       ├── panel/            ← the local panel (server, lanes, web UI; docs/panel.md)
-│       ├── plugin/           ← builds plugin/ from template/ (docs/plugin.md)
-│       ├── template/         ← reads template/ for install and update
-│       ├── leakcheck/        ← test support: fails a run that leaves tmux or a helper behind
-│       ├── testbin/          ← test support: writes a stand-in executable no parallel fork holds open
-│       ├── treesnap/         ← test support: a snapshot of a repository's files, to prove a command left them untouched
-│       ├── testgit/          ← test support: every test binary imports it, and its init drops the GIT_ variables, so a hook's repository stays untouched
-│       └── testwait/         ← test support: waits with deadlines scaled by STRIDAL_TEST_SLOW
-├── template/                 ← the operating model projects receive (`stridal install`)
-│   ├── AGENTS.md, CLAUDE.md  ← project-level instructions
-│   ├── .claude/              ← skills, agents, hooks, checks, workflows, project.conf
-│   ├── scripts/ci/           ← the gate: run-local.sh, gate.sh, lease.sh, steps.sh
-│   └── docs/, changes/, specs/  ← record templates
-├── plugin/                   ← GENERATED from template/ (scripts/build-plugin.sh): the plugin
-├── .claude-plugin/           ← marketplace.json listing plugin/ (docs/plugin.md)
-├── docs/                     ← this repo's records (roadmap, journal, insights, ADRs) and PRDs
-└── install.sh                ← build + install script
-```
+## How we work
+- Every change: `/brief` -> Rich says "go" -> build on a branch -> `/ship`. Rich chooses what ships; he does not review intermediate output.
+- Write the check first. Done means: the tests exit 0, the diff touches only files listed in the brief (`.claude/bin/scope-check.sh`), and every claim in the PR cites a source (file:line, test name or command output). "Looks good", "I'm confident" and "no errors raised" are not checks.
+- Return the unit, not the batch: when a check fails, fix only the failing file/test ("fix X only"), rerun only that check, then the full check. After 3 failed attempts on the same unit, stop and re-brief. Do not keep looping.
+- Deterministic work is code, not a model call: merging, sorting, ranking, dedup, diffing, comparisons, counting. Write or use a script and cite its output.
+- One change = one branch = one squash PR to main. Branches: `feat/`, `fix/`, `chore/`, `docs/`. Never push to main.
+- One change at a time per builder, each in its own worktree (`/brief` creates it). At most 2-3 builders at once, and fewer if the check suite slows or flakes under load. Never build in the main checkout; it stays on `main`.
+- Do not script a rewrite of tracked source (`sed -i`, `perl -pi`, codemods); use the Edit tool.
+- New logic gets a test. Fix the code, not the test, unless the test is wrong (say so in the PR).
+- Architecture decisions: `docs/adr/NNNN-title.md` (copy 0000-template). Next work: `docs/ROADMAP.md`.
 
-## Build, test, gate
+## Merge lanes (by blast radius, not confidence)
+Pick the lane in /brief; /ship labels the PR. CI's `lane` check forces lane 3 for the paths below.
+1. `lane:1-contained`, reversible and contained (copy, tests, isolated covered code): auto-merge when CI is green.
+2. `lane:2-wide`, reversible but wide (shared utilities, schema additions, config): CI + one `reviewer` round, then auto-merge.
+3. `lane:3-hard`, hard to reverse (migrations, deletions, production data, money): never auto-merges. Reviewer runs on Opus; Rich adds `merge-ok` and merges. Claude never adds `merge-ok`.
+- Lane 3 paths here: {{every one-way path: migrations/schema, outbound email/SMS/webhooks, production-data writers (import, export, sync, delete scripts), credential handling, money, deploy/infra}} (keep in sync with `HARD_PATHS` in `.github/workflows/lane.yml`)
 
-```bash
-go -C framework build -o stridal ./cmd/stridal
-go -C framework test -short ./...              # seconds, while working
-scripts/ci/gate.sh                             # the full gate (steps: scripts/ci/steps.sh); a lane: -C <worktree>
-sh .claude/checks/run.sh                       # this repo's process checks
-sh template/.claude/checks/run.sh              # the template's checks
-scripts/build-plugin.sh                        # after ANY template/ change (TestCommittedPluginIsCurrent)
-```
+## Ask Rich first
+- Anything irreversible or outward: production deploys, production data, email/SMS to real users, DNS, billing.
+- New runtime dependency, new external service, or a change to `.github/` or `.claude/`.
+- {{project-specific}}
 
-CI (`.github/workflows/test.yml`) runs gofmt, vet, `go test -race` and the process checks on Ubuntu
-for every PR, and on macOS and Ubuntu for every push to `main` (OPS-26, temporary until OPS-28;
-the local gate's short suite and scoped race run on the owner's Mac for a PR).
+## Conventions
+- {{style rules the formatter/linter does NOT already enforce; 3-5 lines max}}
+- Never commit secrets. `.env*` is git-ignored and unreadable to Claude. Formatting is checked in `ci`, not by a hook.
 
-After a template change, bring this repo's own copy along: `framework/stridal update` from the
-repo root, with the binary built from this checkout. It reads the template beside it, unless
-`STRIDAL_FRAMEWORK` is set, which wins (`resolve.go`); it prints which. Attribution and
-provenance are off in `.claude/model-roles.json` alone: build-change reads them at run time, so
-no framework file differs on purpose.
+## Guards
+- One-way failures get a guard in the first design, not after a repeat: anything that cannot be undone (a commit or push of personal data or secrets, a sent message, a production write, a deletion) ships with a deny rule, a blocking check or a dry-run default before it can run once.
+- Personal data lives in {{PERSONAL_DATA paths, e.g. data/resume.md, data/*.sqlite, *.xlsx}}: denied to Claude in `.claude/settings.json` and git-ignored. Never `git add -f`.
+- Everything else: when the same failure happens twice, its confirmed cause becomes ONE guard: a line here, a permissions rule, or a test. Propose it in the PR that hits the repeat.
+- {{YYYY-MM-DD: guard (PR #)}}
 
-## Tech stack
-
-- **Go**: the CLI, the panel server, the plugin builder
-- **POSIX sh + git + jq**: the operating model's hooks, checks and gate (no binary needed: ADR-0006)
-- **tmux**: the panel's lanes (never kill a tmux server from a script: ADR-0005)
-- **HTML/JS** (vendored xterm): the panel's web UI
-
-## Git workflow
-
-- Branches: the model's lanes, `change/<id>`, `fix/<n>-<slug>`, `ops/<name>`.
-- Commits and PR titles: `PREFIX-N:` in the imperative mood. **No Co-Authored-By.**
-- Milestone prefixes: PANEL (the panel and its terminal UI), OPS (the operating model and this repo's
-  process), PROD (the product module), REL (releases), ST (Standing Tee practices ported into the
-  template; before the direction shift of 2026-10-27, Standing Tee convergence). Older history uses
-  M1–M7 and LIFE-n.
-
-## Code standards
-
-```go
-// Comments explain WHY, not WHAT
-// TODOs must include milestone context: TODO (PANEL-19): description
-```
-
-@AGENTS.md
+## Project rules (extension point)
+Domain rules live in `.claude/rules/*.md`, path-scoped so they load only when matching files are touched.
+{{Optional always-on imports, e.g. `@docs/glossary.md` (remove backticks to activate).}}

@@ -1,0 +1,59 @@
+# Merge-lane gate (deterministic, ~10 s). Required check "lane" in the ruleset.
+# A PR is lane 3 (hard to reverse) if it has the lane:3-hard label OR touches HARD_PATHS.
+# Lane 3 fails until Rich adds the `merge-ok` label, so auto-merge can never land it.
+# Claude is denied any command containing "merge-ok" in .claude/settings.json.
+# runs-on is set by bootstrap.sh from your runner choice. This job bills 1 hosted minute per run.
+name: Lane
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: write   # only to drop a stale merge-ok after new commits
+
+jobs:
+  lane:
+    name: lane
+    runs-on: ubuntu-latest   # bootstrap.sh: hosted | self-hosted
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: New commits void merge-ok
+        if: github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'merge-ok')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --remove-label merge-ok
+          echo "::error::New commits after merge-ok. Rich re-adds merge-ok after looking again."; exit 1
+      - name: Check lane
+        env:
+          # {{Extended regex of this project's ONE-WAY paths. Keep in sync with "Merge lanes" in CLAUDE.md.}}
+          # Cover every kind, not only SQL: schema/migrations (any language), outbound messages (email, SMS,
+          # webhooks, notifications), production-data writers (import/export/sync/backfill/delete scripts),
+          # credential handling, deploy/infra, money, and the gate itself. Replace the example paths with yours.
+          HARD_PATHS: '^(migrations/|db/migrations/|src/db/migrate|src/(email|mail|notify|notifications)/|src/.*(send|mailer|digest)[^/]*$|scripts/.*(sync|export|import|backfill|delete|purge)[^/]*$|src/(auth|credentials|secrets)/|(.*/)?\.env[^/]*$|.*\.(pem|key)$|infra/|deploy/|\.github/|\.claude/settings\.json$)'
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ' ') }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          hard_files=$(git diff --name-only "$BASE...$HEAD" | grep -E "$HARD_PATHS" || true)
+          labels=" $LABELS "
+          lane=none
+          for l in lane:1-contained lane:2-wide lane:3-hard; do
+            [[ "$labels" == *" $l "* ]] && lane=$l
+          done
+          if [ -n "$hard_files" ]; then
+            echo "Hard-to-reverse paths touched:"; echo "$hard_files"
+            [ "$lane" = "lane:3-hard" ] || { echo "::error::Touches lane-3 paths; label the PR lane:3-hard."; exit 1; }
+          fi
+          [ "$lane" != none ] || { echo "::error::Add one lane label: lane:1-contained, lane:2-wide or lane:3-hard."; exit 1; }
+          if [ "$lane" = "lane:3-hard" ] && [[ "$labels" != *" merge-ok "* ]]; then
+            echo "::error::Lane 3 waits for Rich: he adds the merge-ok label, then merges."; exit 1
+          fi
+          echo "Lane OK: $lane"

@@ -1,0 +1,9 @@
+
+# lean-kit (Claude Code)
+.claude/worktrees/
+.claude/settings.local.json
+CLAUDE.local.md
+.env
+.env.*
+!.env.example
+PERSONAL_DATA/

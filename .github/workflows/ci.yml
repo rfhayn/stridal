@@ -1,0 +1,35 @@
+# The one required check. Keep it under 10 minutes; move slow suites (e2e, load) to nightly.yml or run them locally.
+# The ruleset requires the status check named "ci" (the job name below). Rename both together or not at all.
+# Do NOT add paths/paths-ignore filters here: a skipped required check stays "pending" and blocks the merge.
+name: CI
+
+on:
+  pull_request:
+  merge_group:        # harmless if you never enable a merge queue
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true   # a new push cancels the old run, saving minutes
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: ci
+    runs-on: ubuntu-latest   # bootstrap.sh sets this from your runner choice (hosted | self-hosted)
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---- {{STACK SETUP}}: replace for your stack. Node + pnpm example: ----
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # ---- The same command as "Check" in CLAUDE.md. Formatting is checked here, not by a hook. ----
+      - run: pnpm check   # {{e.g. format check (prettier --check / biome ci / gofmt -l) + lint + typecheck + unit tests}}
