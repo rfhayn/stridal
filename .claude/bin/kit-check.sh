@@ -34,6 +34,13 @@ for f in .github/ci.template.yml CLAUDE.template.md .claude/bin/kit-check.sh; do
 done
 [ -s "$d/.gitignore" ] || { echo "kit-check: installed .gitignore is empty"; exit 1; }
 
+# The worker-session files ship, and session.sh keeps its executable bit in the install.
+for f in .claude/bin/session.sh .claude/skills/land/SKILL.md; do
+  [ -f "$d/$f" ] || { echo "kit-check: $f is missing from a new project"; exit 1; }
+  cmp -s "$f" "$d/$f" || { echo "kit-check: installed $f differs from the kit's"; exit 1; }
+done
+[ -x "$d/.claude/bin/session.sh" ] || { echo "kit-check: installed session.sh is not executable"; exit 1; }
+
 # Docs that ship unfilled must say so on their first line, in the repo and in what a new project receives.
 marker='> TEMPLATE, not filled in. Do not treat as project fact.'
 for f in docs/ARCHITECTURE.md docs/RISKS.md docs/templates/DATA-MODEL.md docs/templates/API.md \
@@ -48,7 +55,11 @@ done
 echo "edited" >> "$d/CLAUDE.md"
 cp "$d/CLAUDE.md" "$tmp/CLAUDE.edited"
 cp "$d/.gitignore" "$tmp/gitignore.first"
+(cd "$d" && find . -type f | sort | xargs cksum) > "$tmp/tree.first"
 ./bootstrap.sh "$d" hosted >/dev/null || { echo "kit-check: second bootstrap.sh run failed"; exit 1; }
+(cd "$d" && find . -type f | sort | xargs cksum) > "$tmp/tree.second"
+cmp -s "$tmp/tree.first" "$tmp/tree.second" || { echo "kit-check: second run changed the installed tree"; exit 1; }
+[ -x "$d/.claude/bin/session.sh" ] || { echo "kit-check: second run lost the executable bit on session.sh"; exit 1; }
 cmp -s "$tmp/CLAUDE.edited" "$d/CLAUDE.md" || { echo "kit-check: second run overwrote an edited file"; exit 1; }
 cmp -s "$tmp/gitignore.first" "$d/.gitignore" || { echo "kit-check: second run changed .gitignore"; exit 1; }
 
