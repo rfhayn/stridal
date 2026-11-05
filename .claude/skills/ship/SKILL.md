@@ -11,7 +11,11 @@ Current branch and changes:
 
 Ship this change. Steps in order.
 
-0. **Refuse on main.** If the branch above is `main` (or `master`), or the two git dirs above are the same (the main checkout), stop: say "run /brief to get a worktree" and do nothing else. If the branch is `worktree-<slug>`, first run `git switch -c <type>/<slug>` (type = feat, fix, chore, docs), so the PR has a real branch name.
+0. **Main checkout.** If the branch above is `main` (or `master`), or the two git dirs above are the same (the main checkout):
+   - With a slug argument (`/ship <slug>`): Rich typing it is the approval. Check with `ListAgents` that the worker named `<slug>` is idle; if it is busy or not listed, say so and stop. Otherwise run `.claude/bin/session.sh send <slug> ship` plain (no pipe, no redirect, no `cd`), then report that /ship is running in the worker's tab and its result will arrive here. Do nothing else.
+   - Without a slug: stop, say "run /brief to get a worktree" and do nothing else.
+
+   In a worktree, continue.  If the branch is `worktree-<slug>`, first run `git switch -c <type>/<slug>` (type = feat, fix, chore, docs), so the PR has a real branch name.
 
 1. **Run the checks, not opinions.** Run every done-when command from the brief, including the CLAUDE.md check command and `.claude/bin/scope-check.sh <Files globs>`. Record each result as evidence (exit code, test name, output line).
    - A stray file in scope-check: remove it from the diff, or stop and ask Rich to widen the brief. Do not widen it yourself.
