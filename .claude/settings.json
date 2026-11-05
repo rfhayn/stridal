@@ -35,6 +35,8 @@
       "Edit(./.claude/settings.json)",
       "Edit(./**/.claude/bin/session.sh)",
       "Write(./**/.claude/bin/session.sh)",
+      "Edit(./**/.claude/statusline.sh)",
+      "Write(./**/.claude/statusline.sh)",
       "Edit(./.claude/hooks/**)",
       "Edit(./.github/**)",
       "Bash(dangerouslyDisableSandbox:true)",
@@ -129,7 +131,9 @@
       "denyWrite": [
         "./PERSONAL_DATA",
         "./.claude/bin/session.sh",
-        "./**/.claude/bin/session.sh"
+        "./**/.claude/bin/session.sh",
+        "./.claude/statusline.sh",
+        "./**/.claude/statusline.sh"
       ]
     }
   }

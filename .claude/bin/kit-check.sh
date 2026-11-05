@@ -209,6 +209,10 @@ jq -e '.statusLine.type == "command"' .claude/settings.json >/dev/null \
   || { echo "kit-check: settings.json has no statusLine command"; exit 1; }
 grep -q 'statusline.sh' <<<"$(jq -r '.statusLine.command' .claude/settings.json)" \
   || { echo "kit-check: statusLine.command does not run statusline.sh"; exit 1; }
+# Claude Code runs statusline.sh outside the sandbox, so it is guarded like session.sh: ask on Edit/Write, no sandboxed writes.
+jq -e '(.permissions.ask | index("Edit(./**/.claude/statusline.sh)") != null) and (.permissions.ask | index("Write(./**/.claude/statusline.sh)") != null)
+       and (.sandbox.filesystem.denyWrite | index("./.claude/statusline.sh") != null) and (.sandbox.filesystem.denyWrite | index("./**/.claude/statusline.sh") != null)' \
+  .claude/settings.json >/dev/null || { echo "kit-check: statusline.sh is not guarded in settings.json (ask Edit/Write, sandbox denyWrite)"; exit 1; }
 git_c() { git -C "$1" -c user.name=t -c user.email=t@example.com "${@:2}"; }
 slr="$tmp/slproj"
 git init -q -b main "$slr"
