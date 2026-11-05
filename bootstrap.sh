@@ -34,9 +34,10 @@ for f in CLAUDE.md .claude/settings.json .claude/agents/reviewer.md .claude/agen
          docs/templates/DATA-MODEL.md docs/templates/API.md docs/templates/INVENTORY.md \
          docs/templates/runbook.md docs/templates/spec.md; do
   if [ -e "$DEST/$f" ]; then echo "skip (exists): $f"; continue; fi
-  # This repo keeps its own CLAUDE.md and ci.yml; new projects get the templates.
+  # This repo keeps its own CLAUDE.md, ci.yml and docs/ROADMAP.md; new projects get the templates.
   case "$f" in
     CLAUDE.md) src=CLAUDE.template.md ;;
+    docs/ROADMAP.md) src=docs/ROADMAP.template.md ;;
     .github/workflows/ci.yml) src=.github/ci.template.yml ;;
     *) src="$f" ;;
   esac
