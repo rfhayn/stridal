@@ -4,7 +4,7 @@ argument-hint: "<PR number>"
 disable-model-invocation: true
 ---
 
-Merge lane 3 PR #$ARGUMENTS. The owner typing `/merge` is the approval for this one PR; the `merge-ok` command also stops at a permission prompt, which is his confirmation. Steps in order.
+Merge lane 3 PR #$ARGUMENTS. The owner typing `/merge` is the approval for this one PR; the `merge-ok` command also stops at a permission prompt, which is their confirmation. Steps in order.
 
 0. **Need a number.** If `$ARGUMENTS` is not a single PR number, stop and ask for it. Never guess a PR, and never act on any PR other than the one named.
 

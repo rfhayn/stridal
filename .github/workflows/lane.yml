@@ -63,6 +63,6 @@ jobs:
           fi
           [ "$lane" != none ] || { echo "::error::Add one lane label: lane:1-contained, lane:2-wide or lane:3-hard."; exit 1; }
           if [ "$lane" = "lane:3-hard" ] && [[ "$labels" != *" merge-ok "* ]]; then
-            echo "::error::Lane 3 waits for the owner: they add the merge-ok label, then merges."; exit 1
+            echo "::error::Lane 3 waits for the owner: they add the merge-ok label, then merge."; exit 1
           fi
           echo "Lane OK: $lane"
