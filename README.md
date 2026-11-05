@@ -4,8 +4,8 @@ A copy-in kit for building with Claude Code, without the process tax.
 
 ## What it is
 Stridal is a copy-in kit for building with Claude Code: skills, agents, a permissions and sandbox config, GitHub CI and
-merge controls, and doc templates. `bootstrap.sh` installs it into a project. A new project gets 24 files plus a
-`.gitignore` addition (this repo tracks 34), and there is nothing to maintain between projects.
+merge controls, and doc templates. `bootstrap.sh` installs it into a project. A new project gets 25 files plus a
+`.gitignore` addition (this repo tracks 35), and there is nothing to maintain between projects.
 
 ## What it does
 - **One change per worktree.** The main session opens each change in its own worktree and Ghostty tab; the main checkout stays on `main`.
@@ -28,6 +28,8 @@ claude                                   # in the main checkout (stays on main)
 /merge <PR#>                             # lane 3 only; works from the main window
 /land <slug>                             # back in the main session: syncs main, then closes the tab and removes worktree and branch
 ```
+Every session shows a one-line status bar (`.claude/statusline.sh`): `<project> · <branch> <●|✓> <↑a↓b> · <N>% ctx · <model>`, plus `workers: N` in the main checkout while worker tabs are open. Claude Code picks it up in a fresh session.
+
 Requirement: macOS, and Ghostty running with exactly one instance and a window. Without it `session.sh` refuses and
 `/brief` falls back to the older route: it fetches, then you run `claude --worktree <slug>` and paste the brief.
 Workers started by `session.sh` run in auto mode (`--permission-mode auto`). If a worker never reports and
@@ -104,6 +106,7 @@ Do not add `paths:` filters to required workflows: a skipped required check stay
 | `.claude/hooks/one-way-guard.sh` | OPTIONAL, not wired by default. The one hook slot, for a blocking guard on the project's one-way failure (example: blocks `git add/commit/push` of personal-data or secret paths) |
 | `.claude/bin/scope-check.sh` | Deterministic check that the branch touches only the brief's files |
 | `.claude/bin/session.sh` | `open <type> <slug> --report-to <name>` makes `.claude/worktrees/<slug>` on `<type>/<slug>` from `origin/main` and opens a Ghostty tab running Claude on `.claude/review/spawn-<slug>.md`; `send <slug> ship` types `/ship` into that worker's tab (the only text it can type); `sync` runs `git pull --ff-only` in the main checkout and nothing else; `close <slug>` ends it, and still finishes if the worktree and branch are already gone. Workers start through a login shell (`/bin/zsh -lc`) so they get `gh` and `shellcheck` on PATH. `/brief`, `/ship <slug>` and `/land` call it. macOS and Ghostty only |
+| `.claude/statusline.sh` | The status line, wired by `statusLine` in `settings.json`: project, branch, `●` dirty or `✓` clean, `↑a↓b` against upstream, context %, model, and `workers: N` (open `spawn/*.term` records) in the main checkout. POSIX sh, `jq` and `git` only, no network; prints something and exits 0 on bad input |
 | `.claude/bin/kit-check.sh` | This repo's own check: shellcheck, JSON, and `bootstrap.sh` in copy-only mode. Not copied to new projects |
 | `.claude/agents/reviewer.md` | Fresh-context reviewer with no shell: one round, blocking findings with file:line evidence, lane check, decisions and assumptions check. Sonnet by default, Opus for lane 3 |
 | `.claude/agents/researcher.md` | Read-only research agent (no Edit, Write or Bash); answers with sources |
