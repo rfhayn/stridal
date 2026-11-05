@@ -70,8 +70,8 @@ gh api -X POST "repos/$REPO/rulesets" --input "$KIT/.github/ruleset-main.json" >
 
 for l in "lane:1-contained|0e8a16|Reversible, contained: auto-merge on green CI" \
          "lane:2-wide|fbca04|Reversible, wide: CI + one review, then auto-merge" \
-         "lane:3-hard|d93f0b|Hard to reverse: Rich adds merge-ok and merges" \
-         "merge-ok|5319e7|Rich only: approves a lane-3 merge"; do
+         "lane:3-hard|d93f0b|Hard to reverse: the owner adds merge-ok and merges" \
+         "merge-ok|5319e7|Owner only: approves a lane-3 merge"; do
   IFS="|" read -r n c d <<<"$l"; gh label create "$n" --repo "$REPO" --color "$c" --description "$d" --force >/dev/null
 done
 
