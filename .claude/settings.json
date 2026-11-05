@@ -34,9 +34,7 @@
     "ask": [
       "Edit(./.claude/settings.json)",
       "Edit(./**/.claude/bin/session.sh)",
-      "Write(./**/.claude/bin/session.sh)",
       "Edit(./**/.claude/statusline.sh)",
-      "Write(./**/.claude/statusline.sh)",
       "Edit(./.claude/hooks/**)",
       "Edit(./.github/**)",
       "Bash(dangerouslyDisableSandbox:true)",
