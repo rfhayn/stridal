@@ -181,4 +181,22 @@ case "$out" in *"git worktree remove"*|*"git branch -D"*) echo "kit-check: clean
 [ -e "$gcd/spawn/zz-ok.term" ] || { echo "kit-check: close --dry-run deleted records"; exit 1; }
 rm -f "$gcd/spawn/zz-ok.term" "$gcd/spawn/zz-ok.branch"
 
+# sync runs the one fixed command git pull --ff-only in the main checkout. It takes no slug and no other argument.
+out=$("$sess" sync --dry-run 2>&1) \
+  || { echo "kit-check: sync --dry-run failed: $out"; exit 1; }
+[ "$out" = "git pull --ff-only" ] \
+  || { echo "kit-check: sync --dry-run did not print exactly: git pull --ff-only"; printf '%s\n' "$out"; exit 1; }
+for bad in x "x --dry-run" "--dry-run x" "--bogus" "--abandon" "zz-ok" ".env"; do
+  # shellcheck disable=SC2086  # $bad is deliberately split into words
+  refuses sync $bad
+done
+# A real sync from a worktree is refused before anything runs. The scratch repo has no remote, so even a
+# script that wrongly ran the pull would only fail.
+sr="$tmp/syncrepo"
+git init -q "$sr"
+git -C "$sr" -c user.name=t -c user.email=t@example.com commit -q --allow-empty -m init
+git -C "$sr" worktree add -q "$sr/wt" -b zz-sync-wt
+if out=$(cd "$sr/wt" && "$OLDPWD/$sess" sync 2>&1); then echo "kit-check: sync ran from a worktree"; exit 1; fi
+case "$out" in *"session.sh: refused"*"main checkout"*) ;; *) echo "kit-check: sync from a worktree gave no refusal: $out"; exit 1 ;; esac
+
 echo "kit-check: all checks passed ($count shell scripts)"

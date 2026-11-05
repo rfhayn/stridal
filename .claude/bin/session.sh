@@ -4,8 +4,11 @@
 #   .claude/bin/session.sh open <type> <slug> --report-to <name> [--dry-run]
 #   .claude/bin/session.sh close <slug> [--abandon] [--dry-run]
 #   .claude/bin/session.sh send <slug> ship [--dry-run]
+#   .claude/bin/session.sh sync [--dry-run]
 # send types the one fixed text /ship and Enter into the worker's recorded terminal; it takes no other command
 # and no text, because typing arbitrary text into a terminal would be a keystroke-injection primitive.
+# sync runs git pull --ff-only in the main checkout and nothing else; /land calls it before close, as its own
+# call, so bash is never running a script file the pull just rewrote.
 # The prompt is read only from .claude/review/spawn-<slug>.md in the main checkout (git-ignored): a regular
 # file, not a symlink, at most 20 KB. There is no path argument, so no other file can be read as a prompt.
 # Run from the main checkout, on Ghostty with one instance and an open window. This script is the only
@@ -94,7 +97,22 @@ case "$cmd" in
     done
     [ "$sendcmd" = ship ] || refuse "send accepts only the command ship"
     ;;
-  *) refuse "first argument must be open, close or send" ;;
+  sync)
+    # No slug and no other argument: the one fixed command is git pull --ff-only, so nothing can be injected.
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --dry-run) dry=1 ;;
+        *) refuse "sync takes no argument except --dry-run, got: $1" ;;
+      esac
+      shift
+    done
+    if [ "$dry" = 1 ]; then echo "git pull --ff-only"; exit 0; fi
+    [ "$(git rev-parse --absolute-git-dir)" = "$(git rev-parse --path-format=absolute --git-common-dir)" ] \
+      || refuse "run sync from the main checkout, not a worktree"
+    # Fast-forward only: a diverged branch or a conflicting dirty tree stops with git's message and changes nothing.
+    exec git pull --ff-only
+    ;;
+  *) refuse "first argument must be open, close, send or sync" ;;
 esac
 
 [[ $slug =~ $SLUG_RE ]] || refuse "slug must match $SLUG_RE"

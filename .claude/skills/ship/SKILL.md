@@ -12,7 +12,7 @@ Current branch and changes:
 Ship this change. Steps in order.
 
 0. **Main checkout.** If the branch above is `main` (or `master`), or the two git dirs above are the same (the main checkout):
-   - With a slug argument (`/ship <slug>`): Rich typing it is the approval. Check with `ListAgents` that the worker named `<slug>` is idle; if it is busy or not listed, say so and stop. Otherwise run `.claude/bin/session.sh send <slug> ship` plain (no pipe, no redirect, no `cd`), then report that /ship is running in the worker's tab and its result will arrive here. Do nothing else.
+   - With a slug argument (`/ship <slug>`): Rich typing it is the approval. Check with `ListAgents` that the worker named `<slug>` is idle; if it is busy or not listed, say so and stop. Otherwise run `.claude/bin/session.sh send <slug> ship` plain (no pipe, no redirect, no `cd`), then subscribe to that worker: `SendMessage` to `<slug>` with `notify_when_idle: true` and the message "Carry on with /ship; I only need your report". That is a backstop for a worker that goes idle without reporting. The idle notice does not say whether /ship succeeded, so when it arrives with no report, check GitHub first (`gh pr list --head <branch>`, plain) before telling Rich anything. Then report that /ship is running in the worker's tab and its result will arrive here. Do nothing else.
    - Without a slug: stop, say "run /brief to get a worktree" and do nothing else.
 
    In a worktree, continue.  If the branch is `worktree-<slug>`, first run `git switch -c <type>/<slug>` (type = feat, fix, chore, docs), so the PR has a real branch name.
@@ -41,5 +41,5 @@ Ship this change. Steps in order.
    - Lane 1 and 2: run exactly `gh pr merge --auto --squash --delete-branch` (the allow rule matches this exact command). GitHub merges when `ci` and `lane` pass and the branch is up to date with main; if main moved, rebase, push, and let it re-run.
    - Lane 3: do not queue auto-merge, and never add the `merge-ok` label. Tell Rich the PR link and the one thing to look at. He adds `merge-ok` and merges.
 
-6. **Report** in 3 lines: PR link, lane and merge state, anything left undone.
+6. **Report** in 3 lines: PR link, lane and merge state, anything left undone. If this session's first prompt told it to report to a named session, also `SendMessage` that session the same three lines. This applies however /ship was started: typed in this tab, or sent from the main window.
    **Learning edge:** a one-way failure (a pushed secret or personal data, a sent message, a production write) needs its guard now, the first time: propose it as a blocking check. Otherwise, if a failure in this change has happened before (the same cause twice, in this session or noted in a past PR or CLAUDE.md), propose exactly one guard in the PR body: a line for CLAUDE.md "Guards (learned)", a permissions rule, or a test. Prefer a test or permissions rule over prose. Do not add it unasked outside this PR.
