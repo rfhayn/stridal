@@ -29,7 +29,9 @@ cmp -s .github/ci.template.yml "$d/.github/workflows/ci.yml" \
   || { echo "kit-check: installed ci.yml differs from .github/ci.template.yml"; exit 1; }
 cmp -s CLAUDE.template.md "$d/CLAUDE.md" \
   || { echo "kit-check: installed CLAUDE.md differs from CLAUDE.template.md"; exit 1; }
-for f in .github/ci.template.yml CLAUDE.template.md .claude/bin/kit-check.sh; do
+cmp -s docs/ROADMAP.template.md "$d/docs/ROADMAP.md" \
+  || { echo "kit-check: installed docs/ROADMAP.md differs from docs/ROADMAP.template.md"; exit 1; }
+for f in .github/ci.template.yml CLAUDE.template.md docs/ROADMAP.template.md .claude/bin/kit-check.sh; do
   [ ! -e "$d/$f" ] || { echo "kit-check: $f must not be copied to a new project"; exit 1; }
 done
 [ -s "$d/.gitignore" ] || { echo "kit-check: installed .gitignore is empty"; exit 1; }
