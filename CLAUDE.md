@@ -1,6 +1,6 @@
-# Lean Claude Code kit
+# Stridal
 
-A copy-in kit for building with Claude Code: `bootstrap.sh` installs it into a project. Formerly Stridal; the old project is at tag `stridal-final`.
+A copy-in kit for building with Claude Code: `bootstrap.sh` installs it into a project. The previous project is at tag `stridal-final`.
 
 ## Stack and layout
 - POSIX-style shell, JSON, Markdown and GitHub Actions. There is no application code.
