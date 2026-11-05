@@ -16,5 +16,5 @@ hits=$( { tr ' ' '\n' <<<"$cmd"; git diff --cached --name-only 2>/dev/null
 [ -z "$hits" ] && exit 0
 echo "one-way-guard: blocked '$cmd'. These paths must never enter git history:" >&2
 echo "$hits" >&2
-echo "Unstage them (git restore --staged <path>) or ask Rich. Do not work around this guard." >&2
+echo "Unstage them (git restore --staged <path>) or ask the owner. Do not work around this guard." >&2
 exit 2
