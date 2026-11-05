@@ -11,12 +11,12 @@
 - Single test: `{{pnpm test -- path/to/file}}` · Dev: `{{pnpm dev}}` · Install: `{{pnpm install}}`
 
 ## How we work
-- Every change: `/brief` (it opens the worker itself when it has no open questions; `plan only` stops at the brief) -> build on a branch -> `/ship`. Rich chooses what ships by running `/brief`; he does not review intermediate output.
+- Every change: `/brief` (it opens the worker itself when it has no open questions; `plan only` stops at the brief) -> build on a branch -> `/ship`. The owner chooses what ships by running `/brief`; they do not review intermediate output.
 - Write the check first. Done means: the tests exit 0, the diff touches only files listed in the brief (`.claude/bin/scope-check.sh`), and every claim in the PR cites a source (file:line, test name or command output). "Looks good", "I'm confident" and "no errors raised" are not checks.
 - Return the unit, not the batch: when a check fails, fix only the failing file/test ("fix X only"), rerun only that check, then the full check. After 3 failed attempts on the same unit, stop and re-brief. Do not keep looping.
 - Deterministic work is code, not a model call: merging, sorting, ranking, dedup, diffing, comparisons, counting. Write or use a script and cite its output.
 - One change = one branch = one squash PR to main. Branches: `feat/`, `fix/`, `chore/`, `docs/`. Never push to main.
-- One change at a time per builder, each in its own worktree: `/brief` opens a worker tab with `.claude/bin/session.sh` (macOS and Ghostty), and if that refuses it tells Rich to run `claude --worktree <slug>`. The worker starts through a login shell, so it has `gh` and `shellcheck`. Rich can type `/ship <slug>` in the main window; `session.sh send <slug> ship` then types `/ship` into the worker's tab. On a `worktree-<slug>` branch, first run `git switch -c <type>/<slug>`. At most 2-3 builders at once, and fewer if the check suite slows or flakes under load. Never build in the main checkout; it stays on `main`.
+- One change at a time per builder, each in its own worktree: `/brief` opens a worker tab with `.claude/bin/session.sh` (macOS and Ghostty), and if that refuses it tells the owner to run `claude --worktree <slug>`. The worker starts through a login shell, so it has `gh` and `shellcheck`. The owner can type `/ship <slug>` in the main window; `session.sh send <slug> ship` then types `/ship` into the worker's tab. On a `worktree-<slug>` branch, first run `git switch -c <type>/<slug>`. At most 2-3 builders at once, and fewer if the check suite slows or flakes under load. Never build in the main checkout; it stays on `main`.
 - Do not script a rewrite of tracked source (`sed -i`, `perl -pi`, codemods); use the Edit tool.
 - New logic gets a test. Fix the code, not the test, unless the test is wrong (say so in the PR).
 - Architecture decisions: `docs/adr/NNNN-title.md` (copy 0000-template). Read an area's ADRs before changing it; supersede, don't contradict. There is no ADR index; list them and their status with `grep -HE '^(# |Date:)' docs/adr/*.md`.
@@ -26,10 +26,10 @@
 Pick the lane in /brief; /ship labels the PR. CI's `lane` check forces lane 3 for the paths below.
 1. `lane:1-contained`, reversible and contained (copy, tests, isolated covered code): auto-merge when CI is green.
 2. `lane:2-wide`, reversible but wide (shared utilities, schema additions, config): CI + one `reviewer` round, then auto-merge.
-3. `lane:3-hard`, hard to reverse (migrations, deletions, production data, money): never auto-merges. Reviewer runs on Opus; Rich adds `merge-ok` and merges, either by hand or by typing `/merge <PR#>`. Claude adds `merge-ok` only inside that command, and its permission prompt must be confirmed; never on its own.
+3. `lane:3-hard`, hard to reverse (migrations, deletions, production data, money): never auto-merges. Reviewer runs on Opus; the owner adds `merge-ok` and merges, either by hand or by typing `/merge <PR#>`. Claude adds `merge-ok` only inside that command, and its permission prompt must be confirmed; never on its own.
 - Lane 3 paths here: {{every one-way path: migrations/schema, outbound email/SMS/webhooks, production-data writers (import, export, sync, delete scripts), credential handling, money, deploy/infra}} (keep in sync with `HARD_PATHS` in `.github/workflows/lane.yml`)
 
-## Ask Rich first
+## Ask the owner first
 - Anything irreversible or outward: production deploys, production data, email/SMS to real users, DNS, billing.
 - New runtime dependency, new external service, or a change to `.github/` or `.claude/`.
 - {{project-specific}}

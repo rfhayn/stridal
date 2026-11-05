@@ -50,25 +50,25 @@ Plan:
 1. <step>  (at most 6 steps; if more, split into two briefs)
 Decisions: <choices you are making, one line each, with the source that drove them>
 Assumptions: <things you believe but did not verify, and how /ship will verify them>
-Questions for Rich: <only if a wrong guess would waste the change; else "none">
+Questions for the owner: <only if a wrong guess would waste the change; else "none">
 ```
 
 Lanes (blast radius): 1 = reversible and contained (copy, tests, isolated covered code). 2 = reversible but wide (shared utilities, schema additions, config). 3 = hard to reverse (migrations, deletions, production data, money, plus anything CLAUDE.md or `.claude/rules` lists as lane 3). If unsure between two lanes, pick the higher one.
 
 Running `/brief` is the go: there is no second "go". In the main checkout, after the brief, do step 1 immediately, unless
-(a) "Questions for Rich" is not "none": stop, ask, and open the worker once Rich has answered;
-(b) the arguments contain "plan only": stop at the brief and wait for Rich to reply "go" (or edit), then do step 1;
+(a) "Questions for the owner" is not "none": stop, ask, and open the worker once the owner has answered;
+(b) the arguments contain "plan only": stop at the brief and wait for the owner to reply "go" (or edit), then do step 1;
 (c) the change is "trivial: no brief": give the Files line and one check, then stop.
-In an existing worktree session, stop after the brief and wait for Rich's "go" before step 2. Then:
+In an existing worktree session, stop after the brief and wait for the owner's "go" before step 2. Then:
 1. **Never build in the main checkout.** If the git dir and common dir above are the same, this is the main checkout (production checkouts stay on `main`). Do not switch branches here. Do not edit tracked files in this session. Do not run `git worktree add`: the sandbox blocks it at `.git/config` and `.claude/agents`. Open a worker instead:
-   a. Write the brief plus these build instructions to `.claude/review/spawn-<slug>.md` (git-ignored; at most 20 KB): "Build this brief in the current worktree, on its existing branch <type>/<slug>. Write the failing checks first. Commit in small steps. Run every done-when command. When all pass, say so and tell Rich to type /ship in this tab. Do not push." (`session.sh` reads the prompt only from that path and adds the report-back line itself.)
+   a. Write the brief plus these build instructions to `.claude/review/spawn-<slug>.md` (git-ignored; at most 20 KB): "Build this brief in the current worktree, on its existing branch <type>/<slug>. Write the failing checks first. Commit in small steps. Run every done-when command. When all pass, say so and tell the owner to type /ship in this tab. Do not push." (`session.sh` reads the prompt only from that path and adds the report-back line itself.)
    b. Take this session's own name from the first line of ListAgents ("This session is <name> [ref]").
    c. Run `.claude/bin/session.sh open <type> <slug> --report-to <name>` exactly like that: no `cd`, no pipe, no redirect, or the sandbox exclusion stops matching and it fails. It creates `.claude/worktrees/<slug>` on `<type>/<slug>` from `origin/main` and opens a Ghostty tab running `claude --name <slug> --permission-mode auto`.
-   d. Tell Rich the worker is open in a new tab and its report will arrive here. If no report arrives and ListAgents shows the worker stuck, the cause is usually a trust or permission prompt in the worker's tab.
-   If `session.sh` refuses (not macOS, Ghostty not running or not exactly one instance, no window), fall back: run `git fetch origin` (`--worktree` starts from the local `origin/main`, so it must be current), then stop and wait; tell Rich: "Run `claude --worktree <slug>`, then paste the brief."
+   d. Tell the owner the worker is open in a new tab and its report will arrive here. If no report arrives and ListAgents shows the worker stuck, the cause is usually a trust or permission prompt in the worker's tab.
+   If `session.sh` refuses (not macOS, Ghostty not running or not exactly one instance, no window), fall back: run `git fetch origin` (`--worktree` starts from the local `origin/main`, so it must be current), then stop and wait; tell the owner: "Run `claude --worktree <slug>`, then paste the brief."
    If you are already in a worktree (the git dir differs from the common dir): on a `worktree-<slug>` branch, run `git switch -c <type>/<slug>` (type = feat, fix, chore, docs), then continue. Do not use `git branch -m`: the sandbox makes it exit with an error after renaming. On a fresh branch that already has its name, continue there.
 2. Write the failing test(s) first, then build on Sonnet (`/model sonnet` if this session is on Opus). Commit in small steps.
-3. When every done-when item is checkable, tell Rich to run `/ship` (only he can start it). Keep the brief in the conversation; /ship puts it in the PR.
+3. When every done-when item is checkable, tell the owner to run `/ship` (only they can start it). Keep the brief in the conversation; /ship puts it in the PR.
 
 One-way actions: if the change can do something that cannot be undone (send a message, push personal data, write production data, delete, charge money), the brief must name its guard in the first design: a deny rule, a blocking check, a dry-run default, or a test that fails before the action. Do not wait for it to fail twice.
 

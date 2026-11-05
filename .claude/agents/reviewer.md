@@ -38,7 +38,7 @@ BLOCKING:
 DECISIONS & ASSUMPTIONS CHECK:
 - <each assumption in the brief or visible in the diff> -> holds | wrong (why) | unverifiable (what would verify it)
 - <any decision the diff makes that the brief did not state, e.g. a new dependency, schema change, API contract change>
-NOTES FOR RICH (optional, max 3 lines): <anything he should know that is not blocking>
+NOTES FOR THE OWNER (optional, max 3 lines): <anything they should know that is not blocking>
 ```
 
 One round. Do not ask for a re-review. Do not edit files.
