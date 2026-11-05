@@ -199,4 +199,58 @@ git -C "$sr" worktree add -q "$sr/wt" -b zz-sync-wt
 if out=$(cd "$sr/wt" && "$OLDPWD/$sess" sync 2>&1); then echo "kit-check: sync ran from a worktree"; exit 1; fi
 case "$out" in *"session.sh: refused"*"main checkout"*) ;; *) echo "kit-check: sync from a worktree gave no refusal: $out"; exit 1 ;; esac
 
+# The status line: one short line from the status JSON and git, fails soft, ships with the kit.
+sl=.claude/statusline.sh
+[ -f "$sl" ] || { echo "kit-check: $sl is missing"; exit 1; }
+[ -f "$d/$sl" ] && cmp -s "$sl" "$d/$sl" || { echo "kit-check: installed $sl is missing or differs from the kit's"; exit 1; }
+[ -x "$d/$sl" ] || { echo "kit-check: installed statusline.sh is not executable"; exit 1; }
+jq -e '.statusLine.type == "command"' .claude/settings.json >/dev/null \
+  || { echo "kit-check: settings.json has no statusLine command"; exit 1; }
+grep -q 'statusline.sh' <<<"$(jq -r '.statusLine.command' .claude/settings.json)" \
+  || { echo "kit-check: statusLine.command does not run statusline.sh"; exit 1; }
+git_c() { git -C "$1" -c user.name=t -c user.email=t@example.com "${@:2}"; }
+slr="$tmp/slproj"
+git init -q -b main "$slr"
+git_c "$slr" commit -q --allow-empty -m init
+git_c "$slr" worktree add -q "$slr/wt" -b feat/zz-sl
+sj() { printf '{"workspace":{"current_dir":"%s"},"model":{"display_name":"Opus"},"context_window":{"used_percentage":42.7}}' "$1"; }
+has() { # has <label> <output> <needle>
+  case "$2" in *"$3"*) ;; *) echo "kit-check: statusline $1: missing '$3' in: $2"; exit 1 ;; esac
+}
+lacks() {
+  case "$2" in *"$3"*) echo "kit-check: statusline $1: unexpected '$3' in: $2"; exit 1 ;; esac
+}
+out=$(sj "$slr" | sh "$sl")
+has clean "$out" "slproj"; has clean "$out" "main"; has clean "$out" "42% ctx"; has clean "$out" "Opus"; has clean "$out" "✓"
+lacks clean "$out" "●"; lacks clean "$out" "workers"
+echo x > "$slr/f.txt"
+out=$(sj "$slr" | sh "$sl")
+has dirty "$out" "●"; lacks dirty "$out" "✓"
+git_c "$slr" add f.txt; git_c "$slr" commit -q -m f
+out=$(sj "$slr" | sh "$sl")
+has committed "$out" "✓"; lacks committed "$out" "●"
+# A worker's worktree shows the same project name and its own branch.
+out=$(sj "$slr/wt" | sh "$sl")
+has worktree "$out" "slproj"; has worktree "$out" "feat/zz-sl"
+# Workers: counted from <common dir>/spawn/*.term, in the main checkout only.
+mkdir -p "$slr/.git/spawn"; echo T > "$slr/.git/spawn/x.term"
+out=$(sj "$slr" | sh "$sl"); has workers "$out" "workers: 1"
+out=$(sj "$slr/wt" | sh "$sl"); lacks worker-worktree "$out" "workers"
+# Ahead/behind appears only with an upstream.
+git_c "$slr" clone -q "$slr" "$tmp/slclone"
+git_c "$tmp/slclone" commit -q --allow-empty -m ahead
+out=$(sj "$tmp/slclone" | sh "$sl"); has ahead "$out" "↑1"
+# Soft failure: empty input, malformed JSON and a non-git directory print something and exit 0.
+mkdir "$tmp/nogit"
+for input in "" "not json {" "{}"; do
+  out=$(cd "$slr" && printf '%s' "$input" | sh "$OLDPWD/$sl" 2>&1) || { echo "kit-check: statusline exited non-zero on input: $input"; exit 1; }
+  [ -n "$out" ] || { echo "kit-check: statusline printed nothing on input: $input"; exit 1; }
+  has soft "$out" "main"
+done
+out=$(sj "$tmp/nogit" | sh "$sl" 2>&1) || { echo "kit-check: statusline failed outside a git repo"; exit 1; }
+has nogit "$out" "42% ctx"; has nogit "$out" "Opus"
+out=$(cd "$tmp/nogit" && printf '' | sh "$OLDPWD/$sl" 2>&1) || { echo "kit-check: statusline failed on empty input outside git"; exit 1; }
+[ -n "$out" ] || { echo "kit-check: statusline printed nothing outside git on empty input"; exit 1; }
+out=$(sj "$slr" | PATH=/nonexistent /bin/sh "$PWD/$sl" 2>&1) || { echo "kit-check: statusline failed without jq or git on PATH"; exit 1; }
+
 echo "kit-check: all checks passed ($count shell scripts)"
