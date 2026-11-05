@@ -25,7 +25,7 @@ claude                                   # in the main checkout (stays on main)
 /ship <slug>                             # you type this in the main window; session.sh send types /ship into the worker's tab
 /ship                                    # or you type this in the worker's tab
    ... checks -> review by lane -> PR with evidence -> auto-merge (lanes 1-2) or "merge-ok?" (lane 3)
-/merge <PR#>                             # lane 3 only, also in the worker's tab
+/merge <PR#>                             # lane 3 only; works from the main window
 /land <slug>                             # back in the main session: pulls, then closes the tab and removes worktree and branch
 ```
 Requirement: macOS, and Ghostty running with exactly one instance and a window. Without it `session.sh` refuses and
@@ -33,7 +33,7 @@ Requirement: macOS, and Ghostty running with exactly one instance and a window. 
 Workers started by `session.sh` run in auto mode (`--permission-mode auto`). If a worker never reports and
 `ListAgents` shows it stuck, look for a trust or permission prompt in its tab.
 
-Your day: pick the next items from `docs/ROADMAP.md`, run `/brief` on them, type `/ship` in each worker's tab, type
+Your day: pick the next items from `docs/ROADMAP.md`, run `/brief` on them, type `/ship <slug>` in the main window (or `/ship` in the worker's tab), type
 `/merge <PR#>` for lane-3 PRs after reading the one thing `/ship` flagged, and `/land <slug>` once merged.
 Everything else merges itself or stops and asks.
 
@@ -51,9 +51,8 @@ labels, and copies this repo's own `CLAUDE.md` and `ci.yml` instead of the templ
    (the same check command, including the format check), `HARD_PATHS` in `lane.yml` (every one-way path: schema,
    outbound email/messages, production-data writers, credential handling, deploy), and `PERSONAL_DATA` in
    `.claude/settings.json` and `.gitignore`. Add package registries to `sandbox.network.allowedDomains`.
-   For a pnpm project: the CI template's `pnpm/action-setup@v6` has no `version` input, so `package.json` needs a
-   `packageManager` pin (for example `"packageManager": "pnpm@10.0.0"`) and `pnpm-lock.yaml` must be committed. A scratch
-   repo (rfhayn/kit-ci-check PR #1) passed `ci` with both.
+   For a pnpm project, add `"packageManager": "pnpm@9.15.4"` to `package.json` and commit `pnpm-lock.yaml`, because the
+   CI template's `pnpm/action-setup@v6` has no `version` input.
 4. If the project's one-way failure is a git command, wire the optional hook (below) now, not after it happens.
 5. Open one PR with the kit, label `lane:2-wide`, merge it by hand when `ci` and `lane` are green. Time `ci`; over
    10 minutes, move slow suites to a nightly workflow.
