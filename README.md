@@ -43,13 +43,13 @@ and four short skills. A new project gets 24 files plus a `.gitignore` addition 
 | `.claude/settings.json` | Sonnet + medium effort; `acceptEdits`; deny list (secrets, `--admin` merges, pushes to main, ruleset edits); ask list (`merge-ok`, `gh label`, unsandboxed retries); Bash sandbox with GitHub/npm network |
 | `.claude/hooks/one-way-guard.sh` | OPTIONAL, not wired by default. The one hook slot, for a blocking guard on the project's one-way failure (example: blocks `git add/commit/push` of personal-data or secret paths) |
 | `.claude/bin/scope-check.sh` | Deterministic check that the branch touches only the brief's files |
-| `.claude/bin/session.sh` | `open <type> <slug> --report-to <name>` makes `.claude/worktrees/<slug>` on `<type>/<slug>` from `origin/main` and opens a Ghostty tab running Claude on `.claude/review/spawn-<slug>.md`; `close <slug>` ends it. `/brief` and `/land` call it. macOS and Ghostty only |
+| `.claude/bin/session.sh` | `open <type> <slug> --report-to <name>` makes `.claude/worktrees/<slug>` on `<type>/<slug>` from `origin/main` and opens a Ghostty tab running Claude on `.claude/review/spawn-<slug>.md`; `send <slug> ship` types `/ship` into that worker's tab (the only text it can type); `close <slug>` ends it, and still finishes if the worktree and branch are already gone. Workers start through a login shell (`/bin/zsh -lc`) so they get `gh` and `shellcheck` on PATH. `/brief`, `/ship <slug>` and `/land` call it. macOS and Ghostty only |
 | `.claude/bin/kit-check.sh` | This repo's own check: shellcheck, JSON, and `bootstrap.sh` in copy-only mode. Not copied to new projects |
 | `.claude/agents/reviewer.md` | Fresh-context reviewer with no shell: one round, blocking findings with file:line evidence, lane check, decisions and assumptions check. Sonnet by default, Opus for lane 3 |
 | `.claude/agents/researcher.md` | Read-only research agent (no Edit, Write or Bash); answers with sources |
 | `.claude/skills/brief/SKILL.md` | `/brief <task>`: Opus writes goal, machine-checkable done-when, Files, lane, plan, decisions, assumptions, then opens a worker tab with `session.sh` itself when there are no open questions (or falls back to `claude --worktree`). `plan only` stops at the brief |
 | `.claude/skills/land/SKILL.md` | `/land <slug> [--abandon]`: after the merge, closes the worker tab, removes its worktree and branch, then `git pull --ff-only` in the main checkout. User-only |
-| `.claude/skills/ship/SKILL.md` | `/ship`: run the checks, review by lane, rebase, labeled PR with evidence, auto-merge for lanes 1-2 |
+| `.claude/skills/ship/SKILL.md` | `/ship` (or `/ship <slug>` from the main window, which sends it to that worker): run the checks, review by lane, rebase, labeled PR with evidence, auto-merge for lanes 1-2 |
 | `.claude/skills/merge/SKILL.md` | `/merge <PR#>`: Rich's lane 3 green light. Adds `merge-ok` (one permission prompt), waits for `lane`, squash-merges. User-only |
 | `.claude/rules/EXAMPLE-migrations.md.example` | Example path-scoped domain rule (inactive until renamed to `.md`) |
 | `.github/ci.template.yml` | Installed as `.github/workflows/ci.yml`, the required `ci` check: one job, 10-minute timeout, cancels superseded runs, gitleaks secret scan, then your stack's check |
@@ -109,7 +109,8 @@ claude                                   # in the main checkout (stays on main)
        session.sh open ("/brief plan only ..." stops at the brief until Rich says "go")
    ... a worker opens in a new Ghostty tab on feat/<slug> (at most 2-3 builders at once), starts in auto mode,
        writes the failing test, builds on Sonnet, commits, and reports back to the main session
-/ship                                    # Rich types this in the worker's tab
+/ship <slug>                             # Rich types this in the main window; session.sh send types /ship into the worker's tab
+/ship                                    # or Rich types this in the worker's tab
    ... checks -> review by lane -> PR with evidence -> auto-merge (lanes 1-2) or "Rich: merge-ok?" (lane 3)
 /merge <PR#>                             # lane 3 only, also in the worker's tab
 /land <slug>                             # back in the main session: closes the tab, removes worktree and branch, pulls
