@@ -5,7 +5,7 @@ A copy-in kit for building with Claude Code, without the process tax.
 ## What it is
 Stridal is a copy-in kit for building with Claude Code: skills, agents, a permissions and sandbox config, GitHub CI and
 merge controls, and doc templates. `bootstrap.sh` installs it into a project. A new project gets 25 files plus a
-`.gitignore` addition (this repo tracks 35), and there is nothing to maintain between projects.
+`.gitignore` addition (this repo tracks 36), and there is nothing to maintain between projects.
 
 ## What it does
 - **One change per worktree.** The main session opens each change in its own worktree and Ghostty tab; the main checkout stays on `main`.
@@ -120,7 +120,8 @@ Do not add `paths:` filters to required workflows: a skipped required check stay
 | `.github/workflows/lane.yml` | The required `lane` check (merge-lane gate, ~10 s) |
 | `.github/ruleset-main.json` | Ruleset for the default branch: PR required (0 approvals), squash only, checks `ci` + `lane`, no deletion, no force push, no bypass actors |
 | `.github/pull_request_template.md` | `Why:` and `Roadmap:` lines (lane.yml fails a PR with no real `Why:`), then what/why, lane, done-when evidence, decisions & assumptions with sources, review, guard |
-| `docs/ROADMAP.md` | Items with ID, Why, Done when and Links, in three sections: Now (max 3), Next, Done (last 10) |
+| `docs/ROADMAP.template.md` | Blank roadmap, installed as `docs/ROADMAP.md`: items with ID, Why, Done when and Links, in three sections: Now (max 3), Next, Done (last 10) |
+| `docs/ROADMAP.md` | This repo's own roadmap. Not copied to new projects |
 | `docs/adr/0000-template.md` | Short ADR, only for decisions expensive to reverse |
 | `docs/ARCHITECTURE.md` | Live doc, installed unfilled: components, data flow, constraints. First line marks it a template until filled in |
 | `docs/RISKS.md` | Live doc, installed unfilled: risk table (ID, Risk, Impact, Likelihood, Mitigation, Owner, Status) with one example row |
