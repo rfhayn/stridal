@@ -214,7 +214,8 @@ grep -q 'statusline.sh' <<<"$(jq -r '.statusLine.command' .claude/settings.json)
 # Claude Code runs statusline.sh outside the sandbox, so it is guarded like session.sh: ask on Edit, no sandboxed writes.
 # An Edit(...) rule also covers the Write tool; a Write(...) rule never matches and prints a warning at startup.
 jq -e '(.permissions.ask | index("Edit(./**/.claude/statusline.sh)") != null) and (.permissions.ask | index("Edit(./**/.claude/bin/session.sh)") != null)
-       and (.sandbox.filesystem.denyWrite | index("./.claude/statusline.sh") != null) and (.sandbox.filesystem.denyWrite | index("./**/.claude/statusline.sh") != null)' \
+       and (.sandbox.filesystem.denyWrite | index("./.claude/statusline.sh") != null) and (.sandbox.filesystem.denyWrite | index("./**/.claude/statusline.sh") != null)
+       and (.sandbox.filesystem.denyWrite | index("./.claude/bin/session.sh") != null) and (.sandbox.filesystem.denyWrite | index("./**/.claude/bin/session.sh") != null)' \
   .claude/settings.json >/dev/null || { echo "kit-check: statusline.sh or session.sh is not guarded in settings.json (ask Edit, sandbox denyWrite)"; exit 1; }
 no_write_rules='[.permissions[]? | arrays | .[] | select(type == "string" and startswith("Write("))] | length == 0'
 jq -e "$no_write_rules" .claude/settings.json >/dev/null \
