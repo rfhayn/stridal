@@ -1,9 +1,69 @@
-Formerly Stridal; the old project is preserved at tag stridal-final.
-# Lean kit: building with Claude Code, without the process tax
+# Stridal
 
-A copy-in template for a solo developer (plus the odd collaborator) building with Claude Code.
-It replaces Stridal's operating model with native Claude Code features, GitHub's own merge controls,
-and four short skills. A new project gets 24 files plus a `.gitignore` addition (this repo tracks 34), nothing to maintain between projects.
+A copy-in kit for building with Claude Code, without the process tax.
+
+## What it is
+Stridal is a copy-in kit for building with Claude Code: skills, agents, a permissions and sandbox config, GitHub CI and
+merge controls, and doc templates. `bootstrap.sh` installs it into a project. A new project gets 24 files plus a
+`.gitignore` addition (this repo tracks 34), and there is nothing to maintain between projects.
+
+## What it does
+- **One change per worktree.** The main session opens each change in its own worktree and Ghostty tab; the main checkout stays on `main`.
+- **Done is a command.** Each brief lists machine-checkable done-when items, and `scope-check.sh` proves the diff touches only the files in the brief.
+- **Merge lanes by blast radius.** Reversible, contained changes auto-merge; hard-to-reverse ones wait for the owner.
+- **GitHub enforces the merge.** A ruleset on `main` requires a PR, squash only, and the `ci` and `lane` checks.
+- **Lessons become guards.** When something fails the same way twice, its confirmed cause becomes one rule, line or test.
+
+## How it works
+```
+claude                                   # in the main checkout (stays on main)
+/brief weekly standings email to league members
+   ... no second "go": with no open questions /brief writes the brief to .claude/review/spawn-<slug>.md and runs
+       session.sh open ("/brief plan only ..." stops at the brief until you say "go")
+   ... a worker opens in a new Ghostty tab on feat/<slug> (at most 2-3 builders at once), starts in auto mode,
+       writes the failing test, builds on Sonnet, commits, and reports back to the main session
+/ship <slug>                             # you type this in the main window; session.sh send types /ship into the worker's tab
+/ship                                    # or you type this in the worker's tab
+   ... checks -> review by lane -> PR with evidence -> auto-merge (lanes 1-2) or "merge-ok?" (lane 3)
+/merge <PR#>                             # lane 3 only; works from the main window
+/land <slug>                             # back in the main session: pulls, then closes the tab and removes worktree and branch
+```
+Requirement: macOS, and Ghostty running with exactly one instance and a window. Without it `session.sh` refuses and
+`/brief` falls back to the older route: it fetches, then you run `claude --worktree <slug>` and paste the brief.
+Workers started by `session.sh` run in auto mode (`--permission-mode auto`). If a worker never reports and
+`ListAgents` shows it stuck, look for a trust or permission prompt in its tab.
+
+Your day: pick the next items from `docs/ROADMAP.md`, run `/brief` on them, type `/ship <slug>` in the main window (or `/ship` in the worker's tab), type
+`/merge <PR#>` for lane-3 PRs after reading the one thing `/ship` flagged, and `/land <slug>` once merged.
+Everything else merges itself or stops and asks.
+
+## Install into a new project (under 30 minutes)
+`bootstrap.sh` is the only real install route. GitHub's "Use this template" skips the ruleset, runner choice and
+labels, and copies this repo's own `CLAUDE.md` and `ci.yml` instead of the templates.
+
+1. **Choose the runner.** `hosted` bills Actions minutes (`lane` ~1 minute per run, 2-4 runs per PR, plus every
+   `ci` run). If this account has ever run out of minutes or paused `pull_request` CI, choose `self-hosted`
+   (a machine you own that is on while you work; never a production box).
+2. `./bootstrap.sh ~/code/myproject <hosted|self-hosted> owner/myproject` (needs `gh auth login` as a repo admin;
+   without `owner/repo` it copies files only). It posts the ruleset first, restores your previous merge
+   settings if that fails, and leaves auto-merge OFF. Rulesets on a **private** repo need GitHub Pro or Team.
+3. Fill the `{{placeholders}}`: `CLAUDE.md` (stack, check command, lane-3 paths, personal-data paths), `ci.yml`
+   (the same check command, including the format check), `HARD_PATHS` in `lane.yml` (every one-way path: schema,
+   outbound email/messages, production-data writers, credential handling, deploy), and `PERSONAL_DATA` in
+   `.claude/settings.json` and `.gitignore`. Add package registries to `sandbox.network.allowedDomains`.
+   For a pnpm project, add `"packageManager": "pnpm@9.15.4"` to `package.json` and commit `pnpm-lock.yaml`, because the
+   CI template's `pnpm/action-setup@v6` has no `version` input.
+4. If the project's one-way failure is a git command, wire the optional hook (below) now, not after it happens.
+5. Open one PR with the kit, label `lane:2-wide`, merge it by hand when `ci` and `lane` are green. Time `ci`; over
+   10 minutes, move slow suites to a nightly workflow.
+6. **Prove a red PR can't merge**: open a PR with a deliberately failing test; when `ci` is red run
+   `./bootstrap.sh --enable-auto-merge owner/myproject <PR>`. It checks the PR is BLOCKED with `ci` failing, then
+   turns auto-merge on. Close that PR.
+7. `/doctor` in Claude Code, then `/permissions` to confirm the deny rules loaded.
+
+The ruleset is strict: a PR must be up to date with main to merge (`/ship` rebases first).
+The check names `ci` and `lane` are the job names. The ruleset requires exactly those names, so rename both or neither.
+Do not add `paths:` filters to required workflows: a skipped required check stays pending and blocks the merge.
 
 ## Principles
 1. **GitHub enforces, Claude follows.** main is protected by a ruleset (required checks, squash only,
@@ -16,9 +76,9 @@ and four short skills. A new project gets 24 files plus a `.gitignore` addition 
    |---|---|---|
    | `lane:1-contained` | reversible and contained: copy, tests, isolated covered code | CI green, auto-merge |
    | `lane:2-wide` | reversible but wide: shared utilities, schema additions, config | CI + one reviewer round, auto-merge |
-   | `lane:3-hard` | hard to reverse: migrations, deletions, production data, money | never auto-merges; Rich adds `merge-ok` and merges, by hand or with `/merge <PR#>` |
+   | `lane:3-hard` | hard to reverse: migrations, deletions, production data, money | never auto-merges; the owner adds `merge-ok` and merges, by hand or with `/merge <PR#>` |
    The `lane` CI check is code: it forces lane 3 for `HARD_PATHS` and fails lane 3 until `merge-ok` is on the PR.
-   New commits after `merge-ok` remove the label. Any Claude command containing `merge-ok` stops at a permission prompt; `/merge` is the intended way to add it, and outside it the prompt is Rich's chance to say no.
+   New commits after `merge-ok` remove the label. Any Claude command containing `merge-ok` stops at a permission prompt; `/merge` is the intended way to add it, and outside it the prompt is the owner's chance to say no.
 4. **One review round, blocking findings only, with evidence.** No severity-convergence loops.
 5. **Return the unit, not the batch.** A failed check goes back as "fix this file only". After 3 failed
    attempts on one unit, stop and re-brief.
@@ -30,10 +90,10 @@ and four short skills. A new project gets 24 files plus a `.gitignore` addition 
    lane checks.
 8. **Sonnet builds, Opus plans and reviews lane 3.** Medium effort by default.
 9. **One change at a time per builder.** Each builder works in its own worktree (`/brief` opens it in a Ghostty tab
-   with `session.sh`, or Rich runs `claude --worktree <slug>`); the main checkout stays on `main`. Run at most 2-3 builders at once, fewer if the check suite slows or
+   with `session.sh`, or you run `claude --worktree <slug>`); the main checkout stays on `main`. Run at most 2-3 builders at once, fewer if the check suite slows or
    flakes under load. Never "several in parallel".
-10. **Rich's human steps:** choosing what ships (running `/brief` is the go; `plan only` stops at the brief), typing `/ship`, which Claude can't
-   start itself, and approving lane-3 merges. He does not review intermediate output.
+10. **The owner's human steps:** choosing what ships (running `/brief` is the go; `plan only` stops at the brief), typing `/ship`, which Claude can't
+   start itself, and approving lane-3 merges. The owner does not review intermediate output.
 
 ## Files
 | Path | What it does |
@@ -48,9 +108,9 @@ and four short skills. A new project gets 24 files plus a `.gitignore` addition 
 | `.claude/agents/reviewer.md` | Fresh-context reviewer with no shell: one round, blocking findings with file:line evidence, lane check, decisions and assumptions check. Sonnet by default, Opus for lane 3 |
 | `.claude/agents/researcher.md` | Read-only research agent (no Edit, Write or Bash); answers with sources |
 | `.claude/skills/brief/SKILL.md` | `/brief <task>`: Opus writes goal, machine-checkable done-when, Files, lane, plan, decisions, assumptions, then opens a worker tab with `session.sh` itself when there are no open questions (or falls back to `claude --worktree`). `plan only` stops at the brief |
-| `.claude/skills/land/SKILL.md` | `/land <slug> [--abandon]`: after the merge, closes the worker tab, removes its worktree and branch, then `git pull --ff-only` in the main checkout. User-only |
+| `.claude/skills/land/SKILL.md` | `/land <slug> [--abandon]`: after the merge, runs `git pull --ff-only` in the main checkout (so the `session.sh` it runs is current), then closes the worker tab and removes its worktree and branch. User-only |
 | `.claude/skills/ship/SKILL.md` | `/ship` (or `/ship <slug>` from the main window, which sends it to that worker): run the checks, review by lane, rebase, labeled PR with evidence, auto-merge for lanes 1-2 |
-| `.claude/skills/merge/SKILL.md` | `/merge <PR#>`: Rich's lane 3 green light. Adds `merge-ok` (one permission prompt), waits for `lane`, squash-merges. User-only |
+| `.claude/skills/merge/SKILL.md` | `/merge <PR#>`: the owner's lane 3 green light. Adds `merge-ok` (one permission prompt), waits for `lane`, squash-merges. User-only |
 | `.claude/rules/EXAMPLE-migrations.md.example` | Example path-scoped domain rule (inactive until renamed to `.md`) |
 | `.github/ci.template.yml` | Installed as `.github/workflows/ci.yml`, the required `ci` check: one job, 10-minute timeout, cancels superseded runs, gitleaks secret scan, then your stack's check |
 | `.github/workflows/ci.yml` | This repo's own `ci`: gitleaks, then `kit-check.sh`. Not copied to new projects |
@@ -75,64 +135,15 @@ wrappers, a review loop, a roadmap queue engine, practice records, bot fleets.
 Claude Code already ships worktrees (`claude --worktree`), `/plan` mode, `/code-review`, subagents,
 permissions and a sandbox. GitHub already ships rulesets and auto-merge.
 
-## Install into a new project (under 30 minutes)
-`bootstrap.sh` is the only real install route. GitHub's "Use this template" skips the ruleset, runner choice and
-labels, and copies this repo's own `CLAUDE.md` and `ci.yml` instead of the templates.
-
-1. **Choose the runner.** `hosted` bills Actions minutes (`lane` ~1 minute per run, 2-4 runs per PR, plus every
-   `ci` run). If this account has ever run out of minutes or paused `pull_request` CI, choose `self-hosted`
-   (a machine you own that is on while you work; never a production box).
-2. `./bootstrap.sh ~/code/myproject <hosted|self-hosted> owner/myproject` (needs `gh auth login` as a repo admin;
-   without `owner/repo` it copies files only). It posts the ruleset first, restores your previous merge
-   settings if that fails, and leaves auto-merge OFF. Rulesets on a **private** repo need GitHub Pro or Team.
-3. Fill the `{{placeholders}}`: `CLAUDE.md` (stack, check command, lane-3 paths, personal-data paths), `ci.yml`
-   (the same check command, including the format check), `HARD_PATHS` in `lane.yml` (every one-way path: schema,
-   outbound email/messages, production-data writers, credential handling, deploy), and `PERSONAL_DATA` in
-   `.claude/settings.json` and `.gitignore`. Add package registries to `sandbox.network.allowedDomains`.
-4. If the project's one-way failure is a git command, wire the optional hook (below) now, not after it happens.
-5. Open one PR with the kit, label `lane:2-wide`, merge it by hand when `ci` and `lane` are green. Time `ci`; over
-   10 minutes, move slow suites to a nightly workflow.
-6. **Prove a red PR can't merge**: open a PR with a deliberately failing test; when `ci` is red run
-   `./bootstrap.sh --enable-auto-merge owner/myproject <PR>`. It checks the PR is BLOCKED with `ci` failing, then
-   turns auto-merge on. Close that PR.
-7. `/doctor` in Claude Code, then `/permissions` to confirm the deny rules loaded.
-
-The ruleset is strict: a PR must be up to date with main to merge (`/ship` rebases first).
-The check names `ci` and `lane` are the job names. The ruleset requires exactly those names, so rename both or neither.
-Do not add `paths:` filters to required workflows: a skipped required check stays pending and blocks the merge.
-
-## The daily loop
-```
-claude                                   # in the main checkout (stays on main)
-/brief weekly standings email to league members
-   ... no second "go": with no open questions /brief writes the brief to .claude/review/spawn-<slug>.md and runs
-       session.sh open ("/brief plan only ..." stops at the brief until Rich says "go")
-   ... a worker opens in a new Ghostty tab on feat/<slug> (at most 2-3 builders at once), starts in auto mode,
-       writes the failing test, builds on Sonnet, commits, and reports back to the main session
-/ship <slug>                             # Rich types this in the main window; session.sh send types /ship into the worker's tab
-/ship                                    # or Rich types this in the worker's tab
-   ... checks -> review by lane -> PR with evidence -> auto-merge (lanes 1-2) or "Rich: merge-ok?" (lane 3)
-/merge <PR#>                             # lane 3 only, also in the worker's tab
-/land <slug>                             # back in the main session: closes the tab, removes worktree and branch, pulls
-```
-Requirement: macOS, and Ghostty running with exactly one instance and a window. Without it `session.sh` refuses and
-`/brief` falls back to the old route: it fetches, then Rich runs `claude --worktree <slug>` and pastes the brief.
-Workers started by `session.sh` run in auto mode (`--permission-mode auto`). If a worker never reports and
-`ListAgents` shows it stuck, look for a trust or permission prompt in its tab.
-
-Rich's day: pick the next items from `docs/ROADMAP.md`, run `/brief` on them, type `/ship` in each worker's tab, type
-`/merge <PR#>` for lane-3 PRs after reading the one thing `/ship` flagged, and `/land <slug>` once merged.
-Everything else merges itself or stops and asks.
-
 ## Extension point: project-specific add-ons
 The kit core stays identical across projects. A project adds domain knowledge in three places, smallest first:
 1. **A path-scoped rule** (`.claude/rules/<domain>.md` with `paths:` frontmatter), for rules that apply only when
    certain files are touched: migrations, tenancy, money ledger, auth. It loads only when Claude reads or edits a
    matching file, so it costs nothing elsewhere. The `reviewer` reads matching rule files as its checklist.
-   Mark steps that need Rich as "ask first", and list lane-3 paths there and in `HARD_PATHS`.
+   Mark steps that need the owner as "ask first", and list lane-3 paths there and in `HARD_PATHS`.
 2. **A project skill** (`.claude/skills/<name>/SKILL.md`), for a repeatable procedure: a deploy runbook,
    a release, a data import. Set `disable-model-invocation: true` for anything outward or irreversible,
-   so it runs only when Rich types `/<name>`. Keep long reference material in files next to `SKILL.md`.
+   so it runs only when you type `/<name>`. Keep long reference material in files next to `SKILL.md`.
 3. **A CLAUDE.md line or import**, only for facts every task needs (a glossary, the tenant model in two lines).
    Use `@path` imports sparingly: they load every session.
 Rule of thumb: if it applies to under half the tasks, it is a rule file or a skill, not CLAUDE.md.
@@ -162,7 +173,9 @@ timeout block too; without it the guard fails open. Use the slot for whatever yo
 - The sandbox protects `.claude/` settings, `skills`, `agents`, `commands` and `hooks`, and `.git/config`. That is why
   `/brief` opens workers with `session.sh` (or `claude --worktree`): `git worktree add` fails under the sandbox. A `worktree-<slug>` branch stays behind
   locally after `git switch -c`; it is never pushed. Updating the main checkout across a change to protected paths is
-  Rich's step, and `/ship` runs a rebase over them unsandboxed, which always asks.
+  the owner's step, and `/ship` runs a rebase over them unsandboxed, which always asks.
 - A session in `.claude/worktrees/<slug>` also loads the main checkout's `CLAUDE.md`, so an older copy can appear beside
   the branch's own.
-- The old Stridal plugin marketplace entry is gone from this repo; it is preserved at tag `stridal-final`.
+
+## History
+The earlier project is preserved at tag `stridal-final`.
