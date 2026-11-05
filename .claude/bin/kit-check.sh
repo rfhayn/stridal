@@ -211,10 +211,18 @@ jq -e '.statusLine.type == "command"' .claude/settings.json >/dev/null \
   || { echo "kit-check: settings.json has no statusLine command"; exit 1; }
 grep -q 'statusline.sh' <<<"$(jq -r '.statusLine.command' .claude/settings.json)" \
   || { echo "kit-check: statusLine.command does not run statusline.sh"; exit 1; }
-# Claude Code runs statusline.sh outside the sandbox, so it is guarded like session.sh: ask on Edit/Write, no sandboxed writes.
-jq -e '(.permissions.ask | index("Edit(./**/.claude/statusline.sh)") != null) and (.permissions.ask | index("Write(./**/.claude/statusline.sh)") != null)
-       and (.sandbox.filesystem.denyWrite | index("./.claude/statusline.sh") != null) and (.sandbox.filesystem.denyWrite | index("./**/.claude/statusline.sh") != null)' \
-  .claude/settings.json >/dev/null || { echo "kit-check: statusline.sh is not guarded in settings.json (ask Edit/Write, sandbox denyWrite)"; exit 1; }
+# Claude Code runs statusline.sh outside the sandbox, so it is guarded like session.sh: ask on Edit, no sandboxed writes.
+# An Edit(...) rule also covers the Write tool; a Write(...) rule never matches and prints a warning at startup.
+jq -e '(.permissions.ask | index("Edit(./**/.claude/statusline.sh)") != null) and (.permissions.ask | index("Edit(./**/.claude/bin/session.sh)") != null)
+       and (.sandbox.filesystem.denyWrite | index("./.claude/statusline.sh") != null) and (.sandbox.filesystem.denyWrite | index("./**/.claude/statusline.sh") != null)
+       and (.sandbox.filesystem.denyWrite | index("./.claude/bin/session.sh") != null) and (.sandbox.filesystem.denyWrite | index("./**/.claude/bin/session.sh") != null)' \
+  .claude/settings.json >/dev/null || { echo "kit-check: statusline.sh or session.sh is not guarded in settings.json (ask Edit, sandbox denyWrite)"; exit 1; }
+no_write_rules='[.permissions[]? | arrays | .[] | select(type == "string" and startswith("Write("))] | length == 0'
+jq -e "$no_write_rules" .claude/settings.json >/dev/null \
+  || { echo "kit-check: settings.json has a Write(...) permission rule; it never matches, use Edit(...)"; exit 1; }
+# The check itself: a Write(...) rule added to a scratch copy must make it fail.
+jq '.permissions.ask += ["Write(./**/.claude/statusline.sh)"]' .claude/settings.json > "$tmp/settings-with-write.json"
+if jq -e "$no_write_rules" "$tmp/settings-with-write.json" >/dev/null; then echo "kit-check: the Write(...) rule check passes on a settings.json that has one"; exit 1; fi
 git_c() { git -C "$1" -c user.name=t -c user.email=t@example.com "${@:2}"; }
 slr="$tmp/slproj"
 git init -q -b main "$slr"
