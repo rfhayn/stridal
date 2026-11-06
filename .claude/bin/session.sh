@@ -153,7 +153,7 @@ fi
 [[ $claude_bin =~ $PATH_RE ]] || refuse "the claude path has a character outside A-Za-z0-9/._-"
 # Ghostty runs the tab command without a login shell, so the worker would lack /opt/homebrew/bin (gh, shellcheck).
 # zsh -l reads the user's profile first. Every token inside the quotes is validated above or fixed.
-tabcmd="/bin/zsh -lc 'exec $claude_bin --name $slug --permission-mode auto -- \"\$(cat $promptfile)\"'"
+tabcmd="/bin/zsh -lc 'exec $claude_bin --name $slug --permission-mode auto --strict-mcp-config -- \"\$(cat $promptfile)\"'"
 
 # A recorded terminal id is data from a file, so it is checked before it reaches osascript.
 TERM_RE='^[A-Za-z0-9_-]+$'

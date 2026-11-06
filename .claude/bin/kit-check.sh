@@ -133,7 +133,7 @@ gcd=$(git rev-parse --path-format=absolute --git-common-dir)
 out=$("$sess" open feat zz-ok --report-to main --dry-run 2>&1) \
   || { echo "kit-check: session.sh good dry-run open failed: $out"; exit 1; }
 # The tab runs through the login shell so a worker gets the user's PATH (gh, shellcheck); only validated tokens go in.
-want="/bin/zsh -lc 'exec $(command -v claude || echo claude) --name zz-ok --permission-mode auto -- \"\$(cat $gcd/spawn/zz-ok.prompt)\"'"
+want="/bin/zsh -lc 'exec $(command -v claude || echo claude) --name zz-ok --permission-mode auto --strict-mcp-config -- \"\$(cat $gcd/spawn/zz-ok.prompt)\"'"
 [ "$(printf '%s\n' "$out" | grep '^tab command: ')" = "tab command: $want" ] \
   || { echo "kit-check: session.sh tab command is not exactly: $want"; printf '%s\n' "$out"; exit 1; }
 case "$out" in *SECRET-ENV-TEXT*) echo "kit-check: session.sh dry-run printed .env text"; exit 1 ;; esac
@@ -171,8 +171,15 @@ out=$("$sess" open feat zz-ok --report-to main --dry-run 2>&1)
 tabline=$(printf '%s\n' "$out" | grep '^tab command: ')
 case "$tabline" in "tab command: /bin/zsh -lc '"*) ;; *) echo "kit-check: tab command does not start with /bin/zsh -lc: $tabline"; exit 1 ;; esac
 rest=${tabline#"tab command: /bin/zsh -lc '"}
-[[ $rest =~ ^exec\ [A-Za-z0-9/._-]+\ --name\ zz-ok\ --permission-mode\ auto\ --\ \"\$\(cat\ [A-Za-z0-9/._-]+\)\"\'$ ]] \
-  || { echo "kit-check: tab command holds something other than validated tokens: $tabline"; exit 1; }
+[[ $rest =~ ^exec\ [A-Za-z0-9/._-]+\ --name\ zz-ok\ --permission-mode\ auto\ --strict-mcp-config\ --\ \"\$\(cat\ [A-Za-z0-9/._-]+\)\"\'$ ]] \
+  || { echo "kit-check: tab command holds something other than validated tokens (and the one constant --strict-mcp-config): $tabline"; exit 1; }
+
+# Connector isolation, two layers: the flag above keeps claude.ai connectors out of a worker session.
+# The deny rule covers a worker started without session.sh. The allow rules let workers run the /ship scripts.
+jq -e '.permissions.deny | index("mcp__claude_ai_*") != null' .claude/settings.json >/dev/null \
+  || { echo "kit-check: settings.json does not deny mcp__claude_ai_*"; exit 1; }
+jq -e '.permissions.allow | index("Bash(.claude/bin/preflight.sh *)") != null and index("Bash(.claude/bin/check-evidence.sh *)") != null' .claude/settings.json >/dev/null \
+  || { echo "kit-check: settings.json does not allow preflight.sh and check-evidence.sh"; exit 1; }
 
 # close when the worktree and the recorded branch are already gone: a cleanup plan, not a refusal.
 echo "feat/zz-ok" > "$gcd/spawn/zz-ok.branch"
