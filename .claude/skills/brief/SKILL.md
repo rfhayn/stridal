@@ -45,6 +45,7 @@ Files: <exact paths or globs this change may touch, space-separated; docs/ROADMA
 ADRs: <ADRs governing the touched files, and "no conflict" or how it conflicts>
 Roadmap: <ID, if any; the PR body says "Roadmap: <ID>">
 Out of scope: <what this change will NOT do>
+Blocked by: <optional: #<PR> ... for each unmerged PR this change builds on; omit the line if none. /ship refuses until each is merged>
 Lane: 1-contained | 2-wide | 3-hard  -- <one-line reason based on blast radius, not confidence>
 Plan:
 1. <step>  (at most 6 steps; if more, split into two briefs)

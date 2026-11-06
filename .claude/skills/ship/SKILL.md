@@ -17,7 +17,7 @@ Ship this change. Steps in order.
 
    In a worktree, continue.  If the branch is `worktree-<slug>`, first run `git switch -c <type>/<slug>` (type = feat, fix, chore, docs), so the PR has a real branch name.
 
-1. **Run the checks, not opinions.** Run every done-when command from the brief, including the CLAUDE.md check command and `.claude/bin/scope-check.sh <Files globs>`. Record each result as evidence (exit code, test name, output line).
+1. **Preflight, then run the checks, not opinions.** First write the brief (from this conversation) to `.claude/review/brief.md` (`mkdir -p .claude/review`). For each `#N` on its `Blocked by:` line, run `gh pr view N --json state` plain (no pipe, no redirect, no `cd`: inside a script `gh` runs sandboxed and fails with x509). Then run `.claude/bin/preflight.sh .claude/review/brief.md` with `--merged N` for each blocker whose state is `MERGED`. If it exits 1, stop and tell the owner its reason: a malformed brief or an unmerged blocker is not reviewed. Then run every done-when command from the brief, including the CLAUDE.md check command and `.claude/bin/scope-check.sh <Files globs>`. Record each result as evidence (exit code, test name, output line).
    - A stray file in scope-check: remove it from the diff, or stop and ask the owner to widen the brief. Do not widen it yourself.
    - **Return the unit, not the batch.** When a check fails, work on that one unit with a scope line, "fix <file/test> only", rerun that check alone, then the full check. Count attempts per unit. **After 3 failed attempts on the same unit, stop**: report what failed and why, and propose a re-brief. Do not keep looping.
 
@@ -26,6 +26,7 @@ Ship this change. Steps in order.
    - Lanes 2 and 3: the reviewer has no shell, so first write what it reads: `mkdir -p .claude/review && git diff origin/main...HEAD > .claude/review/diff.txt && git log --oneline origin/main..HEAD > .claude/review/log.txt`.
    - Lane 2: run the `reviewer` subagent once, passing the brief.
    - Lane 3: run the `reviewer` subagent once with the per-call `model: opus` parameter, passing the brief.
+   - Then save the reviewer's reply verbatim to `.claude/review/review.txt` and run `.claude/bin/check-evidence.sh .claude/review/review.txt .claude/review/diff.txt .claude/review/log.txt`. A failure (a "met" citing a line that is not in the diff or log, or citing nothing) is a blocking finding: treat the verdict as FIX FIRST, whatever the reviewer said.
    - On FIX FIRST: fix each blocking finding you agree with as its own unit (step 1's scope-line rule and 3-attempt cap apply), and note any rejected finding with a one-line reason. **No second review round**, unless CLAUDE.md's project section allows one for this lane. If a fix needs a design change, stop and ask the owner.
 
 3. **Rebase and push.** Commit everything first. Run `git fetch origin`, then check for paths the sandbox protects: `git diff --name-only HEAD origin/main | grep -E '^(\.mcp\.json$|\.claude/(settings|skills/|agents/|commands/|hooks/|workflows/))'`.

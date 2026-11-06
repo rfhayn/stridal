@@ -28,7 +28,7 @@ case "$RUNNER" in hosted|self-hosted) ;; *) echo "runner must be 'hosted' or 'se
 cd "$KIT"
 for f in CLAUDE.md .claude/settings.json .claude/agents/reviewer.md .claude/agents/researcher.md \
          .claude/skills/brief/SKILL.md .claude/skills/ship/SKILL.md .claude/skills/merge/SKILL.md .claude/skills/land/SKILL.md .claude/hooks/one-way-guard.sh \
-         .claude/bin/scope-check.sh .claude/bin/session.sh .claude/statusline.sh .claude/rules/EXAMPLE-migrations.md.example \
+         .claude/bin/scope-check.sh .claude/bin/preflight.sh .claude/bin/check-evidence.sh .claude/bin/session.sh .claude/statusline.sh .claude/rules/EXAMPLE-migrations.md.example \
          .github/workflows/ci.yml .github/workflows/lane.yml .github/pull_request_template.md \
          docs/ROADMAP.md docs/adr/0000-template.md docs/ARCHITECTURE.md docs/RISKS.md \
          docs/templates/DATA-MODEL.md docs/templates/API.md docs/templates/INVENTORY.md \
