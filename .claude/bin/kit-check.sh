@@ -353,6 +353,12 @@ rv '- [met] item';                                           expect "met with no
 rv '- [met] item | evidence:';                               expect "met with empty citation" 1 "no evidence" cev
 rv '- [met] item | evidence: looks fine';                    expect "met with prose citation" 1 "looks" cev
 rv '- [met] item | evidence: src/a.sh:11, log.txt:1';        expect "two good citations" 0 "" cev
+rv '- [met] item | evidence: src/a.sh:11 (by inspection, it is there)'; expect "prose after a good citation" 0 "" cev
+rv '- [met] item | evidence: src/a.sh:11, log.txt:2 (checked)'; expect "prose after two good citations" 0 "" cev
+rv '- [met] item | evidence: src/a.sh:11, src/a.sh:99 (but this one is wrong)'; expect "bad citation before prose" 1 "src/a.sh:99" cev
+rv '- [met] item | evidence: (by inspection) src/a.sh:11';   expect "prose before the citation" 1 "(by" cev
+rv '- [met] item | evidence: src/a.sh:10-12';                expect "evidence range in hunk" 0 "" cev
+rv '- [met] item | evidence: src/a.sh:10-13';                expect "evidence range past hunk" 1 "src/a.sh:10-13" cev
 rv '- [met] item | evidence: src/a.sh:11, log.txt:9';        expect "one bad of two citations" 1 "log.txt:9" cev
 rv '- [not met] item
 - [can'"'"'t tell] item
