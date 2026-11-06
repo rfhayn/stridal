@@ -268,4 +268,119 @@ out=$(cd "$tmp/nogit" && printf '' | sh "$OLDPWD/$sl" 2>&1) || { echo "kit-check
 [ -n "$out" ] || { echo "kit-check: statusline printed nothing outside git on empty input"; exit 1; }
 out=$(sj "$slr" | PATH=/nonexistent /bin/sh "$PWD/$sl" 2>&1) || { echo "kit-check: statusline failed without jq or git on PATH"; exit 1; }
 
+# preflight.sh: offline structural check of a brief; check-evidence.sh: a reviewer "met" must cite a line the diff or log has.
+# Both ship, keep their executable bit, and every exit 1 says why on stdout.
+pre=.claude/bin/preflight.sh
+ev=.claude/bin/check-evidence.sh
+for f in "$pre" "$ev"; do
+  [ -f "$f" ] || { echo "kit-check: $f is missing"; exit 1; }
+  [ -f "$d/$f" ] || { echo "kit-check: $f is missing from a new project"; exit 1; }
+  cmp -s "$f" "$d/$f" || { echo "kit-check: installed $f differs from the kit's"; exit 1; }
+  [ -x "$d/$f" ] || { echo "kit-check: installed $f is not executable"; exit 1; }
+  [ -x "$f" ] || { echo "kit-check: $f is not executable"; exit 1; }
+done
+# expect <label> <exit code> <needle in stdout or ""> <command...>
+expect() {
+  local label=$1 want=$2 needle=$3 out rc=0
+  shift 3
+  out=$("$@" 2>&1) || rc=$?
+  [ "$rc" -eq "$want" ] || { echo "kit-check: $label: exit $rc, wanted $want: $out"; exit 1; }
+  case "$out" in *"$needle"*) ;; *) echo "kit-check: $label: output lacks '$needle': $out"; exit 1 ;; esac
+}
+fx="$tmp/fx"; mkdir -p "$fx"
+cat > "$fx/good.md" <<'BRIEF'
+## Brief: x
+Goal: g
+Done when (each one machine-checkable):
+- [ ] `true` exits 0
+Files: a.sh b.md
+Lane: 2-wide -- why
+BRIEF
+sed '/^Done when/,/^- \[ \]/d' "$fx/good.md" > "$fx/no-done.md"
+sed '/^Files:/d' "$fx/good.md" > "$fx/no-files.md"
+sed 's/^Files:.*/Files:   /' "$fx/good.md" > "$fx/empty-files.md"
+sed '/^Lane:/d' "$fx/good.md" > "$fx/no-lane.md"
+{ cat "$fx/good.md"; echo "Blocked by: #12 #7"; } > "$fx/blocked.md"
+{ cat "$fx/good.md"; echo "Blocked by: none"; } > "$fx/blocked-none.md"
+expect "preflight good brief" 0 "" "$pre" "$fx/good.md"
+expect "preflight no Done-when" 1 "Done when" "$pre" "$fx/no-done.md"
+expect "preflight no Files" 1 "Files" "$pre" "$fx/no-files.md"
+expect "preflight empty Files" 1 "Files" "$pre" "$fx/empty-files.md"
+expect "preflight no Lane" 1 "Lane" "$pre" "$fx/no-lane.md"
+expect "preflight missing brief file" 1 "brief" "$pre" "$fx/none.md"
+expect "preflight no argument" 1 "usage" "$pre"
+expect "preflight blocker, no --merged" 1 "#12" "$pre" "$fx/blocked.md"
+expect "preflight blocker, one of two merged" 1 "#7" "$pre" "$fx/blocked.md" --merged 12
+expect "preflight blocker, wrong number merged" 1 "#12" "$pre" "$fx/blocked.md" --merged 7 --merged 99
+expect "preflight blockers all merged" 0 "" "$pre" "$fx/blocked.md" --merged 12 --merged 7
+expect "preflight Blocked by: none" 0 "" "$pre" "$fx/blocked-none.md"
+expect "preflight bad --merged value" 1 "--merged" "$pre" "$fx/good.md" --merged x
+expect "preflight unknown option" 1 "usage" "$pre" "$fx/good.md" --bogus
+
+cat > "$fx/diff.txt" <<'DIFF'
+diff --git a/src/a.sh b/src/a.sh
+--- a/src/a.sh
++++ b/src/a.sh
+@@ -1,2 +10,3 @@
++one
++two
++three
+@@ -30 +40 @@
++single
+diff --git a/old.sh b/old.sh
+--- a/old.sh
++++ /dev/null
+@@ -1,2 +0,0 @@
+-gone
+-gone
+DIFF
+printf 'abc1 first\nabc2 second\n' > "$fx/log.txt"
+rv() { printf 'VERDICT: SHIP\nDONE-WHEN:\n%s\n' "$1" > "$fx/review.txt"; }
+cev() { "$ev" "$fx/review.txt" "$fx/diff.txt" "$fx/log.txt"; }
+rv '- [met] item | evidence: src/a.sh:11';                   expect "evidence in range" 0 "" cev
+rv '- [met] item | evidence: src/a.sh:10';                   expect "evidence first line of hunk" 0 "" cev
+rv '- [met] item | evidence: src/a.sh:12';                   expect "evidence last line of hunk" 0 "" cev
+rv '- [met] item | evidence: src/a.sh:13';                   expect "evidence past hunk" 1 "src/a.sh:13" cev
+rv '- [met] item | evidence: src/a.sh:9';                    expect "evidence before hunk" 1 "src/a.sh:9" cev
+rv '- [met] item | evidence: src/a.sh:40';                   expect "evidence in one-line hunk" 0 "" cev
+rv '- [met] item | evidence: src/a.sh:41';                   expect "evidence past one-line hunk" 1 "src/a.sh:41" cev
+rv '- [met] item | evidence: src/b.sh:1';                    expect "evidence file not in diff" 1 "src/b.sh" cev
+rv '- [met] item | evidence: old.sh:1';                      expect "evidence in a deleted file" 1 "old.sh:1" cev
+rv '- [met] item | evidence: log.txt:2';                     expect "evidence log.txt in range" 0 "" cev
+rv '- [met] item | evidence: log.txt:3';                     expect "evidence log.txt past its length" 1 "log.txt:3" cev
+rv '- [met] item | evidence: log.txt:0';                     expect "evidence log.txt line 0" 1 "log.txt:0" cev
+rv '- [met] item';                                           expect "met with no citation" 1 "no evidence" cev
+rv '- [met] item | evidence:';                               expect "met with empty citation" 1 "no evidence" cev
+rv '- [met] item | evidence: looks fine';                    expect "met with prose citation" 1 "looks" cev
+rv '- [met] item | evidence: src/a.sh:11, log.txt:1';        expect "two good citations" 0 "" cev
+rv '- [met] item | evidence: src/a.sh:11 (by inspection, it is there)'; expect "prose after a good citation" 0 "" cev
+rv '- [met] item | evidence: src/a.sh:11, log.txt:2 (checked)'; expect "prose after two good citations" 0 "" cev
+rv '- [met] item | evidence: src/a.sh:11, src/a.sh:99 (but this one is wrong)'; expect "bad citation before prose" 1 "src/a.sh:99" cev
+rv '- [met] item | evidence: (by inspection) src/a.sh:11';   expect "prose before the citation" 1 "(by" cev
+rv '- [met] item | evidence: src/a.sh:10-12';                expect "evidence range in hunk" 0 "" cev
+rv '- [met] item | evidence: src/a.sh:10-13';                expect "evidence range past hunk" 1 "src/a.sh:10-13" cev
+rv '- [met] item | evidence: src/a.sh:11, log.txt:9';        expect "one bad of two citations" 1 "log.txt:9" cev
+rv '- [not met] item
+- [can'"'"'t tell] item
+- [n/a] item';                                               expect "only non-met items need no citation" 0 "" cev
+rv '- [met] ok | evidence: src/a.sh:11
+- [met] bad | evidence: src/a.sh:99';                        expect "second item bad" 1 "src/a.sh:99" cev
+printf 'VERDICT: SHIP\n' > "$fx/review.txt";                 expect "review with no met items" 0 "" cev
+expect "evidence missing review" 1 "review" "$ev" "$fx/none.txt" "$fx/diff.txt" "$fx/log.txt"
+rv '- [met] item | evidence: log.txt:1'
+expect "evidence missing diff" 1 "diff" "$ev" "$fx/review.txt" "$fx/none.txt" "$fx/log.txt"
+expect "evidence missing log" 1 "log" "$ev" "$fx/review.txt" "$fx/diff.txt" "$fx/none.txt"
+: > "$fx/empty.txt"
+expect "evidence empty diff" 1 "diff" "$ev" "$fx/review.txt" "$fx/empty.txt" "$fx/log.txt"
+expect "evidence empty log" 1 "log" "$ev" "$fx/review.txt" "$fx/diff.txt" "$fx/empty.txt"
+expect "evidence no arguments" 1 "usage" "$ev"
+
+# The wiring: /ship runs both scripts, /brief offers Blocked by, the reviewer treats missing input as FIX FIRST.
+for w in preflight.sh check-evidence.sh; do
+  grep -q "$w" .claude/skills/ship/SKILL.md || { echo "kit-check: ship/SKILL.md does not run $w"; exit 1; }
+done
+grep -q 'Blocked by:' .claude/skills/brief/SKILL.md || { echo "kit-check: brief/SKILL.md has no Blocked by line"; exit 1; }
+grep -qE 'missing or empty.*FIX FIRST' .claude/agents/reviewer.md \
+  || { echo "kit-check: reviewer.md does not make a missing or empty diff.txt/log.txt FIX FIRST"; exit 1; }
+
 echo "kit-check: all checks passed ($count shell scripts)"
