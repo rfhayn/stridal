@@ -133,7 +133,7 @@ gcd=$(git rev-parse --path-format=absolute --git-common-dir)
 out=$("$sess" open feat zz-ok --report-to main --dry-run 2>&1) \
   || { echo "kit-check: session.sh good dry-run open failed: $out"; exit 1; }
 # The tab runs through the login shell so a worker gets the user's PATH (gh, shellcheck); only validated tokens go in.
-want="/bin/zsh -lc 'exec $(command -v claude || echo claude) --name zz-ok --permission-mode auto -- \"\$(cat $gcd/spawn/zz-ok.prompt)\"'"
+want="/bin/zsh -lc 'exec $(command -v claude || echo claude) --name zz-ok --permission-mode auto --strict-mcp-config -- \"\$(cat $gcd/spawn/zz-ok.prompt)\"'"
 [ "$(printf '%s\n' "$out" | grep '^tab command: ')" = "tab command: $want" ] \
   || { echo "kit-check: session.sh tab command is not exactly: $want"; printf '%s\n' "$out"; exit 1; }
 case "$out" in *SECRET-ENV-TEXT*) echo "kit-check: session.sh dry-run printed .env text"; exit 1 ;; esac
