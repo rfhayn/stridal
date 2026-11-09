@@ -267,7 +267,7 @@ case "$out" in *"worker cap: 3600 s"*) ;; *) echo "kit-check: open --dry-run wit
 want_alert="alert: osascript -e 'display notification \"worker zz-ok: cap-kill\" with title \"Stridal\"'"
 printf '%s\n' "$out" | grep -qxF "$want_alert" \
   || { echo "kit-check: open --dry-run does not print exactly: $want_alert"; printf '%s\n' "$out"; exit 1; }
-out2=$(STRIDAL_WORKER_CAP_SECONDS=120 ZZ_INJECT='"; do shell script "id' "$sess" open feat zz-ok --report-to main --dry-run 2>&1)
+out2=$(STRIDAL_WORKER_CAP_SECONDS=120 "$sess" open feat zz-ok --report-to main --dry-run 2>&1)
 [ "$(printf '%s\n' "$out2" | grep '^alert: ')" = "$want_alert" ] \
   || { echo "kit-check: the alert text changed with the environment"; exit 1; }
 [ "$(grep -c 'display notification' "$sess")" = 1 ] || { echo "kit-check: session.sh builds a notification in more than one place"; exit 1; }
@@ -323,6 +323,24 @@ if ps -axo command= >/dev/null 2>&1; then
   [ -e "$tmp/zz-end-done" ] || { echo "kit-check: the stub that ends on its own was killed before it finished"; exit 1; }
   grep -Eq '^zz-end [0-9T:Z-]+ [0-9T:Z-]+ ended$' "$rev/runs.log" || { echo "kit-check: the zz-end line is not '<slug> <start> <end> ended'"; cat "$rev/runs.log"; exit 1; }
   [ -d "$gcd/spawn/locks/zz-end" ] || { echo "kit-check: a normal end removed the lock, which close owns"; exit 1; }
+  # Only the group first seen is the worker: when it ends and a same-named claude starts in another group (a
+  # --resume in another tab, or a re-open), that one is logged around, not adopted, and is not signalled.
+  printf '#!/bin/sh\nsleep 30\n' > "$tmp/claude"
+  mkdir -p "$gcd/spawn/locks/zz-swap"
+  echo "SWAP-TERM-1" > "$gcd/spawn/locks/zz-swap/term"
+  stubpid=$( set -m; "$tmp/claude" --name zz-swap 600 >/dev/null 2>&1 </dev/null & echo $! )
+  sleep 1
+  STRIDAL_ALERT=0 "$sess" watch zz-swap 5 &
+  watchpid=$!
+  sleep 2
+  kill -- "-$stubpid" 2>/dev/null || true
+  swappid=$( set -m; "$tmp/claude" --name zz-swap 600 >/dev/null 2>&1 </dev/null & echo $! )
+  stubpid=$swappid
+  wait "$watchpid" || { echo "kit-check: session.sh watch zz-swap 5 failed"; exit 1; }
+  kill -0 -- "-$swappid" 2>/dev/null || { echo "kit-check: the watchdog killed a same-named worker that started after its own ended"; exit 1; }
+  grep -Eq '^zz-swap [0-9T:Z-]+ [0-9T:Z-]+ ended$' "$rev/runs.log" || { echo "kit-check: the zz-swap line is not '<slug> <start> <end> ended'"; cat "$rev/runs.log"; exit 1; }
+  kill -- "-$swappid" 2>/dev/null || true
+  stubpid=""
 else
   echo "kit-check: skipped the watchdog cap and end cases: ps is not permitted here (ci runs them)"
 fi

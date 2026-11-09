@@ -267,6 +267,13 @@ worker_procs() {
     if [[ $cmdline =~ $re ]]; then echo "$pid $pg"; fi
   done
 }
+# The same lines, limited to process group $1.
+group_procs() {
+  local a b
+  worker_procs | while read -r a b; do
+    if [ "$b" = "$1" ]; then echo "$a $b"; fi
+  done
+}
 # Append "<slug> <start> <end> <outcome>". A symlinked log or folder is not written through.
 logline() {
   [ ! -L "$top/.claude/review" ] && [ ! -L "$runlog" ] || return 0
@@ -293,19 +300,24 @@ watch_worker() {
   t0=$(date +%s)
   while :; do
     sleep "$step"
-    procs=$(worker_procs)
+    # Only the group first seen counts: a same-named claude started later in another group (a --resume in
+    # another tab, or a re-open of the slug) is not this worker, so this worker is over when its group is.
+    procs=$(group_procs "$wpg")
     if [ -z "$procs" ]; then logline "$start" ended; return 0; fi # the lock stays for close
     if [ $(($(date +%s) - t0)) -ge "$cap" ]; then break; fi
   done
-  # Cap reached. Signal a group only when every matching line is in one group, that group is led by a matching
-  # process (the tab's wrapper, so never Ghostty or another tab), and it is neither init's nor this watchdog's.
+  # Cap reached. Signal a group only when it is the group first seen, every matching line is in that one group,
+  # it is led by a matching process (the tab's wrapper, so never Ghostty or another tab), and it is neither
+  # init's nor this watchdog's. Anything else is cap-nokill: no signal, an alert.
+  procs=$(worker_procs)
+  if [ -z "$procs" ]; then logline "$start" ended; return 0; fi
   while read -r lpid lpg; do
     if [ -z "$pg" ]; then pg=$lpg; elif [ "$pg" != "$lpg" ]; then multi=1; fi
     if [ "$lpid" = "$lpg" ]; then leader=1; fi
   done <<<"$procs"
   own=$(/bin/ps -o pgid= -p $$) && own=${own// /}
   outcome="cap-kill"
-  if [ "$multi" = 1 ] || [ "$leader" = 0 ] || ! [[ $pg =~ ^[0-9]+$ ]] || [ "$pg" -le 1 ] || [ "$pg" = "$own" ]; then
+  if [ "$multi" = 1 ] || [ "$leader" = 0 ] || ! [[ $pg =~ ^[0-9]+$ ]] || [ "$pg" -le 1 ] || [ "$pg" = "$own" ] || [ "$pg" != "$wpg" ]; then
     outcome="cap-nokill"
   else
     kill -TERM -- "-$pg" 2>/dev/null || true
