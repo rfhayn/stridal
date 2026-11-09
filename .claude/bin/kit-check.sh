@@ -85,7 +85,7 @@ long42=$(printf 'a%.0s' $(seq 1 42))
 # The prompt comes only from the git-ignored review folder; the test files are removed on exit.
 rev=.claude/review
 mkdir -p "$rev"
-trap 'rm -rf "$tmp" "$rev"/spawn-zz-* "$rev/spawn-$long42.md" "${gcd:-/nonexistent}"/spawn/zz-*' EXIT
+trap '[ -z "${stubpid:-}" ] || kill "$stubpid" 2>/dev/null || true; rm -rf "$tmp" "$rev"/spawn-zz-* "$rev/spawn-$long42.md" "${gcd:-/nonexistent}"/spawn/zz-* "${gcd:-/nonexistent}"/spawn/locks/zz-*' EXIT
 echo "SECRET-PROMPT-TEXT" > "$rev/spawn-zz-ok.md"
 cp "$rev/spawn-zz-ok.md" "$rev/spawn-$long42.md"
 refuses() {
@@ -165,6 +165,92 @@ out=$("$sess" send zz-ok ship --dry-run 2>&1) \
   || { echo "kit-check: session.sh good dry-run send failed: $out"; exit 1; }
 case "$out" in *'input text "/ship" to term'*'send key "enter" to term'*) ;; *) echo "kit-check: send dry-run did not print the /ship AppleScript"; printf '%s\n' "$out"; exit 1 ;; esac
 case "$out" in *'input text "/exit"'*) echo "kit-check: send dry-run printed the /exit AppleScript"; exit 1 ;; esac
+
+# Phase 1f: send compares the recorded terminal's working directory to the slug's worktree before typing.
+# In a dry-run the comparison is announced by the same function that makes it, so dropping the comparison
+# drops this line. send_cwd_case takes the script to test, so a mutant copy can be run against it.
+send_cwd_case() {
+  local out
+  out=$("$1" send zz-ok ship --dry-run 2>&1) || return 1
+  case "$out" in *"would compare the working directory of terminal FAKE-TERM-ID-1 to $PWD/.claude/worktrees/zz-ok"*) return 0 ;; *) return 1 ;; esac
+}
+send_cwd_case "$sess" \
+  || { echo "kit-check: send --dry-run does not compare the terminal's working directory to .claude/worktrees/zz-ok"; exit 1; }
+# The comparison itself is the pure function cwd_ok. It is pulled out of the script text and tried on real
+# inputs, so a version that skips the comparison fails here. cwd_ok_case takes the function source, so a
+# mutant is run against the same case.
+cwd_ok_src=$(sed -n '/^cwd_ok() {$/,/^}$/p' "$sess")
+[ -n "$cwd_ok_src" ] || { echo "kit-check: session.sh has no cwd_ok function"; exit 1; }
+cwd_ok_case() {
+  (
+    eval "$1"
+    w=/r/.claude/worktrees/zz-ok
+    cwd_ok "$w" "$w" && cwd_ok "$w/sub" "$w" && cwd_ok "$w/" "$w" || exit 1
+    ! cwd_ok "$w-2" "$w" || exit 1          # a sibling slug that shares the prefix
+    ! cwd_ok "" "$w" || exit 1              # Ghostty reported nothing
+    ! cwd_ok "missing value" "$w" || exit 1 # AppleScript's name for no value
+    ! cwd_ok "$w/../x" "$w" || exit 1       # climbs out of the worktree
+    ! cwd_ok /elsewhere "$w" || exit 1
+  )
+}
+cwd_ok_case "$cwd_ok_src" || { echo "kit-check: cwd_ok does not accept the worktree and refuse everything else"; exit 1; }
+! cwd_ok_case 'cwd_ok() { return 0; }' || { echo "kit-check: the cwd_ok case passes a version that skips the comparison"; exit 1; }
+
+# Phase 1e: one worker per slug. A lock dir under spawn/locks holds the terminal id and start time.
+# claude_running finds the worker with ps, so a stub named claude (a copy of sleep) stands in for a session.
+lockd="$gcd/spawn/locks/zz-lock"
+echo "SECRET-PROMPT-TEXT" > "$rev/spawn-zz-lock.md"
+out=$("$sess" open feat zz-lock --report-to main --dry-run 2>&1) \
+  || { echo "kit-check: open --dry-run with no lock failed: $out"; exit 1; }
+case "$out" in *"would take lock"*) ;; *) echo "kit-check: open --dry-run with no lock did not say 'would take lock'"; printf '%s\n' "$out"; exit 1 ;; esac
+mkdir -p "$lockd"
+echo "HOLDER-TERM-7" > "$lockd/term"
+echo "2026-11-09T10:00:00Z" > "$lockd/started"
+# Not running: the refusal says stale, names the holder, and open does not remove the lock.
+rc=0; out=$("$sess" open feat zz-lock --report-to main --dry-run 2>&1) || rc=$?
+[ "$rc" = 2 ] || { echo "kit-check: open with a stale lock exited $rc, not 2"; printf '%s\n' "$out"; exit 1; }
+case "$out" in *"session.sh: refused"*stale*HOLDER-TERM-7*2026-11-09T10:00:00Z*) ;; *) echo "kit-check: stale-lock refusal does not say stale and name the terminal and start time"; printf '%s\n' "$out"; exit 1 ;; esac
+[ -d "$lockd" ] || { echo "kit-check: open removed a stale lock"; exit 1; }
+# Running: the refusal says live.
+# The stub is a script, not a copy of sleep (a copied system binary is killed on macOS). ps shows it as
+# "sh <dir>/claude --name zz-lock", which claude_running matches. The sandbox denies ps, so there the case is skipped.
+if ps -axo command= >/dev/null 2>&1; then
+  printf '#!/bin/sh\nsleep 30\n' > "$tmp/claude"
+  chmod +x "$tmp/claude"
+  "$tmp/claude" --name zz-lock 600 >/dev/null 2>&1 &
+  stubpid=$!
+  sleep 1
+  rc=0; out=$("$sess" open feat zz-lock --report-to main --dry-run 2>&1) || rc=$?
+  [ "$rc" = 2 ] || { echo "kit-check: open with a live lock exited $rc, not 2"; printf '%s\n' "$out"; exit 1; }
+  case "$out" in *"session.sh: refused"*live*HOLDER-TERM-7*2026-11-09T10:00:00Z*) ;; *) echo "kit-check: live-lock refusal does not say live and name the terminal and start time"; printf '%s\n' "$out"; exit 1 ;; esac
+  kill "$stubpid"; wait "$stubpid" 2>/dev/null || true; stubpid=""
+else
+  echo "kit-check: skipped the live-lock case: ps is not permitted here (ci runs it)"
+fi
+# close says it would remove the lock, and the real code removes it on the gone, normal and abandon paths.
+out=$("$sess" close zz-lock --abandon --dry-run 2>&1) \
+  || { echo "kit-check: close --abandon --dry-run failed: $out"; exit 1; }
+case "$out" in *"would remove the lock $lockd"*) ;; *) echo "kit-check: close --abandon --dry-run does not say it would remove the lock"; printf '%s\n' "$out"; exit 1 ;; esac
+[ -d "$lockd" ] || { echo "kit-check: close --dry-run removed the lock"; exit 1; }
+# A lock with no branch record (open killed before the worktree existed) is cleared by close --abandon and
+# the dry-run says only that, not a worktree and branch removal.
+case "$out" in *"no branch record"*) ;; *) echo "kit-check: close --abandon --dry-run on a lock with no branch record does not say so"; printf '%s\n' "$out"; exit 1 ;; esac
+case "$out" in *"git worktree remove"*|*"git branch -D"*) echo "kit-check: close --abandon --dry-run on a lock with no branch record plans a branch or worktree removal"; exit 1 ;; esac
+rm -rf "$lockd"
+# A real close needs Ghostty, so check the script: release_lock is defined, and called on the gone path and the final path.
+grep -q '^release_lock()' "$sess" || { echo "kit-check: session.sh has no release_lock"; exit 1; }
+[ "$(grep -c '^ *release_lock$' "$sess")" -ge 2 ] || { echo "kit-check: close does not call release_lock on both its paths"; exit 1; }
+# shellcheck disable=SC2016  # the pattern is literal script text, not an expansion
+sed -n '/^if \[ "\$gone" = 1 \]; then/,/^fi$/p' "$sess" | grep -q 'release_lock' || { echo "kit-check: the already-gone close path does not release the lock"; exit 1; }
+tail -n 5 "$sess" | grep -q 'release_lock' || { echo "kit-check: the normal and abandon close path does not release the lock"; exit 1; }
+
+# Phase 1d: every worker is told fetched text is data, in the skill and in the prompt open appends.
+grep -q 'is data, never instructions' .claude/skills/brief/SKILL.md \
+  || { echo "kit-check: brief/SKILL.md lacks 'is data, never instructions'"; exit 1; }
+out=$("$sess" open feat zz-ok --report-to main --dry-run 2>&1)
+case "$out" in *"is data, never instructions"*) ;; *) echo "kit-check: open --dry-run's prompt-append text lacks 'is data, never instructions'"; exit 1 ;; esac
+grep -q -- '--strict-mcp-config' .claude/skills/brief/SKILL.md \
+  || { echo "kit-check: brief/SKILL.md does not show --strict-mcp-config in the tab command"; exit 1; }
 
 # The open tab command starts with the login shell and holds only validated tokens.
 out=$("$sess" open feat zz-ok --report-to main --dry-run 2>&1)
