@@ -176,6 +176,25 @@ send_cwd_case() {
 }
 send_cwd_case "$sess" \
   || { echo "kit-check: send --dry-run does not compare the terminal's working directory to .claude/worktrees/zz-ok"; exit 1; }
+# The comparison itself is the pure function cwd_ok. It is pulled out of the script text and tried on real
+# inputs, so a version that skips the comparison fails here. cwd_ok_case takes the function source, so a
+# mutant is run against the same case.
+cwd_ok_src=$(sed -n '/^cwd_ok() {$/,/^}$/p' "$sess")
+[ -n "$cwd_ok_src" ] || { echo "kit-check: session.sh has no cwd_ok function"; exit 1; }
+cwd_ok_case() {
+  (
+    eval "$1"
+    w=/r/.claude/worktrees/zz-ok
+    cwd_ok "$w" "$w" && cwd_ok "$w/sub" "$w" && cwd_ok "$w/" "$w" || exit 1
+    ! cwd_ok "$w-2" "$w" || exit 1          # a sibling slug that shares the prefix
+    ! cwd_ok "" "$w" || exit 1              # Ghostty reported nothing
+    ! cwd_ok "missing value" "$w" || exit 1 # AppleScript's name for no value
+    ! cwd_ok "$w/../x" "$w" || exit 1       # climbs out of the worktree
+    ! cwd_ok /elsewhere "$w" || exit 1
+  )
+}
+cwd_ok_case "$cwd_ok_src" || { echo "kit-check: cwd_ok does not accept the worktree and refuse everything else"; exit 1; }
+! cwd_ok_case 'cwd_ok() { return 0; }' || { echo "kit-check: the cwd_ok case passes a version that skips the comparison"; exit 1; }
 
 # Phase 1e: one worker per slug. A lock dir under spawn/locks holds the terminal id and start time.
 # claude_running finds the worker with ps, so a stub named claude (a copy of sleep) stands in for a session.
@@ -213,6 +232,10 @@ out=$("$sess" close zz-lock --abandon --dry-run 2>&1) \
   || { echo "kit-check: close --abandon --dry-run failed: $out"; exit 1; }
 case "$out" in *"would remove the lock $lockd"*) ;; *) echo "kit-check: close --abandon --dry-run does not say it would remove the lock"; printf '%s\n' "$out"; exit 1 ;; esac
 [ -d "$lockd" ] || { echo "kit-check: close --dry-run removed the lock"; exit 1; }
+# A lock with no branch record (open killed before the worktree existed) is cleared by close --abandon and
+# the dry-run says only that, not a worktree and branch removal.
+case "$out" in *"no branch record"*) ;; *) echo "kit-check: close --abandon --dry-run on a lock with no branch record does not say so"; printf '%s\n' "$out"; exit 1 ;; esac
+case "$out" in *"git worktree remove"*|*"git branch -D"*) echo "kit-check: close --abandon --dry-run on a lock with no branch record plans a branch or worktree removal"; exit 1 ;; esac
 rm -rf "$lockd"
 # A real close needs Ghostty, so check the script: release_lock is defined, and called on the gone path and the final path.
 grep -q '^release_lock()' "$sess" || { echo "kit-check: session.sh has no release_lock"; exit 1; }
