@@ -204,7 +204,7 @@ if ps -axo command= >/dev/null 2>&1; then
   rc=0; out=$("$sess" open feat zz-lock --report-to main --dry-run 2>&1) || rc=$?
   [ "$rc" = 2 ] || { echo "kit-check: open with a live lock exited $rc, not 2"; printf '%s\n' "$out"; exit 1; }
   case "$out" in *"session.sh: refused"*live*HOLDER-TERM-7*2026-11-09T10:00:00Z*) ;; *) echo "kit-check: live-lock refusal does not say live and name the terminal and start time"; printf '%s\n' "$out"; exit 1 ;; esac
-  kill "$stubpid"; stubpid=""
+  kill "$stubpid"; wait "$stubpid" 2>/dev/null || true; stubpid=""
 else
   echo "kit-check: skipped the live-lock case: ps is not permitted here (ci runs it)"
 fi
