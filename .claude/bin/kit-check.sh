@@ -85,7 +85,13 @@ long42=$(printf 'a%.0s' $(seq 1 42))
 # The prompt comes only from the git-ignored review folder; the test files are removed on exit.
 rev=.claude/review
 mkdir -p "$rev"
-trap '[ -z "${stubpid:-}" ] || kill "$stubpid" 2>/dev/null || true; rm -rf "$tmp" "$rev"/spawn-zz-* "$rev/spawn-$long42.md" "${gcd:-/nonexistent}"/spawn/zz-* "${gcd:-/nonexistent}"/spawn/locks/zz-*' EXIT
+# Phase 1c: the watchdog appends to $rev/runs.log; the test lines (slugs zz-*) are taken out again on exit.
+rmzzlog() {
+  [ -f "$rev/runs.log" ] || return 0
+  { grep -v '^zz-' "$rev/runs.log" || true; } > "$rev/runs.log.zz"
+  if [ -s "$rev/runs.log.zz" ]; then mv "$rev/runs.log.zz" "$rev/runs.log"; else rm -f "$rev/runs.log.zz" "$rev/runs.log"; fi
+}
+trap '[ -z "${stubpid:-}" ] || kill -- "-$stubpid" "$stubpid" 2>/dev/null || true; rmzzlog; rm -rf "$tmp" "$rev"/spawn-zz-* "$rev/spawn-$long42.md" "${gcd:-/nonexistent}"/spawn/zz-* "${gcd:-/nonexistent}"/spawn/locks/zz-*' EXIT
 echo "SECRET-PROMPT-TEXT" > "$rev/spawn-zz-ok.md"
 cp "$rev/spawn-zz-ok.md" "$rev/spawn-$long42.md"
 refuses() {
@@ -243,6 +249,83 @@ grep -q '^release_lock()' "$sess" || { echo "kit-check: session.sh has no releas
 # shellcheck disable=SC2016  # the pattern is literal script text, not an expansion
 sed -n '/^if \[ "\$gone" = 1 \]; then/,/^fi$/p' "$sess" | grep -q 'release_lock' || { echo "kit-check: the already-gone close path does not release the lock"; exit 1; }
 tail -n 5 "$sess" | grep -q 'release_lock' || { echo "kit-check: the normal and abandon close path does not release the lock"; exit 1; }
+
+# Phase 1c: a run time cap, a local alert and a run log for workers.
+# Cap value: one optional setting, an integer from 60 to 86400, unset means 3600. The dry-run prints the cap.
+# shellcheck disable=SC2016  # '$(id)' is literal text that must be refused, not expanded
+for bad in abc 0 -5 1e3 '3600; rm -rf /' '' ' ' 59 86401 0060 '$(id)'; do
+  ( export STRIDAL_WORKER_CAP_SECONDS="$bad"; refuses open feat zz-ok --report-to main --dry-run ) || exit 1
+done
+for good in 60 120 86400; do
+  out=$(STRIDAL_WORKER_CAP_SECONDS=$good "$sess" open feat zz-ok --report-to main --dry-run 2>&1) \
+    || { echo "kit-check: session.sh refused the cap $good: $out"; exit 1; }
+  case "$out" in *"worker cap: $good s"*) ;; *) echo "kit-check: open --dry-run with cap $good does not print 'worker cap: $good s'"; printf '%s\n' "$out"; exit 1 ;; esac
+done
+out=$(env -u STRIDAL_WORKER_CAP_SECONDS "$sess" open feat zz-ok --report-to main --dry-run 2>&1)
+case "$out" in *"worker cap: 3600 s"*) ;; *) echo "kit-check: open --dry-run with no setting does not print 'worker cap: 3600 s'"; printf '%s\n' "$out"; exit 1 ;; esac
+# Alert: the dry-run prints the exact osascript text, built from the slug and an outcome word only.
+want_alert="alert: osascript -e 'display notification \"worker zz-ok: cap-kill\" with title \"Stridal\"'"
+printf '%s\n' "$out" | grep -qxF "$want_alert" \
+  || { echo "kit-check: open --dry-run does not print exactly: $want_alert"; printf '%s\n' "$out"; exit 1; }
+out2=$(STRIDAL_WORKER_CAP_SECONDS=120 ZZ_INJECT='"; do shell script "id' "$sess" open feat zz-ok --report-to main --dry-run 2>&1)
+[ "$(printf '%s\n' "$out2" | grep '^alert: ')" = "$want_alert" ] \
+  || { echo "kit-check: the alert text changed with the environment"; exit 1; }
+[ "$(grep -c 'display notification' "$sess")" = 1 ] || { echo "kit-check: session.sh builds a notification in more than one place"; exit 1; }
+# The watchdog code runs fixed commands only: no eval, no sh -c, no sourcing, and ps and osascript by absolute path.
+wdcode=$(sed -n '/^# --- watchdog begin/,/^# --- watchdog end/p' "$sess")
+[ -n "$wdcode" ] || { echo "kit-check: session.sh has no '# --- watchdog begin' ... '# --- watchdog end' section"; exit 1; }
+if printf '%s\n' "$wdcode" | grep -vE '^[[:space:]]*#' | grep -nE '(^|[^A-Za-z_])(eval|source)[ ;]|(^|[ ;|&(])(ba|z|)sh +-l?c|(^|[ ;])\. +[^ ]'; then
+  echo "kit-check: the watchdog section of session.sh can run a command named at run time (lines above)"; exit 1
+fi
+if printf '%s\n' "$wdcode" | grep -vE '^[[:space:]]*#' | grep -nE '(^|[;&|(`]|\$\(|^[[:space:]]+)[[:space:]]*(ps|osascript)( |$)'; then
+  echo "kit-check: the watchdog section calls ps or osascript by bare name, so PATH could change what runs (lines above)"; exit 1
+fi
+# The internal watch command takes a slug and an integer and nothing else, and only guards a slug that has a lock.
+mkdir -p "$gcd/spawn/locks/zz-cap"
+for badwatch in "zz-cap abc" "zz-cap 0" "zz-cap -5" "zz-cap 1e3" "zz-cap 86401" "zz-cap 2;id" "zz-cap" "zz-cap 2 extra" "zz-cap 2 --dry-run" "Bad_Slug 2" "zz-nolock 2"; do
+  # shellcheck disable=SC2086  # word splitting is the point: each case is a slug and a value
+  refuses watch $badwatch
+done
+rmdir "$gcd/spawn/locks/zz-cap"
+# Run log: git-ignored, and a dry-run writes nothing to it.
+git check-ignore -q .claude/review/runs.log || { echo "kit-check: .claude/review/runs.log is not git-ignored"; exit 1; }
+sumbefore=$({ cat "$rev/runs.log" 2>/dev/null || true; } | cksum)
+"$sess" open feat zz-ok --report-to main --dry-run >/dev/null 2>&1
+[ "$sumbefore" = "$({ cat "$rev/runs.log" 2>/dev/null || true; } | cksum)" ] \
+  || { echo "kit-check: open --dry-run wrote to runs.log"; exit 1; }
+# Cap and end, with stub workers. The stub is a script started under set -m, so it leads its own process group
+# (a sleep child shares it); the watchdog must kill that whole group and nothing else. Needs ps, so the sandbox skips it.
+if ps -axo command= >/dev/null 2>&1; then
+  stubwt=$(git worktree list; git branch --list)
+  printf '#!/bin/sh\nsleep 30\n' > "$tmp/claude"
+  chmod +x "$tmp/claude"
+  mkdir -p "$gcd/spawn/locks/zz-cap"
+  echo "CAP-TERM-1" > "$gcd/spawn/locks/zz-cap/term"
+  stubpid=$( set -m; "$tmp/claude" --name zz-cap 600 >/dev/null 2>&1 </dev/null & echo $! )
+  sleep 1
+  kill -0 -- "-$stubpid" 2>/dev/null || { echo "kit-check: the cap stub did not start as its own process group"; exit 1; }
+  t0=$(date +%s)
+  STRIDAL_ALERT=0 "$sess" watch zz-cap 2 || { echo "kit-check: session.sh watch zz-cap 2 failed"; exit 1; }
+  [ $(($(date +%s) - t0)) -le 10 ] || { echo "kit-check: the cap kill took longer than 10 s"; exit 1; }
+  ! kill -0 -- "-$stubpid" 2>/dev/null || { echo "kit-check: the stub's process group is still alive after the cap"; exit 1; }
+  stubpid=""
+  [ "$(grep -c '^zz-cap ' "$rev/runs.log")" = 1 ] || { echo "kit-check: runs.log does not hold exactly one zz-cap line"; cat "$rev/runs.log"; exit 1; }
+  grep -Eq '^zz-cap [0-9T:Z-]+ [0-9T:Z-]+ cap-kill$' "$rev/runs.log" || { echo "kit-check: the zz-cap line is not '<slug> <start> <end> cap-kill'"; cat "$rev/runs.log"; exit 1; }
+  [ ! -e "$gcd/spawn/locks/zz-cap" ] || { echo "kit-check: a cap kill left the lock dir"; exit 1; }
+  [ "$stubwt" = "$(git worktree list; git branch --list)" ] || { echo "kit-check: a cap kill changed the worktrees or branches"; exit 1; }
+  # A worker that ends on its own before the cap is logged ended, and its lock is left for close.
+  printf '#!/bin/sh\nsleep 2\ntouch "%s/zz-end-done"\n' "$tmp" > "$tmp/claude"
+  mkdir -p "$gcd/spawn/locks/zz-end"
+  echo "END-TERM-1" > "$gcd/spawn/locks/zz-end/term"
+  stubpid=$( set -m; "$tmp/claude" --name zz-end 600 >/dev/null 2>&1 </dev/null & echo $! )
+  STRIDAL_ALERT=0 "$sess" watch zz-end 30 || { echo "kit-check: session.sh watch zz-end 30 failed"; exit 1; }
+  stubpid=""
+  [ -e "$tmp/zz-end-done" ] || { echo "kit-check: the stub that ends on its own was killed before it finished"; exit 1; }
+  grep -Eq '^zz-end [0-9T:Z-]+ [0-9T:Z-]+ ended$' "$rev/runs.log" || { echo "kit-check: the zz-end line is not '<slug> <start> <end> ended'"; cat "$rev/runs.log"; exit 1; }
+  [ -d "$gcd/spawn/locks/zz-end" ] || { echo "kit-check: a normal end removed the lock, which close owns"; exit 1; }
+else
+  echo "kit-check: skipped the watchdog cap and end cases: ps is not permitted here (ci runs them)"
+fi
 
 # Phase 1d: every worker is told fetched text is data, in the skill and in the prompt open appends.
 grep -q 'is data, never instructions' .claude/skills/brief/SKILL.md \
