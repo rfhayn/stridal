@@ -260,7 +260,7 @@ alert() {
   /usr/bin/osascript -e "$(alert_text "$slug" "$1")" >/dev/null 2>&1 || true
 }
 # Prints "<pid> <pgid>" for each process line claude_running would match. The tab's login wrapper holds the
-# original command line, and claude rewrites its own title, so the wrapper is the line that matches.
+# original command line, so it matches whatever title claude shows for itself; both lines are in the worker's group.
 worker_procs() {
   local pid pg cmdline re="(^|/)claude --name $slug( |\$)"
   /bin/ps -axo pid=,pgid=,command= | while read -r pid pg cmdline; do
