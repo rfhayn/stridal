@@ -274,7 +274,7 @@ out2=$(STRIDAL_WORKER_CAP_SECONDS=120 ZZ_INJECT='"; do shell script "id' "$sess"
 # The watchdog code runs fixed commands only: no eval, no sh -c, no sourcing, and ps and osascript by absolute path.
 wdcode=$(sed -n '/^# --- watchdog begin/,/^# --- watchdog end/p' "$sess")
 [ -n "$wdcode" ] || { echo "kit-check: session.sh has no '# --- watchdog begin' ... '# --- watchdog end' section"; exit 1; }
-if printf '%s\n' "$wdcode" | grep -vE '^[[:space:]]*#' | grep -nE '(^|[^A-Za-z_])(eval|source)[ ;]|(^|[ ;|&(])(ba|z|)sh +-l?c|(^|[ ;])\. +[^ ]'; then
+if printf '%s\n' "$wdcode" | grep -vE '^[[:space:]]*#' | grep -nE '(^|[^A-Za-z_])(eval|source)[ ;]|(^|[ ;|&(])(bash|zsh|sh) +-l?c|(^|[ ;])\. +[^ ]'; then
   echo "kit-check: the watchdog section of session.sh can run a command named at run time (lines above)"; exit 1
 fi
 if printf '%s\n' "$wdcode" | grep -vE '^[[:space:]]*#' | grep -nE '(^|[;&|(`]|\$\(|^[[:space:]]+)[[:space:]]*(ps|osascript)( |$)'; then

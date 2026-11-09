@@ -5,6 +5,9 @@
 #   .claude/bin/session.sh close <slug> [--abandon] [--dry-run]
 #   .claude/bin/session.sh send <slug> ship [--dry-run]
 #   .claude/bin/session.sh sync [--dry-run]
+#   .claude/bin/session.sh watch <slug> <seconds>    (internal: open starts it; see the watchdog section)
+# open also starts a detached watchdog: past the cap (STRIDAL_WORKER_CAP_SECONDS, 60 to 86400, default 3600) it
+# kills the worker's process group, and it logs every worker's start and end to .claude/review/runs.log.
 # send types the one fixed text /ship and Enter into the worker's recorded terminal; it takes no other command
 # and no text, because typing arbitrary text into a terminal would be a keystroke-injection primitive.
 # sync runs git pull --ff-only in the main checkout and nothing else; /land calls it before close, as its own
@@ -63,7 +66,7 @@ OSA
 
 cmd=${1:-}
 [ $# -gt 0 ] && shift
-sendcmd="" type="" slug="" report="" dry=0 abandon=0 have_report=0
+sendcmd="" type="" slug="" report="" dry=0 abandon=0 have_report=0 cap=""
 case "$cmd" in
   open)
     [ $# -ge 2 ] || refuse "usage: open <type> <slug> --report-to <name> [--dry-run]"
@@ -105,6 +108,13 @@ case "$cmd" in
     done
     [ "$sendcmd" = ship ] || refuse "send accepts only the command ship"
     ;;
+  watch)
+    # Internal: a slug and an integer, nothing else (no dry-run, no command text). The integer may be as low as 1
+    # so kit-check can test a 2 s cap; open itself only ever passes a value from 60 to 86400.
+    [ $# -eq 2 ] || refuse "usage: watch <slug> <seconds>"
+    slug=$1 cap=$2
+    [[ $cap =~ ^[1-9][0-9]{0,4}$ ]] && [ "$cap" -le 86400 ] || refuse "watch seconds must be an integer from 1 to 86400"
+    ;;
   sync)
     # No slug and no other argument: the one fixed command is git pull --ff-only, so nothing can be injected.
     while [ $# -gt 0 ]; do
@@ -120,13 +130,21 @@ case "$cmd" in
     # Fast-forward only: a diverged branch or a conflicting dirty tree stops with git's message and changes nothing.
     exec git pull --ff-only
     ;;
-  *) refuse "first argument must be open, close, send or sync" ;;
+  *) refuse "first argument must be open, close, send, sync or watch" ;;
 esac
 
 [[ $slug =~ $SLUG_RE ]] || refuse "slug must match $SLUG_RE"
 if [ "$cmd" = open ]; then
   [ "$have_report" = 1 ] || refuse "open needs --report-to <name>"
   [[ $report =~ $NAME_RE ]] || refuse "--report-to must match $NAME_RE"
+  # The one optional setting: the run time cap in seconds. Unset means 3600; set, it must be an integer from 60
+  # to 86400. The value is not echoed back, and it only ever reaches the watchdog as that validated integer.
+  cap=3600
+  if [ -n "${STRIDAL_WORKER_CAP_SECONDS+x}" ]; then
+    cap=$STRIDAL_WORKER_CAP_SECONDS
+    [[ $cap =~ ^[1-9][0-9]{1,4}$ ]] && [ "$cap" -ge 60 ] && [ "$cap" -le 86400 ] \
+      || refuse "STRIDAL_WORKER_CAP_SECONDS must be an integer from 60 to 86400 (unset means 3600)"
+  fi
 fi
 
 # Everything below builds from validated values only.
@@ -153,12 +171,15 @@ branchfile="$spawn/$slug.branch"
 fileid() { if [ "$(uname)" = Darwin ]; then stat -f '%i:%l' "$@"; else stat -c '%i:%h' "$@"; fi; }
 # Ghostty runs the tab command with a minimal PATH that lacks ~/.local/bin, so claude goes in by absolute path.
 # A dry-run on a machine without claude (CI) falls back to the bare name.
-claude_bin=$(command -v claude || true)
-if [ -z "$claude_bin" ]; then
-  [ "$dry" = 1 ] || refuse "claude is not on PATH"
-  claude_bin=claude
+claude_bin=""
+if [ "$cmd" != watch ]; then # the watchdog never starts claude, so it needs no path to it (and CI has none)
+  claude_bin=$(command -v claude || true)
+  if [ -z "$claude_bin" ]; then
+    [ "$dry" = 1 ] || refuse "claude is not on PATH"
+    claude_bin=claude
+  fi
+  [[ $claude_bin =~ $PATH_RE ]] || refuse "the claude path has a character outside A-Za-z0-9/._-"
 fi
-[[ $claude_bin =~ $PATH_RE ]] || refuse "the claude path has a character outside A-Za-z0-9/._-"
 # Ghostty runs the tab command without a login shell, so the worker would lack /opt/homebrew/bin (gh, shellcheck).
 # zsh -l reads the user's profile first. Every token inside the quotes is validated above or fixed.
 tabcmd="/bin/zsh -lc 'exec $claude_bin --name $slug --permission-mode auto --strict-mcp-config -- \"\$(cat $promptfile)\"'"
@@ -225,6 +246,83 @@ cwd_guard() {
   cwd_ok "$cwd" "$wt" || refuse "terminal $tid is in '${cwd:-no directory reported}', not in the worktree $wt for $slug; not typing /ship"
 }
 
+# --- watchdog begin
+# The cap watchdog. open starts it detached (own process group, nohup), so it outlives this script. It takes a
+# validated slug and a validated integer and nothing else. It runs fixed commands only (ps and osascript by absolute
+# path, so PATH cannot swap them); no value from the prompt file, the environment or an argument is run or spliced
+# into the alert. The one environment value it reads, STRIDAL_ALERT=0, can only switch the alert off (kit-check does).
+runlog="$top/.claude/review/runs.log"
+# The alert text: a fixed message built from the validated slug and an outcome word.
+alert_text() { printf 'display notification "worker %s: %s" with title "Stridal"' "$1" "$2"; }
+alert() {
+  [ "${STRIDAL_ALERT-1}" != 0 ] || return 0
+  [ -x /usr/bin/osascript ] || return 0
+  /usr/bin/osascript -e "$(alert_text "$slug" "$1")" >/dev/null 2>&1 || true
+}
+# Prints "<pid> <pgid>" for each process line claude_running would match. The tab's login wrapper holds the
+# original command line, and claude rewrites its own title, so the wrapper is the line that matches.
+worker_procs() {
+  local pid pg cmdline re="(^|/)claude --name $slug( |\$)"
+  /bin/ps -axo pid=,pgid=,command= | while read -r pid pg cmdline; do
+    if [[ $cmdline =~ $re ]]; then echo "$pid $pg"; fi
+  done
+}
+# Append "<slug> <start> <end> <outcome>". A symlinked log or folder is not written through.
+logline() {
+  [ ! -L "$top/.claude/review" ] && [ ! -L "$runlog" ] || return 0
+  mkdir -p "$top/.claude/review"
+  printf '%s %s %s %s\n' "$slug" "$1" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$2" >> "$runlog"
+}
+watch_worker() {
+  local cap=$1 start t0 i procs step outcome pg="" own leader=0 multi=0 lpid lpg wpid wpg
+  [ -d "$lockdir" ] || refuse "no lock for $slug: watch only guards a worker that open started"
+  step=5
+  [ "$cap" -ge 60 ] || step=1
+  # The worker starts a moment after the tab opens: wait up to 60 s for it.
+  procs=""
+  for ((i = 0; i < 60; i++)); do
+    procs=$(worker_procs)
+    [ -z "$procs" ] || break
+    sleep 1
+  done
+  start=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  if [ -z "$procs" ]; then logline "$start" no-worker; return 0; fi
+  # For the owner to read. The kill below looks the group up again, so a recycled pid is never signalled.
+  read -r wpid wpg <<<"${procs%%$'\n'*}"
+  { printf '%s\n' "$wpid" > "$lockdir/pid"; printf '%s\n' "$wpg" > "$lockdir/pgid"; } 2>/dev/null || true
+  t0=$(date +%s)
+  while :; do
+    sleep "$step"
+    procs=$(worker_procs)
+    if [ -z "$procs" ]; then logline "$start" ended; return 0; fi # the lock stays for close
+    if [ $(($(date +%s) - t0)) -ge "$cap" ]; then break; fi
+  done
+  # Cap reached. Signal a group only when every matching line is in one group, that group is led by a matching
+  # process (the tab's wrapper, so never Ghostty or another tab), and it is neither init's nor this watchdog's.
+  while read -r lpid lpg; do
+    if [ -z "$pg" ]; then pg=$lpg; elif [ "$pg" != "$lpg" ]; then multi=1; fi
+    if [ "$lpid" = "$lpg" ]; then leader=1; fi
+  done <<<"$procs"
+  own=$(/bin/ps -o pgid= -p $$) && own=${own// /}
+  outcome="cap-kill"
+  if [ "$multi" = 1 ] || [ "$leader" = 0 ] || ! [[ $pg =~ ^[0-9]+$ ]] || [ "$pg" -le 1 ] || [ "$pg" = "$own" ]; then
+    outcome="cap-nokill"
+  else
+    kill -TERM -- "-$pg" 2>/dev/null || true
+    for ((i = 0; i < 10; i++)); do
+      kill -0 -- "-$pg" 2>/dev/null || break
+      sleep 1
+    done
+    if kill -0 -- "-$pg" 2>/dev/null; then kill -KILL -- "-$pg" 2>/dev/null || true; fi
+  fi
+  logline "$start" "$outcome"
+  if [ "$outcome" = cap-kill ]; then release_lock; fi
+  alert "$outcome"
+}
+# --- watchdog end
+# One line, so bash has read all of it before a sync can rewrite this file under the long-running watchdog.
+if [ "$cmd" = watch ]; then watch_worker "$cap"; exit 0; fi
+
 if [ "$dry" = 1 ]; then
   if [ "$cmd" = send ]; then
     cwd_guard
@@ -249,6 +347,10 @@ if [ "$dry" = 1 ]; then
     echo "worktree: $wt"
     echo "tab command: $tabcmd"
     echo "prompt append: $fetched_rule"
+    echo "worker cap: $cap s (STRIDAL_WORKER_CAP_SECONDS, 60 to 86400, default 3600)"
+    echo "would start a detached watchdog: session.sh watch $slug $cap; it logs start and end to $runlog,"
+    echo "and past the cap ends the worker's process group, releases the lock and sends:"
+    echo "alert: osascript -e '$(alert_text "$slug" cap-kill)'"
     echo "AppleScript (arguments: worktree, tab command):"
     printf '%s\n' "$APPLE_OPEN"
   else
@@ -310,7 +412,10 @@ if [ "$cmd" = open ]; then
   termid=$(osascript -e "$APPLE_OPEN" "$wt" "$tabcmd") || refuse "Ghostty did not open the tab; clean up with: .claude/bin/session.sh close $slug --abandon"
   printf '%s\n' "$termid" > "$termfile"
   printf '%s\n' "$termid" > "$lockdir/term"
-  echo "opened $branch in terminal $termid (worktree $wt)"
+  # The cap watchdog: detached and in its own process group, so it outlives this script and a signal to this
+  # call's group. It is session.sh again with a validated slug and integer, never a command line from outside.
+  ( set -m; /usr/bin/nohup "$top/.claude/bin/session.sh" watch "$slug" "$cap" >/dev/null 2>&1 </dev/null & )
+  echo "opened $branch in terminal $termid (worktree $wt); cap watchdog started: $cap s, log $runlog"
   exit 0
 fi
 
