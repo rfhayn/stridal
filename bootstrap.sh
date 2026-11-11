@@ -27,22 +27,21 @@ case "$RUNNER" in hosted|self-hosted) ;; *) echo "runner must be 'hosted' or 'se
 # 1. Files (never overwrite).
 cd "$KIT"
 for f in CLAUDE.md .claude/settings.json .claude/agents/reviewer.md .claude/agents/researcher.md \
-         .claude/skills/brief/SKILL.md .claude/skills/ship/SKILL.md .claude/skills/merge/SKILL.md .claude/skills/land/SKILL.md .claude/hooks/one-way-guard.sh \
-         .claude/bin/scope-check.sh .claude/bin/preflight.sh .claude/bin/check-evidence.sh .claude/bin/session.sh .claude/statusline.sh .claude/rules/EXAMPLE-migrations.md.example \
+         .claude/hooks/one-way-guard.sh \
+         .claude/bin/scope-check.sh .claude/bin/check-evidence.sh .claude/bin/session.sh .claude/statusline.sh .claude/rules/EXAMPLE-migrations.md.example \
          .claude/bin/dispatch-next.sh .claude/bin/as-agent.sh .claude/bin/token-expiry.sh \
          .claude/bin/test-session.sh .claude/bin/test-dispatch.sh .claude/bin/test-token-expiry.sh \
          .claude/bin/dispatch.sh .claude/bin/test-launcher.sh .claude/bin/test-scope-check.sh docs/runbooks/agent-token.md \
          .claude/hooks/notify-waiting.sh .claude/skills/dispatch/SKILL.md .claude/skills/dispatch/worker-contract.md \
          .github/lane/lane.sh .github/lane/test.sh \
          .github/workflows/ci.yml .github/workflows/lane.yml .github/pull_request_template.md \
-         docs/ROADMAP.md docs/adr/0000-template.md docs/ARCHITECTURE.md docs/RISKS.md \
+         docs/adr/0000-template.md docs/ARCHITECTURE.md docs/RISKS.md \
          docs/templates/DATA-MODEL.md docs/templates/API.md docs/templates/INVENTORY.md \
          docs/templates/runbook.md docs/templates/spec.md; do
   if [ -e "$DEST/$f" ]; then echo "skip (exists): $f"; continue; fi
-  # This repo keeps its own CLAUDE.md, ci.yml and docs/ROADMAP.md; new projects get the templates.
+  # This repo keeps its own CLAUDE.md and ci.yml; new projects get the templates.
   case "$f" in
     CLAUDE.md) src=CLAUDE.template.md ;;
-    docs/ROADMAP.md) src=docs/ROADMAP.template.md ;;
     .github/workflows/ci.yml) src=.github/ci.template.yml ;;
     *) src="$f" ;;
   esac

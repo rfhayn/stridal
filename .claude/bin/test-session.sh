@@ -57,7 +57,7 @@ case_ "open no prompt" 2 "no prompt file" open feat nope --key acme --report-to 
 case_ "open symlinked prompt" 2 "symlink" open feat ln --key acme --report-to dispatch-acme --dry-run
 case_ "open oversize prompt" 2 "over 20 KB" open feat big --key acme --report-to dispatch-acme --dry-run
 case_ "open no report-to" 2 "--report-to" open feat demo --key acme --dry-run
-out2="--name demo " case_ "open without --key keeps the legacy bare-slug name" 0 "bare slug, no record" open feat demo --report-to dispatch-acme --dry-run
+case_ "open without --key refused" 2 "open needs --key" open feat demo --report-to dispatch-acme --dry-run
 case_ "open bad key" 2 "--key must match" open feat demo --key Acme --report-to dispatch-acme --dry-run
 case_ "open key with a digit first refused" 2 "--key must match" open feat demo --key 1acme --report-to dispatch-acme --dry-run
 case_ "open key with a metacharacter refused" 2 "--key must match" open feat demo --key 'a;b' --report-to dispatch-acme --dry-run
@@ -73,11 +73,9 @@ total=$((total+1))
 if HOME="$T/hb" bash "$SESSION" open feat demo --key acme --report-to dispatch-acme --dry-run 2>&1 | grep -q '\.bun'; then
   fail=$((fail+1)); echo "FAIL open dry-run: the tab command names .bun"
 fi
-# send and sync stay until the old /ship and /land skills retire (#438); the kit-check cases cover their depth.
-case_ "send takes only ship" 2 "send accepts only the command ship" send demo /exit
-case_ "send needs a recorded terminal" 2 "no terminal recorded" send demo ship --dry-run
-case_ "sync takes no argument" 2 "sync takes no argument" sync --hard
-case_ "sync dry-run" 0 "git pull --ff-only" sync --dry-run
+# send and sync retired with the hand-run skills (#432, #438): they are unknown commands now.
+case_ "send refused as an unknown command" 2 "first argument must be open, close, watch, notified, clear or name" send demo ship --dry-run
+case_ "sync refused as an unknown command" 2 "first argument must be open, close, watch, notified, clear or name" sync --dry-run
 mkdir -p .git/spawn
 touch .git/spawn/demo.waiting
 case_ "watch: marker present -> waiting" 0 "waiting demo" watch demo --timeout 5
