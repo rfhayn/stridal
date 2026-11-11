@@ -10,6 +10,8 @@
 #                                                         block of CLAUDE.md (in the cwd by default). The dispatcher's
 #                                                         session is dispatch-<key>, a worker's <key>-<slug>, so two
 #                                                         repos' dispatchers on one machine never share a name.
+#   dispatch-next.sh --field <Key> [--claude-md <file>]    prints that Key's value from the same block (e.g. Agent, "Agent keychain",
+#                                                         Approver); exit 2 when it is missing, repeated, empty or a {{placeholder}}.
 # Two workers at once (optional; without --with/--with-hard the pick is unchanged):
 #   --with <n>          (repeatable) an in-flight issue; its body gives its footprint
 #   --with-hard <n>     (repeatable) an in-flight issue known to be hard (its PR is labelled lane:3-hard); also in-flight
@@ -45,10 +47,11 @@ export LC_ALL=C
 refuse() { echo "dispatch-next.sh: refused: $*" >&2; exit 2; }
 
 owner="" project="" why="" list_now="" areas="" hard_file="" with_list="" with_hard_list="" grew_args=()
-name_key="" claude_md="CLAUDE.md"
+name_key="" claude_md="CLAUDE.md" field=""
 while [ $# -gt 0 ]; do
   case $1 in
     --name-key) name_key=1; shift ;;
+    --field)   [ $# -ge 2 ] || refuse "--field needs a value"; field=$2; shift 2 ;;
     --claude-md) [ $# -ge 2 ] || refuse "--claude-md needs a value"; claude_md=$2; shift 2 ;;
     --list-now) list_now=1; shift ;;
     --owner)   [ $# -ge 2 ] || refuse "--owner needs a value"; owner=$2; shift 2 ;;
@@ -66,6 +69,24 @@ while [ $# -gt 0 ]; do
     *) refuse "unknown argument '$1'" ;;
   esac
 done
+if [ -n "$field" ]; then
+  # Any one `Key: value` pair of the ## Dispatcher block, by the same block rules as --name-key. Exactly one pair
+  # with that key; an empty value or a {{placeholder}} counts as unset. The launcher reads Agent, Agent keychain
+  # and Approver this way, so there is one parser of the block.
+  [[ $field =~ ^[A-Za-z][A-Za-z\ ]*$ ]] || refuse "--field must be a key name (letters and spaces)"
+  [ -r "$claude_md" ] && [ -f "$claude_md" ] || refuse "cannot read $claude_md"
+  vals=$(awk -v key="$field" '
+    /^## / { inblk = ($0 ~ /^## Dispatcher[[:space:]]*$/); next }
+    inblk && /^- / {
+      line = substr($0, 3); n = split(line, parts, / · /)
+      for (i = 1; i <= n; i++) if (index(parts[i], key ":") == 1) { v = substr(parts[i], length(key) + 2); sub(/^[[:space:]]*/, "", v); sub(/[[:space:]]+$/, "", v); print v }
+    }' "$claude_md") || refuse "cannot parse $claude_md"
+  [ -n "$vals" ] || refuse "the ## Dispatcher block of $claude_md has no $field: value"
+  [ "$(printf '%s\n' "$vals" | wc -l | tr -d ' ')" = 1 ] || refuse "the ## Dispatcher block of $claude_md has more than one $field: key"
+  case $vals in *'{{'*) refuse "$field in $claude_md is still a {{placeholder}}" ;; esac
+  printf '%s\n' "$vals"
+  exit 0
+fi
 if [ -n "$name_key" ]; then
   # The repo's key from the `## Dispatcher` block: its bullets are `Key: value` pairs joined by " · ". Only that
   # block counts (it ends at the next "## " heading). Exactly one Name pair, matching KEY_RE.
