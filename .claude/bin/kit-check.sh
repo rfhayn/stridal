@@ -47,8 +47,9 @@ done
 # the self-tests pass in the install, and nothing names the repo it was ported from.
 disp_scripts=".claude/bin/dispatch-next.sh .claude/bin/as-agent.sh .claude/bin/token-expiry.sh \
   .claude/bin/test-session.sh .claude/bin/test-dispatch.sh .claude/bin/test-token-expiry.sh \
-  .claude/hooks/notify-waiting.sh .github/lane/lane.sh .github/lane/test.sh"
-for f in $disp_scripts .claude/skills/dispatch/SKILL.md .claude/skills/dispatch/worker-contract.md; do
+  .claude/hooks/notify-waiting.sh .github/lane/lane.sh .github/lane/test.sh \
+  .claude/bin/dispatch.sh .claude/bin/test-launcher.sh"
+for f in $disp_scripts .claude/skills/dispatch/SKILL.md .claude/skills/dispatch/worker-contract.md docs/runbooks/agent-token.md; do
   [ -f "$d/$f" ] || { echo "kit-check: $f is missing from a new project"; exit 1; }
   cmp -s "$f" "$d/$f" || { echo "kit-check: installed $f differs from the kit's"; exit 1; }
 done
@@ -56,13 +57,26 @@ for f in $disp_scripts; do
   [ -x "$d/$f" ] || { echo "kit-check: installed $f is not executable"; exit 1; }
 done
 (cd "$d" && .claude/bin/test-session.sh && .claude/bin/test-dispatch.sh && .claude/bin/test-token-expiry.sh \
-  && sh .github/lane/test.sh) >"$tmp/selftests.out" 2>&1 \
+  && .claude/bin/test-launcher.sh && sh .github/lane/test.sh) >"$tmp/selftests.out" 2>&1 \
   || { tail -n 20 "$tmp/selftests.out"; echo "kit-check: the dispatcher self-tests fail in a new project"; exit 1; }
 if (cd "$d" && grep -nE 'job-search|job-radar|rfhayn|/Users/' .claude/bin/session.sh .claude/bin/dispatch-next.sh \
     .claude/bin/as-agent.sh .claude/bin/token-expiry.sh .claude/hooks/notify-waiting.sh \
+    .claude/bin/dispatch.sh .claude/bin/test-launcher.sh docs/runbooks/agent-token.md \
     .claude/skills/dispatch/*.md .github/lane/*.sh); then
   echo "kit-check: a dispatcher file in a new project names job-search, a login or a home path"; exit 1
 fi
+# The runbook ships filled in, not as a template, and covers what an adopter must do.
+if head -n 1 "$d/docs/runbooks/agent-token.md" | grep -q '^> TEMPLATE'; then
+  echo "kit-check: docs/runbooks/agent-token.md carries the TEMPLATE marker"; exit 1
+fi
+# #437: the launcher test is part of what ci runs in a new project.
+grep -q 'test-launcher.sh' .github/ci.template.yml || { echo "kit-check: ci.template.yml does not run test-launcher.sh"; exit 1; }
+# The alias is offered, never forced: copy-only bootstrap with an empty HOME prints it and writes nothing there.
+mkdir "$tmp/home"
+alias_out=$(HOME="$tmp/home" ./bootstrap.sh "$tmp/aliasdest" hosted) \
+  || { echo "kit-check: bootstrap.sh failed with HOME=$tmp/home"; exit 1; }
+[ -z "$(ls -A "$tmp/home")" ] || { echo "kit-check: bootstrap.sh wrote into HOME: $(ls -A "$tmp/home")"; exit 1; }
+case "$alias_out" in *'alias dispatch='*) ;; *) echo "kit-check: bootstrap.sh did not print the dispatch alias"; exit 1 ;; esac
 # lane.yml listens to BOTH events (ADR-0002): pull_request so the first PR of a repo that has no lane.yml on main yet
 # still gets a `lane` check (else the ruleset's required check never reports), pull_request_target so main's copy judges.
 for ev in pull_request pull_request_target; do
