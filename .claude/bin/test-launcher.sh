@@ -15,7 +15,10 @@ cat > "$T/exec-stub" <<'STUB'
 printf '%s\n' "$@" > "$STUB_DIR/argv"
 pwd -P > "$STUB_DIR/cwd"
 STUB
-printf '#!/bin/sh\ncat "$STUB_DIR/ps.txt"\n' > "$T/ps-stub"
+cat > "$T/ps-stub" <<'STUB'
+#!/bin/sh
+cat "$STUB_DIR/ps.txt"
+STUB
 chmod +x "$T/exec-stub" "$T/ps-stub"
 export STUB_DIR="$T" DISPATCH_EXEC="$T/exec-stub" DISPATCH_PS="$T/ps-stub"
 : > "$T/ps.txt"
