@@ -28,7 +28,6 @@ lane() {
   local LABELS=${LABELS:-} FILES=${FILES:-} MERGE_OK_BY=${MERGE_OK_BY:-} APPROVER=${APPROVER:-} HARD_PATHS=${HARD_PATHS:-}
   local hard_files l lane=none
   [ -n "$HARD_PATHS" ] || { echo "::error::HARD_PATHS is empty; the workflow must supply this project's one-way paths."; exit 1; }
-  [ -n "$APPROVER" ] || { echo "::error::APPROVER is empty; the workflow must read the Approver: login from CLAUDE.md."; exit 1; }
   hard_files=$(printf '%s\n' "$FILES" | grep -E "$HARD_PATHS" || true)
   has() { printf '%s\n' "$LABELS" | tr -d '\r' | grep -qxF "$1"; }   # whole label only: `x merge-ok` is not merge-ok
   for l in lane:1-contained lane:2-wide lane:3-hard; do
@@ -40,6 +39,9 @@ lane() {
   fi
   [ "$lane" != none ] || { echo "::error::Add one lane label: lane:1-contained, lane:2-wide or lane:3-hard."; exit 1; }
   if [ "$lane" = "lane:3-hard" ]; then
+    # Only lane 3 needs the approver, so a project that has not filled in its Dispatcher block still passes lanes 1
+    # and 2 as it did before; lane 3 fails closed.
+    [ -n "$APPROVER" ] || { echo "::error::APPROVER is empty; the workflow must read the Approver: login from CLAUDE.md, so lane 3 cannot be approved."; exit 1; }
     if ! has merge-ok; then
       echo "::error::Lane 3 waits for $APPROVER: they add the merge-ok label in GitHub, then the queued auto-merge lands it."; exit 1
     fi

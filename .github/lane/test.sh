@@ -36,6 +36,8 @@ out="not owner" case_ "lane 3 merge-ok by the agent identity" 1 lane "$L3" "FILE
 case_ "lane 3 merge-ok app actor" 1 lane "$L3" "FILES=.github/x" "MERGE_OK_BY=app:some-app" "HARD_PATHS=$HP" "APPROVER=owner"
 case_ "lane 1 rename out of hard" 1 lane "LABELS=lane:1-contained" "FILES=src/db/migrate/a.sql${NL}src/renamed.sql" "HARD_PATHS=$HP" "APPROVER=owner"
 out="APPROVER is empty" case_ "lane fails closed with no approver" 1 lane "$L3" "FILES=.github/x" "MERGE_OK_BY=" "HARD_PATHS=$HP"
+case_ "lane 1 passes with no approver (Dispatcher block not filled in)" 0 lane "LABELS=lane:1-contained" "FILES=src/a.ts" "HARD_PATHS=$HP"
+case_ "lane 2 passes with no approver" 0 lane "LABELS=lane:2-wide" "FILES=src/a.ts" "HARD_PATHS=$HP"
 out="HARD_PATHS is empty" case_ "lane fails closed with no hard paths" 1 lane "LABELS=lane:1-contained" "FILES=src/a.ts" "APPROVER=owner"
 echo "$((total-fail))/$total passed"
 [ "$fail" = 0 ]

@@ -16,7 +16,8 @@ own PRs (job-search ADR-0009).
   runs the PR's head; it reads facts about the PR through the API. It runs main's `test.sh` first, so broken rules
   fail closed.
 - The approval label counts only when its latest `labeled` actor is the `Approver:` login read from CLAUDE.md's
-  `## Dispatcher` block on main, and no GitHub App performed it. Empty approver or empty `HARD_PATHS` fails closed.
+  `## Dispatcher` block on main, and no GitHub App performed it. An empty approver fails lane 3 closed (lanes 1 and 2 never use it, so a project that has not filled in its
+  Dispatcher block still passes them); an empty `HARD_PATHS` fails every lane.
 - New commits remove the approval label; that step runs first and the workflow has no concurrency group.
 
 ## Consequences
