@@ -60,6 +60,7 @@ jobs:
           .claude/bin/test-dispatch.sh
           .claude/bin/test-token-expiry.sh
           .claude/bin/test-launcher.sh
+          .claude/bin/test-scope-check.sh
           sh .github/lane/test.sh
 
       # ---- {{STACK SETUP}}: replace for your stack. Node + pnpm example: ----

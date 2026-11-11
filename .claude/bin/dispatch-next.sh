@@ -17,6 +17,9 @@
 #   --with-hard <n>     (repeatable) an in-flight issue known to be hard (its PR is labelled lane:3-hard); also in-flight
 #   --areas "<a>, <b>"  the project's footprint areas (comma and/or space separated)
 #   --hard-file <path>  a file holding a HARD_PATHS='<ERE>' line (with or without a leading "local "); refused if unreadable
+#   dispatch-next.sh --footprint-of <body-file>            prints the Footprint paths of an issue body saved to a file, one
+#                                                         normalised path per line; nothing (exit 0) when there is no Footprint,
+#                                                         a placeholder or an unsafe value. scope-check.sh --footprint reads it.
 #   --with-paths <n>:<paths>  (repeatable) paths in-flight item <n> grew into (its PR body's "Footprint grew:" value);
 #                       they join its footprint (keys and hard). <n> must also be given by --with or --with-hard. A
 #                       placeholder value adds nothing; an unsafe path makes <n> count as having no Footprint.
@@ -47,12 +50,13 @@ export LC_ALL=C
 refuse() { echo "dispatch-next.sh: refused: $*" >&2; exit 2; }
 
 owner="" project="" why="" list_now="" areas="" hard_file="" with_list="" with_hard_list="" grew_args=()
-name_key="" claude_md="CLAUDE.md" field=""
+name_key="" claude_md="CLAUDE.md" field="" fp_of=""
 while [ $# -gt 0 ]; do
   case $1 in
     --name-key) name_key=1; shift ;;
     --field)   [ $# -ge 2 ] || refuse "--field needs a value"; field=$2; shift 2 ;;
     --claude-md) [ $# -ge 2 ] || refuse "--claude-md needs a value"; claude_md=$2; shift 2 ;;
+    --footprint-of) [ $# -ge 2 ] || refuse "--footprint-of needs a value"; fp_of=$2; shift 2 ;;
     --list-now) list_now=1; shift ;;
     --owner)   [ $# -ge 2 ] || refuse "--owner needs a value"; owner=$2; shift 2 ;;
     --project) [ $# -ge 2 ] || refuse "--project needs a value"; project=$2; shift 2 ;;
@@ -69,6 +73,31 @@ while [ $# -gt 0 ]; do
     *) refuse "unknown argument '$1'" ;;
   esac
 done
+# fpval: a footprint value (the text after the colon) -> "none" when it is none, tbd, n/a, ? or empty; "unsafe" when
+# any path is absolute, ".", "./" alone, has a ".." segment, or has a glob character (* ? [ ] { }: key_of and
+# keys_overlap compare paths literally, so src/* would overlap nothing); else the paths, one per line ("+" prefixed), leading
+# "./" and trailing "/" stripped. Backticks and "**" are ignored. Shared by the issue Footprint, --with-paths and
+# --footprint-of (so scope-check.sh reads the same rule as the dispatcher).
+fpval_jq='def fpval: gsub("`|\\*\\*"; "") | gsub("^\\s+|\\s+$"; "")
+  | if test("^(none|tbd|n/a|\\?)?$"; "i") then "none"
+    else [split("[,\\s]+"; "g") | .[] | select(length > 0) | sub("^(\\./)+"; "")]
+      | if all(.[]; startswith("/") or . == "" or . == "." or test("(^|/)\\.\\.(/|$)") or test("[*?\\[\\]{}]") | not)
+        then .[] | sub("/+$"; "") | select(length > 0) | "+" + . else "unsafe" end end;'
+# fp_paths JSON -> the declared footprint paths, one per line (nothing when there is no Footprint line, or its value
+# is a placeholder or unsafe: runs alone).
+fp_paths() {
+  jq -r "$fpval_jq"'(.body // "") | split("\n")
+    | map(select(test("^\\s*(-\\s+)?(\\*\\*)?\\s*footprint\\s*(\\*\\*)?\\s*:"; "i"))) | .[0] // empty
+    | sub("^[^:]*:"; "") | fpval | select(startswith("+")) | .[1:]' <<<"$1"
+}
+if [ -n "$fp_of" ]; then
+  # The issue body saved to a file: print its Footprint paths, one per line, through the same parser the dispatcher
+  # uses. Nothing printed (exit 0) = no Footprint, a placeholder, or an unsafe value.
+  [ -r "$fp_of" ] && [ -f "$fp_of" ] || refuse "cannot read $fp_of"
+  fp_json=$(jq -n --rawfile b "$fp_of" '{body: $b}') || refuse "cannot read $fp_of as text"
+  fp_paths "$fp_json"
+  exit 0
+fi
 if [ -n "$field" ]; then
   # Any one `Key: value` pair of the ## Dispatcher block, by the same block rules as --name-key. Exactly one pair
   # with that key; an empty value or a {{placeholder}} counts as unset. The launcher reads Agent, Agent keychain
@@ -164,22 +193,6 @@ if [ -n "$hard_file" ]; then
 fi
 areas_list=${areas//,/ }
 
-# fpval: a footprint value (the text after the colon) -> "none" when it is none, tbd, n/a, ? or empty; "unsafe" when
-# any path is absolute, ".", "./" alone, has a ".." segment, or has a glob character (* ? [ ] { }: key_of and
-# keys_overlap compare paths literally, so src/* would overlap nothing); else the paths, one per line ("+" prefixed), leading
-# "./" and trailing "/" stripped. Backticks and "**" are ignored. Shared by the issue Footprint and --with-paths.
-fpval_jq='def fpval: gsub("`|\\*\\*"; "") | gsub("^\\s+|\\s+$"; "")
-  | if test("^(none|tbd|n/a|\\?)?$"; "i") then "none"
-    else [split("[,\\s]+"; "g") | .[] | select(length > 0) | sub("^(\\./)+"; "")]
-      | if all(.[]; startswith("/") or . == "" or . == "." or test("(^|/)\\.\\.(/|$)") or test("[*?\\[\\]{}]") | not)
-        then .[] | sub("/+$"; "") | select(length > 0) | "+" + . else "unsafe" end end;'
-# fp_paths JSON -> the declared footprint paths, one per line (nothing when there is no Footprint line, or its value
-# is a placeholder or unsafe: runs alone).
-fp_paths() {
-  jq -r "$fpval_jq"'(.body // "") | split("\n")
-    | map(select(test("^\\s*(-\\s+)?(\\*\\*)?\\s*footprint\\s*(\\*\\*)?\\s*:"; "i"))) | .[0] // empty
-    | sub("^[^:]*:"; "") | fpval | select(startswith("+")) | .[1:]' <<<"$1"
-}
 # key_of PATH -> the --areas entry PATH falls under, else PATH.
 key_of() {
   local a
