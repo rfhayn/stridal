@@ -29,18 +29,26 @@ cmp -s .github/ci.template.yml "$d/.github/workflows/ci.yml" \
   || { echo "kit-check: installed ci.yml differs from .github/ci.template.yml"; exit 1; }
 cmp -s CLAUDE.template.md "$d/CLAUDE.md" \
   || { echo "kit-check: installed CLAUDE.md differs from CLAUDE.template.md"; exit 1; }
-cmp -s docs/ROADMAP.template.md "$d/docs/ROADMAP.md" \
-  || { echo "kit-check: installed docs/ROADMAP.md differs from docs/ROADMAP.template.md"; exit 1; }
-for f in .github/ci.template.yml CLAUDE.template.md docs/ROADMAP.template.md .claude/bin/kit-check.sh; do
+for f in .github/ci.template.yml CLAUDE.template.md .claude/bin/kit-check.sh; do
   [ ! -e "$d/$f" ] || { echo "kit-check: $f must not be copied to a new project"; exit 1; }
 done
 [ -s "$d/.gitignore" ] || { echo "kit-check: installed .gitignore is empty"; exit 1; }
 
-# The worker-session files ship, and session.sh keeps its executable bit in the install.
-for f in .claude/bin/session.sh .claude/skills/land/SKILL.md; do
-  [ -f "$d/$f" ] || { echo "kit-check: $f is missing from a new project"; exit 1; }
-  cmp -s "$f" "$d/$f" || { echo "kit-check: installed $f differs from the kit's"; exit 1; }
+# #438 C2: the hand-run loop is gone. A new project has none of its files and no markdown roadmap (ADR-0001: the
+# backlog is Issues plus the Project's Now column), and nothing the kit ships still points at the retired commands.
+for f in .claude/skills/brief .claude/skills/ship .claude/skills/merge .claude/skills/land \
+         .claude/bin/preflight.sh docs/ROADMAP.md docs/ROADMAP.template.md; do
+  [ ! -e "$d/$f" ] || { echo "kit-check: $f must not be in a new project (the hand-run loop is retired)"; exit 1; }
+  [ ! -e "$f" ] || [ "$f" = docs/ROADMAP.md ] || { echo "kit-check: $f must be removed from the kit"; exit 1; }
 done
+if grep -nE '/(brief|ship|merge|land)\b|preflight' CLAUDE.md CLAUDE.template.md .claude/agents/reviewer.md \
+    .claude/skills/dispatch/*.md .github/workflows/lane.yml; then
+  echo "kit-check: a file still points at /brief, /ship, /merge, /land or preflight"; exit 1
+fi
+
+# The worker-session files ship, and session.sh keeps its executable bit in the install.
+[ -f "$d/.claude/bin/session.sh" ] || { echo "kit-check: session.sh is missing from a new project"; exit 1; }
+cmp -s .claude/bin/session.sh "$d/.claude/bin/session.sh" || { echo "kit-check: installed session.sh differs from the kit's"; exit 1; }
 [ -x "$d/.claude/bin/session.sh" ] || { echo "kit-check: installed session.sh is not executable"; exit 1; }
 
 # Dispatcher (#436 part A): the scripts, skill, hook and lane files ship, scripts keep their executable bit,
@@ -145,49 +153,53 @@ refuses() {
   esac
 }
 for bad in "bug" "feat/x" "FEAT" ""; do
-  refuses open "$bad" zz-ok --report-to main --dry-run
+  refuses open "$bad" zz-ok --key kit --report-to main --dry-run
 done
 # "\$(" is literal text that must be refused, never expanded.
 for bad in "a b" "Upper" 'a;b' "a\$(id)" "\$(id)" "-lead" "trail-" "a_b" "a/b" "$long43" ""; do
-  refuses open feat "$bad" --report-to main --dry-run
+  refuses open feat "$bad" --key kit --report-to main --dry-run
   refuses close "$bad" --dry-run
 done
 for bad in "a b" 'a;b' "a\$(id)" "x'y" "" "-x" "--dry-run"; do
-  refuses open feat zz-ok --report-to "$bad" --dry-run
+  refuses open feat zz-ok --key kit --report-to "$bad" --dry-run
 done
-refuses open feat zz-ok --dry-run
-refuses open feat zz-ok --report-to main --bogus --dry-run
+refuses open feat zz-ok --key kit --dry-run
+refuses open feat zz-ok --report-to main --dry-run   # --key is required (ADR-0006)
+for bad in "Kit" "1kit" 'k;t' "a b" ""; do
+  refuses open feat zz-ok --key "$bad" --report-to main --dry-run
+done
+refuses open feat zz-ok --key kit --report-to main --bogus --dry-run
 # There is no path argument: a path, .env included, is refused and never read.
 echo "SECRET-ENV-TEXT" > "$tmp/.env"
-refuses open feat zz-ok "$tmp/.env" --report-to main --dry-run
-refuses open feat zz-ok .env --report-to main --dry-run
-refuses open feat zz-ok "$rev/spawn-zz-ok.md" --report-to main --dry-run
-refuses open feat .env --report-to main --dry-run
+refuses open feat zz-ok "$tmp/.env" --key kit --report-to main --dry-run
+refuses open feat zz-ok .env --key kit --report-to main --dry-run
+refuses open feat zz-ok "$rev/spawn-zz-ok.md" --key kit --report-to main --dry-run
+refuses open feat .env --key kit --report-to main --dry-run
 # The prompt file: missing, a symlink (even to a real file), a directory, over 20 KB.
-refuses open feat zz-none --report-to main --dry-run
+refuses open feat zz-none --key kit --report-to main --dry-run
 ln -s "$tmp/.env" "$rev/spawn-zz-link.md"
-refuses open feat zz-link --report-to main --dry-run
+refuses open feat zz-link --key kit --report-to main --dry-run
 mkdir "$rev/spawn-zz-dir.md"
-refuses open feat zz-dir --report-to main --dry-run
+refuses open feat zz-dir --key kit --report-to main --dry-run
 head -c 20481 /dev/zero > "$rev/spawn-zz-big.md"
-refuses open feat zz-big --report-to main --dry-run
+refuses open feat zz-big --key kit --report-to main --dry-run
 head -c 20480 /dev/zero > "$rev/spawn-zz-edge.md"
-"$sess" open feat zz-edge --report-to main --dry-run >/dev/null \
+"$sess" open feat zz-edge --key kit --report-to main --dry-run >/dev/null \
   || { echo "kit-check: session.sh refused a 20480-byte prompt"; exit 1; }
 refuses close zz-ok --bogus --dry-run
 refuses frobnicate zz-ok --dry-run
 
 gcd=$(git rev-parse --path-format=absolute --git-common-dir)
-out=$("$sess" open feat zz-ok --report-to main --dry-run 2>&1) \
+out=$("$sess" open feat zz-ok --key kit --report-to main --dry-run 2>&1) \
   || { echo "kit-check: session.sh good dry-run open failed: $out"; exit 1; }
 # The tab runs through the login shell so a worker gets the user's PATH (gh, shellcheck); only validated tokens go in.
-want="/bin/zsh -lc 'exec $(command -v claude || echo claude) --name zz-ok --permission-mode auto --strict-mcp-config -- \"\$(cat $gcd/spawn/zz-ok.prompt)\"'"
+want="/bin/zsh -lc 'exec $(command -v claude || echo claude) --name kit-zz-ok--permission-mode auto --strict-mcp-config -- \"\$(cat $gcd/spawn/zz-ok.prompt)\"'"
 [ "$(printf '%s\n' "$out" | grep '^tab command: ')" = "tab command: $want" ] \
   || { echo "kit-check: session.sh tab command is not exactly: $want"; printf '%s\n' "$out"; exit 1; }
 case "$out" in *SECRET-ENV-TEXT*) echo "kit-check: session.sh dry-run printed .env text"; exit 1 ;; esac
 case "$out" in *SECRET-PROMPT-TEXT*) echo "kit-check: session.sh dry-run printed the prompt text"; exit 1 ;; esac
 case "$out" in *"tell application \"Ghostty\""*) ;; *) echo "kit-check: session.sh dry-run did not print the AppleScript"; exit 1 ;; esac
-"$sess" open fix "$long42" --report-to a_B-9 --dry-run >/dev/null \
+"$sess" open fix "$long42" --key kit --report-to a_B-9 --dry-run >/dev/null \
   || { echo "kit-check: session.sh refused a 42-character slug"; exit 1; }
 out=$("$sess" close zz-ok --abandon --dry-run 2>&1) \
   || { echo "kit-check: session.sh good dry-run close failed: $out"; exit 1; }
@@ -195,80 +207,38 @@ out=$("$sess" close zz-ok --abandon --dry-run 2>&1) \
   || { echo "kit-check: session.sh dry-run wrote files"; exit 1; }
 git worktree list | grep -q 'zz-ok' && { echo "kit-check: session.sh dry-run created a worktree"; exit 1; }
 
-# send types one fixed command, /ship, into a worker's recorded terminal. Everything else is refused.
-refuses send zz-ok ship --dry-run   # no .term record yet
 mkdir -p "$gcd/spawn"
-echo "FAKE-TERM-ID-1" > "$gcd/spawn/zz-ok.term"
-for bad in "merge" "exit" "/ship" "ship x" "ship;id" "ship\$(id)" ""; do
-  refuses send zz-ok "$bad" --dry-run
-done
+# send retired with /ship (#432, #438): an unknown command, whatever follows it. The only typing left is close's fixed /exit.
+refuses send zz-ok ship --dry-run
+refuses send zz-ok /exit --dry-run
 refuses send zz-ok --dry-run
-refuses send zz-ok ship x --dry-run
-refuses send zz-ok ship --bogus --dry-run
-refuses send zz-none ship --dry-run
-for bad in "a b" 'a;b' "a\$(id)" "Upper" "-lead" "$long43" ""; do
-  refuses send "$bad" ship --dry-run
-done
-out=$("$sess" send zz-ok ship --dry-run 2>&1) \
-  || { echo "kit-check: session.sh good dry-run send failed: $out"; exit 1; }
-case "$out" in *'input text "/ship" to term'*'send key "enter" to term'*) ;; *) echo "kit-check: send dry-run did not print the /ship AppleScript"; printf '%s\n' "$out"; exit 1 ;; esac
-case "$out" in *'input text "/exit"'*) echo "kit-check: send dry-run printed the /exit AppleScript"; exit 1 ;; esac
-
-# Phase 1f: send compares the recorded terminal's working directory to the slug's worktree before typing.
-# In a dry-run the comparison is announced by the same function that makes it, so dropping the comparison
-# drops this line. send_cwd_case takes the script to test, so a mutant copy can be run against it.
-send_cwd_case() {
-  local out
-  out=$("$1" send zz-ok ship --dry-run 2>&1) || return 1
-  case "$out" in *"would compare the working directory of terminal FAKE-TERM-ID-1 to $PWD/.claude/worktrees/zz-ok"*) return 0 ;; *) return 1 ;; esac
-}
-send_cwd_case "$sess" \
-  || { echo "kit-check: send --dry-run does not compare the terminal's working directory to .claude/worktrees/zz-ok"; exit 1; }
-# The comparison itself is the pure function cwd_ok. It is pulled out of the script text and tried on real
-# inputs, so a version that skips the comparison fails here. cwd_ok_case takes the function source, so a
-# mutant is run against the same case.
-cwd_ok_src=$(sed -n '/^cwd_ok() {$/,/^}$/p' "$sess")
-[ -n "$cwd_ok_src" ] || { echo "kit-check: session.sh has no cwd_ok function"; exit 1; }
-cwd_ok_case() {
-  (
-    eval "$1"
-    w=/r/.claude/worktrees/zz-ok
-    cwd_ok "$w" "$w" && cwd_ok "$w/sub" "$w" && cwd_ok "$w/" "$w" || exit 1
-    ! cwd_ok "$w-2" "$w" || exit 1          # a sibling slug that shares the prefix
-    ! cwd_ok "" "$w" || exit 1              # Ghostty reported nothing
-    ! cwd_ok "missing value" "$w" || exit 1 # AppleScript's name for no value
-    ! cwd_ok "$w/../x" "$w" || exit 1       # climbs out of the worktree
-    ! cwd_ok /elsewhere "$w" || exit 1
-  )
-}
-cwd_ok_case "$cwd_ok_src" || { echo "kit-check: cwd_ok does not accept the worktree and refuse everything else"; exit 1; }
-! cwd_ok_case 'cwd_ok() { return 0; }' || { echo "kit-check: the cwd_ok case passes a version that skips the comparison"; exit 1; }
+if grep -qE 'APPLE_SEND|input text "/ship"|cwd_guard' "$sess"; then echo "kit-check: session.sh still has the send machinery"; exit 1; fi
 
 # Phase 1e: one worker per slug. A lock dir under spawn/locks holds the terminal id and start time.
 # claude_running finds the worker with ps, so a stub named claude (a copy of sleep) stands in for a session.
 lockd="$gcd/spawn/locks/zz-lock"
 echo "SECRET-PROMPT-TEXT" > "$rev/spawn-zz-lock.md"
-out=$("$sess" open feat zz-lock --report-to main --dry-run 2>&1) \
+out=$("$sess" open feat zz-lock --key kit --report-to main --dry-run 2>&1) \
   || { echo "kit-check: open --dry-run with no lock failed: $out"; exit 1; }
 case "$out" in *"would take lock"*) ;; *) echo "kit-check: open --dry-run with no lock did not say 'would take lock'"; printf '%s\n' "$out"; exit 1 ;; esac
 mkdir -p "$lockd"
 echo "HOLDER-TERM-7" > "$lockd/term"
 echo "2026-11-09T10:00:00Z" > "$lockd/started"
 # Not running: the refusal says stale, names the holder, and open does not remove the lock.
-rc=0; out=$("$sess" open feat zz-lock --report-to main --dry-run 2>&1) || rc=$?
+rc=0; out=$("$sess" open feat zz-lock --key kit --report-to main --dry-run 2>&1) || rc=$?
 [ "$rc" = 2 ] || { echo "kit-check: open with a stale lock exited $rc, not 2"; printf '%s\n' "$out"; exit 1; }
 case "$out" in *"session.sh: refused"*stale*HOLDER-TERM-7*2026-11-09T10:00:00Z*) ;; *) echo "kit-check: stale-lock refusal does not say stale and name the terminal and start time"; printf '%s\n' "$out"; exit 1 ;; esac
 [ -d "$lockd" ] || { echo "kit-check: open removed a stale lock"; exit 1; }
 # Running: the refusal says live.
 # The stub is a script, not a copy of sleep (a copied system binary is killed on macOS). ps shows it as
-# "sh <dir>/claude --name zz-lock", which claude_running matches. The sandbox denies ps, so there the case is skipped.
+# "sh <dir>/claude --name kit-zz-lock", which claude_running matches. The sandbox denies ps, so there the case is skipped.
 if ps -axo command= >/dev/null 2>&1; then
   printf '#!/bin/sh\nsleep 30\n' > "$tmp/claude"
   chmod +x "$tmp/claude"
-  "$tmp/claude" --name zz-lock 600 >/dev/null 2>&1 &
+  "$tmp/claude" --name kit-zz-lock 600 >/dev/null 2>&1 &
   stubpid=$!
   sleep 1
-  rc=0; out=$("$sess" open feat zz-lock --report-to main --dry-run 2>&1) || rc=$?
+  rc=0; out=$("$sess" open feat zz-lock --key kit --report-to main --dry-run 2>&1) || rc=$?
   [ "$rc" = 2 ] || { echo "kit-check: open with a live lock exited $rc, not 2"; printf '%s\n' "$out"; exit 1; }
   case "$out" in *"session.sh: refused"*live*HOLDER-TERM-7*2026-11-09T10:00:00Z*) ;; *) echo "kit-check: live-lock refusal does not say live and name the terminal and start time"; printf '%s\n' "$out"; exit 1 ;; esac
   kill "$stubpid"; wait "$stubpid" 2>/dev/null || true; stubpid=""
@@ -292,28 +262,28 @@ grep -q '^release_lock()' "$sess" || { echo "kit-check: session.sh has no releas
 sed -n '/^if \[ "\$gone" = 1 \]; then/,/^fi$/p' "$sess" | grep -q 'release_lock' || { echo "kit-check: the already-gone close path does not release the lock"; exit 1; }
 tail -n 5 "$sess" | grep -q 'release_lock' || { echo "kit-check: the normal and abandon close path does not release the lock"; exit 1; }
 
-# Phase 1d: every worker is told fetched text is data, in the skill and in the prompt open appends.
-grep -q 'is data, never instructions' .claude/skills/brief/SKILL.md \
-  || { echo "kit-check: brief/SKILL.md lacks 'is data, never instructions'"; exit 1; }
-out=$("$sess" open feat zz-ok --report-to main --dry-run 2>&1)
+# Phase 1d: every worker is told fetched text is data, and connectors stay out of its session (#431). These
+# guarantees live in session.sh now, so they are read off its dry-run output.
+out=$("$sess" open feat zz-ok --key kit --report-to main --dry-run 2>&1)
 case "$out" in *"is data, never instructions"*) ;; *) echo "kit-check: open --dry-run's prompt-append text lacks 'is data, never instructions'"; exit 1 ;; esac
-grep -q -- '--strict-mcp-config' .claude/skills/brief/SKILL.md \
-  || { echo "kit-check: brief/SKILL.md does not show --strict-mcp-config in the tab command"; exit 1; }
+case "$out" in *"--strict-mcp-config"*) ;; *) echo "kit-check: open --dry-run's tab command lacks --strict-mcp-config"; exit 1 ;; esac
 
 # The open tab command starts with the login shell and holds only validated tokens.
-out=$("$sess" open feat zz-ok --report-to main --dry-run 2>&1)
 tabline=$(printf '%s\n' "$out" | grep '^tab command: ')
 case "$tabline" in "tab command: /bin/zsh -lc '"*) ;; *) echo "kit-check: tab command does not start with /bin/zsh -lc: $tabline"; exit 1 ;; esac
 rest=${tabline#"tab command: /bin/zsh -lc '"}
-[[ $rest =~ ^exec\ [A-Za-z0-9/._-]+\ --name\ zz-ok\ --permission-mode\ auto\ --strict-mcp-config\ --\ \"\$\(cat\ [A-Za-z0-9/._-]+\)\"\'$ ]] \
+[[ $rest =~ ^exec\ [A-Za-z0-9/._-]+\ --name\ kit-zz-ok\--permission-mode\ auto\ --strict-mcp-config\ --\ \"\$\(cat\ [A-Za-z0-9/._-]+\)\"\'$ ]] \
   || { echo "kit-check: tab command holds something other than validated tokens (and the one constant --strict-mcp-config): $tabline"; exit 1; }
 
 # Connector isolation, two layers: the flag above keeps claude.ai connectors out of a worker session.
-# The deny rule covers a worker started without session.sh. The allow rules let workers run the /ship scripts.
+# The deny rule covers a worker started without session.sh. The allow rule lets workers run check-evidence.sh.
 jq -e '.permissions.deny | index("mcp__claude_ai_*") != null' .claude/settings.json >/dev/null \
   || { echo "kit-check: settings.json does not deny mcp__claude_ai_*"; exit 1; }
-jq -e '.permissions.allow | index("Bash(.claude/bin/preflight.sh *)") != null and index("Bash(.claude/bin/check-evidence.sh *)") != null' .claude/settings.json >/dev/null \
-  || { echo "kit-check: settings.json does not allow preflight.sh and check-evidence.sh"; exit 1; }
+jq -e '.permissions.allow | index("Bash(.claude/bin/check-evidence.sh *)") != null' .claude/settings.json >/dev/null \
+  || { echo "kit-check: settings.json does not allow check-evidence.sh"; exit 1; }
+# #438 C2 (ADR-0003): merge-ok is denied to Claude, not asked, and nothing allows the retired preflight.sh.
+jq -e '(.permissions.deny|index("Bash(*merge-ok*)"))!=null and (.permissions.ask|index("Bash(*merge-ok*)"))==null and ([.permissions.allow[]|select(test("preflight"))]|length)==0' .claude/settings.json >/dev/null \
+  || { echo "kit-check: settings.json must deny (not ask) Bash(*merge-ok*) and must not allow preflight"; exit 1; }
 
 # close when the worktree and the recorded branch are already gone: a cleanup plan, not a refusal.
 echo "feat/zz-ok" > "$gcd/spawn/zz-ok.branch"
@@ -324,23 +294,9 @@ case "$out" in *"git worktree remove"*|*"git branch -D"*) echo "kit-check: clean
 [ -e "$gcd/spawn/zz-ok.term" ] || { echo "kit-check: close --dry-run deleted records"; exit 1; }
 rm -f "$gcd/spawn/zz-ok.term" "$gcd/spawn/zz-ok.branch"
 
-# sync runs the one fixed command git pull --ff-only in the main checkout. It takes no slug and no other argument.
-out=$("$sess" sync --dry-run 2>&1) \
-  || { echo "kit-check: sync --dry-run failed: $out"; exit 1; }
-[ "$out" = "git pull --ff-only" ] \
-  || { echo "kit-check: sync --dry-run did not print exactly: git pull --ff-only"; printf '%s\n' "$out"; exit 1; }
-for bad in x "x --dry-run" "--dry-run x" "--bogus" "--abandon" "zz-ok" ".env"; do
-  # shellcheck disable=SC2086  # $bad is deliberately split into words
-  refuses sync $bad
-done
-# A real sync from a worktree is refused before anything runs. The scratch repo has no remote, so even a
-# script that wrongly ran the pull would only fail.
-sr="$tmp/syncrepo"
-git init -q "$sr"
-git -C "$sr" -c user.name=t -c user.email=t@example.com commit -q --allow-empty -m init
-git -C "$sr" worktree add -q "$sr/wt" -b zz-sync-wt
-if out=$(cd "$sr/wt" && "$OLDPWD/$sess" sync 2>&1); then echo "kit-check: sync ran from a worktree"; exit 1; fi
-case "$out" in *"session.sh: refused"*"main checkout"*) ;; *) echo "kit-check: sync from a worktree gave no refusal: $out"; exit 1 ;; esac
+# send and sync retired with the hand-run skills (#432, #438): unknown commands, refused whatever follows them.
+refuses sync --dry-run
+refuses sync
 
 # The status line: one short line from the status JSON and git, fails soft, ships with the kit.
 sl=.claude/statusline.sh
@@ -409,17 +365,14 @@ out=$(cd "$tmp/nogit" && printf '' | sh "$OLDPWD/$sl" 2>&1) || { echo "kit-check
 [ -n "$out" ] || { echo "kit-check: statusline printed nothing outside git on empty input"; exit 1; }
 out=$(sj "$slr" | PATH=/nonexistent /bin/sh "$PWD/$sl" 2>&1) || { echo "kit-check: statusline failed without jq or git on PATH"; exit 1; }
 
-# preflight.sh: offline structural check of a brief; check-evidence.sh: a reviewer "met" must cite a line the diff or log has.
-# Both ship, keep their executable bit, and every exit 1 says why on stdout.
-pre=.claude/bin/preflight.sh
+# check-evidence.sh: a reviewer "met" must cite a line the diff or log has. It ships, keeps its executable bit,
+# and every exit 1 says why on stdout.
 ev=.claude/bin/check-evidence.sh
-for f in "$pre" "$ev"; do
-  [ -f "$f" ] || { echo "kit-check: $f is missing"; exit 1; }
-  [ -f "$d/$f" ] || { echo "kit-check: $f is missing from a new project"; exit 1; }
-  cmp -s "$f" "$d/$f" || { echo "kit-check: installed $f differs from the kit's"; exit 1; }
-  [ -x "$d/$f" ] || { echo "kit-check: installed $f is not executable"; exit 1; }
-  [ -x "$f" ] || { echo "kit-check: $f is not executable"; exit 1; }
-done
+[ -f "$ev" ] || { echo "kit-check: $ev is missing"; exit 1; }
+[ -f "$d/$ev" ] || { echo "kit-check: $ev is missing from a new project"; exit 1; }
+cmp -s "$ev" "$d/$ev" || { echo "kit-check: installed $ev differs from the kit's"; exit 1; }
+[ -x "$d/$ev" ] || { echo "kit-check: installed $ev is not executable"; exit 1; }
+[ -x "$ev" ] || { echo "kit-check: $ev is not executable"; exit 1; }
 # expect <label> <exit code> <needle in stdout or ""> <command...>
 expect() {
   local label=$1 want=$2 needle=$3 out rc=0
@@ -429,34 +382,6 @@ expect() {
   case "$out" in *"$needle"*) ;; *) echo "kit-check: $label: output lacks '$needle': $out"; exit 1 ;; esac
 }
 fx="$tmp/fx"; mkdir -p "$fx"
-cat > "$fx/good.md" <<'BRIEF'
-## Brief: x
-Goal: g
-Done when (each one machine-checkable):
-- [ ] `true` exits 0
-Files: a.sh b.md
-Lane: 2-wide -- why
-BRIEF
-sed '/^Done when/,/^- \[ \]/d' "$fx/good.md" > "$fx/no-done.md"
-sed '/^Files:/d' "$fx/good.md" > "$fx/no-files.md"
-sed 's/^Files:.*/Files:   /' "$fx/good.md" > "$fx/empty-files.md"
-sed '/^Lane:/d' "$fx/good.md" > "$fx/no-lane.md"
-{ cat "$fx/good.md"; echo "Blocked by: #12 #7"; } > "$fx/blocked.md"
-{ cat "$fx/good.md"; echo "Blocked by: none"; } > "$fx/blocked-none.md"
-expect "preflight good brief" 0 "" "$pre" "$fx/good.md"
-expect "preflight no Done-when" 1 "Done when" "$pre" "$fx/no-done.md"
-expect "preflight no Files" 1 "Files" "$pre" "$fx/no-files.md"
-expect "preflight empty Files" 1 "Files" "$pre" "$fx/empty-files.md"
-expect "preflight no Lane" 1 "Lane" "$pre" "$fx/no-lane.md"
-expect "preflight missing brief file" 1 "brief" "$pre" "$fx/none.md"
-expect "preflight no argument" 1 "usage" "$pre"
-expect "preflight blocker, no --merged" 1 "#12" "$pre" "$fx/blocked.md"
-expect "preflight blocker, one of two merged" 1 "#7" "$pre" "$fx/blocked.md" --merged 12
-expect "preflight blocker, wrong number merged" 1 "#12" "$pre" "$fx/blocked.md" --merged 7 --merged 99
-expect "preflight blockers all merged" 0 "" "$pre" "$fx/blocked.md" --merged 12 --merged 7
-expect "preflight Blocked by: none" 0 "" "$pre" "$fx/blocked-none.md"
-expect "preflight bad --merged value" 1 "--merged" "$pre" "$fx/good.md" --merged x
-expect "preflight unknown option" 1 "usage" "$pre" "$fx/good.md" --bogus
 
 cat > "$fx/diff.txt" <<'DIFF'
 diff --git a/src/a.sh b/src/a.sh
@@ -516,11 +441,9 @@ expect "evidence empty diff" 1 "diff" "$ev" "$fx/review.txt" "$fx/empty.txt" "$f
 expect "evidence empty log" 1 "log" "$ev" "$fx/review.txt" "$fx/diff.txt" "$fx/empty.txt"
 expect "evidence no arguments" 1 "usage" "$ev"
 
-# The wiring: /ship runs both scripts, /brief offers Blocked by, the reviewer treats missing input as FIX FIRST.
-for w in preflight.sh check-evidence.sh; do
-  grep -q "$w" .claude/skills/ship/SKILL.md || { echo "kit-check: ship/SKILL.md does not run $w"; exit 1; }
-done
-grep -q 'Blocked by:' .claude/skills/brief/SKILL.md || { echo "kit-check: brief/SKILL.md has no Blocked by line"; exit 1; }
+# The wiring: the worker contract runs check-evidence.sh, the reviewer treats missing input as FIX FIRST.
+grep -q 'check-evidence.sh' .claude/skills/dispatch/worker-contract.md \
+  || { echo "kit-check: worker-contract.md does not run check-evidence.sh"; exit 1; }
 grep -qE 'missing or empty.*FIX FIRST' .claude/agents/reviewer.md \
   || { echo "kit-check: reviewer.md does not make a missing or empty diff.txt/log.txt FIX FIRST"; exit 1; }
 
