@@ -91,14 +91,15 @@ Run git and gh as single plain commands (no pipes or `&&`); put any loop in a sc
      once-a-day reminder; `warned <days> <date>`: go on, silently;
    - `expired <date>`: push `<repo>: agent token expired on <date>; rotate it, then restart me`, tell the user
      to regenerate the token, store it in the Keychain service `<Agent keychain>` themselves (the repo's
-     `docs/runbooks/agent-token.md`, if it has one) and restart this session through `as-agent.sh`, and stop this
+     `docs/runbooks/agent-token.md`) and restart this session with `.claude/bin/dispatch.sh`, and stop this
      pass. Every later pass stops the same way (one push per session), until the token is rotated;
    - exit 2 (`gh` failed with no remembered expiry, or an unreadable header): go on; the login check below
      reports a failed `gh`.
 
    Then check who you are on GitHub: `gh api user --jq .login` must print the Agent login. If it
    prints anything else (the Approver's login, above all) or fails, stop and tell the user to restart this
-   session as `.claude/bin/as-agent.sh <Agent keychain> claude --name dispatch-<key>`. Never read the token, run
+   session with `.claude/bin/dispatch.sh` (it runs `as-agent.sh` for them; the token's setup is in
+   `docs/runbooks/agent-token.md`). Never read the token, run
    `gh auth`, or query the Keychain yourself. Without `Agent`, you and your workers act as whoever `gh` is logged
    in as, and the approval label check cannot tell you from the Approver; say so to the user once per session.
 4. `max_workers` must be a positive integer; otherwise stop and say so. Call the number of workers you may run
