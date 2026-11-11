@@ -24,13 +24,8 @@
 # --agent-keychain <service> (matching ^[A-Za-z0-9._-]+$) runs the worker's claude through .claude/bin/as-agent.sh
 # <service>, so the worker acts on GitHub as the agent identity whose token that Keychain item holds. The tab
 # command carries only the service name; the token is read inside the tab and lives only in the environment.
-#   .claude/bin/session.sh send <slug> ship [--dry-run]     (kept until the old /ship, /land skills retire, #438)
-#   .claude/bin/session.sh sync [--dry-run]                 (same)
-# send types the one fixed text /ship and Enter into the worker's recorded terminal; it takes no other command
-# and no text, because typing arbitrary text into a terminal would be a keystroke-injection primitive. It first
-# compares the recorded terminal's working directory to the slug's worktree (cwd_guard) and refuses on a mismatch.
-# sync runs git pull --ff-only in the main checkout and nothing else; /land calls it before close, as its own
-# call, so bash is never running a script file the pull just rewrote.
+# The only text this script types into a terminal is the fixed /exit (close); there is no command that types
+# anything else, because typing arbitrary text into a terminal would be a keystroke-injection primitive.
 # The prompt is read only from .claude/review/spawn-<slug>.md in the main checkout (git-ignored): a regular
 # file, not a symlink, at most 20 KB. There is no path argument, so no other file can be read as a prompt.
 # Run from the main checkout, on Ghostty with one instance and an open window. settings.json may allow this
@@ -68,27 +63,10 @@ on run argv
   end tell
 end run
 OSA
-IFS= read -r -d '' APPLE_SEND <<'OSA' || true
-on run argv
-  tell application "Ghostty"
-    set term to terminal id (item 1 of argv)
-    input text "/ship" to term
-    send key "enter" to term
-  end tell
-end run
-OSA
-# Read-only: the terminal's current working directory (Ghostty's "working directory" property).
-IFS= read -r -d '' APPLE_CWD <<'OSA' || true
-on run argv
-  tell application "Ghostty"
-    return working directory of terminal id (item 1 of argv)
-  end tell
-end run
-OSA
 
 cmd=${1:-}
 [ $# -gt 0 ] && shift
-sendcmd="" type="" slug="" report="" dry=0 abandon=0 have_report=0 timeout=3600 agent_keychain="" key="" sname=""
+type="" slug="" report="" dry=0 abandon=0 have_report=0 timeout=3600 agent_keychain="" key="" sname=""
 
 # Sets sname for $slug from <spawn dir $1>/<slug>.session, or the bare slug when there is no record.
 resolve_sname() {
@@ -204,45 +182,17 @@ case "$cmd" in
       shift
     done
     ;;
-  send)
-    [ $# -ge 2 ] || refuse "usage: send <slug> ship [--dry-run]"
-    slug=$1 sendcmd=$2
-    shift 2
-    while [ $# -gt 0 ]; do
-      case "$1" in
-        --dry-run) dry=1 ;;
-        *) refuse "unknown argument for send: $1" ;;
-      esac
-      shift
-    done
-    [ "$sendcmd" = ship ] || refuse "send accepts only the command ship"
-    ;;
-  sync)
-    # No slug and no other argument: the one fixed command is git pull --ff-only, so nothing can be injected.
-    while [ $# -gt 0 ]; do
-      case "$1" in
-        --dry-run) dry=1 ;;
-        *) refuse "sync takes no argument except --dry-run, got: $1" ;;
-      esac
-      shift
-    done
-    if [ "$dry" = 1 ]; then echo "git pull --ff-only"; exit 0; fi
-    [ "$(git rev-parse --absolute-git-dir)" = "$(git rev-parse --path-format=absolute --git-common-dir)" ] \
-      || refuse "run sync from the main checkout, not a worktree"
-    # Fast-forward only: a diverged branch or a conflicting dirty tree stops with git's message and changes nothing.
-    exec git pull --ff-only
-    ;;
-  *) refuse "first argument must be open, close, watch, notified, clear, name, send or sync" ;;
+  *) refuse "first argument must be open, close, watch, notified, clear or name" ;;
 esac
 
 [[ $slug =~ $SLUG_RE ]] || refuse "slug must match $SLUG_RE"
 if [ "$cmd" = open ]; then
-  # --key is optional until the old /brief and /ship skills retire (#438): without it the worker is named by its
-  # bare slug and no .session record is written, exactly the legacy fallback below. The dispatcher always passes it.
-  [ -z "$key" ] || [[ $key =~ $KEY_RE ]] || refuse "--key must match $KEY_RE"
+  # --key is required (ADR-0006): the worker's name is <key>-<slug> and open records it. The dispatcher always passes it.
+  [ -n "$key" ] || refuse "open needs --key <key>, the repo's Name from its ## Dispatcher block"
+  [[ $key =~ $KEY_RE ]] || refuse "--key must match $KEY_RE"
   [ "$have_report" = 1 ] || refuse "open needs --report-to <name>"
   [[ $report =~ $NAME_RE ]] || refuse "--report-to must match $NAME_RE"
-  sname="${key:+$key-}$slug"
+  sname="$key-$slug"
 else
   resolve_sname "$(git rev-parse --path-format=absolute --git-common-dir)/spawn"
 fi
@@ -294,10 +244,6 @@ tabcmd="/bin/zsh -lc 'exec ${agent_wrap}$claude_bin --name $sname --permission-m
 
 # A recorded terminal id is data from a file, so it is checked before it reaches osascript.
 TERM_RE='^[A-Za-z0-9_-]+$'
-if [ "$cmd" = send ]; then
-  [ -s "$termfile" ] || refuse "no terminal recorded for $slug in $termfile: it was not opened by session.sh"
-  [[ $(cat "$termfile") =~ $TERM_RE ]] || refuse "$termfile does not hold a terminal id"
-fi
 # close with the worktree and the recorded branch both already gone (merged and cleaned up by hand).
 gone=0
 if [ "$cmd" = close ] && [ -s "$branchfile" ]; then
@@ -336,34 +282,8 @@ refuse_locked() {
   refuse "$slug has a stale lock, stale: no claude --name $sname is running (terminal ${t:-unknown}, started ${s:-unknown}); the lock is kept. If the owner confirms it is dead: .claude/bin/session.sh close $slug --abandon"
 }
 
-# Identity check before /ship is typed: the recorded terminal must be in this slug's worktree. In a
-# dry-run it only announces the comparison, from this same function, so dropping the call drops the line.
-# Pure: is the reported directory $1 the worktree $2 or inside it? Empty, "missing value" and any ".." fail.
-cwd_ok() {
-  local c=${1%/}
-  [ -n "$c" ] || return 1
-  case "$c" in *..*|"missing value") return 1 ;; esac
-  [ "$c" = "$2" ] || [[ $c == "$2"/* ]]
-}
-cwd_guard() {
-  local tid cwd
-  tid=$(cat "$termfile")
-  if [ "$dry" = 1 ]; then
-    echo "would compare the working directory of terminal $tid to $wt, and refuse unless it is that directory or inside it"
-    return 0
-  fi
-  cwd=$(osascript -e "$APPLE_CWD" "$tid") || refuse "could not read the working directory of terminal $tid, so I will not type /ship into it"
-  cwd=$(printf '%s' "$cwd" | tr -cd 'A-Za-z0-9/._ -')
-  cwd_ok "$cwd" "$wt" || refuse "terminal $tid is in '${cwd:-no directory reported}', not in the worktree $wt for $slug; not typing /ship"
-}
-
 if [ "$dry" = 1 ]; then
-  if [ "$cmd" = send ]; then
-    cwd_guard
-    echo "would type /ship and Enter into the terminal id in $termfile"
-    echo "AppleScript (argument: terminal id):"
-    printf '%s\n' "$APPLE_SEND"
-  elif [ "$norecord" = 1 ]; then
+  if [ "$norecord" = 1 ]; then
     echo "no branch record for $slug in $branchfile: no worktree or branch is removed."
     echo "would refuse if claude --name $sname is running; otherwise delete $spawn/$slug.*"
     echo "would remove the lock $lockdir"
@@ -379,7 +299,7 @@ if [ "$dry" = 1 ]; then
     [ ! -e "$lockdir" ] || refuse_locked
     echo "would take lock $lockdir"
     echo "branch: $type/$slug (new, from origin/main)"
-    if [ -n "$key" ]; then echo "session name: $sname (recorded in $sessionfile)"; else echo "session name: $sname (bare slug, no record: legacy open without --key)"; fi
+    echo "session name: $sname (recorded in $sessionfile)"
     echo "worktree: $wt"
     echo "tab command: $tabcmd"
     echo "prompt append: $fetched_rule"
@@ -406,14 +326,6 @@ n=$(printf '%s\n' "$procs" | grep -c '^/Applications/Ghostty.app/Contents/MacOS/
 [ "$n" = 1 ] || refuse "need exactly one Ghostty instance, found $n"
 w=$(osascript -e 'tell application "Ghostty" to count windows') || refuse "could not ask Ghostty for its windows"
 [ "${w:-0}" -ge 1 ] || refuse "Ghostty has no open window"
-
-if [ "$cmd" = send ]; then
-  is_running || refuse "claude --name $sname is not running, so there is nothing to type /ship into"
-  cwd_guard
-  osascript -e "$APPLE_SEND" "$(cat "$termfile")" || refuse "could not type /ship into terminal $(cat "$termfile")"
-  echo "typed /ship into terminal $(cat "$termfile") for $slug"
-  exit 0
-fi
 
 if [ "$cmd" = open ]; then
   branch="$type/$slug"
@@ -443,7 +355,7 @@ if [ "$cmd" = open ]; then
   git fetch origin
   git worktree add --no-track "$wt" -b "$branch" origin/main
   printf '%s\n' "$branch" > "$branchfile"
-  [ -z "$key" ] || printf '%s\n' "$sname" > "$sessionfile"
+  printf '%s\n' "$sname" > "$sessionfile"
   # From here close --abandon can clean up, so the lock stays until close removes it.
   lock_kept=1
   termid=$(osascript -e "$APPLE_OPEN" "$wt" "$tabcmd") || refuse "Ghostty did not open the tab; clean up with: .claude/bin/session.sh close $slug --abandon"

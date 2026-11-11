@@ -18,9 +18,9 @@
 #
 # Rules (lane.sh): every PR body needs a `Why:` line. A PR touching a hard path needs lane:3-hard; lane 3 fails until
 # merge-ok is on the PR AND the latest merge-ok label event's actor is the `Approver:` in CLAUDE.md's `## Dispatcher`
-# block (read from main's copy). A label the agents' machine user adds is rejected (ADR-0004). Claude's Bash
-# commands containing "merge-ok" stop at a permission prompt (.claude/settings.json); that matches command text only,
-# so the actor check is what holds.
+# block (read from main's copy). A label the agents' machine user adds is rejected (ADR-0004). The owner adds it in
+# GitHub's web UI; Claude's Bash commands containing "merge-ok" are denied (.claude/settings.json, ADR-0003). That
+# matches command text only, so the actor check is what holds.
 #
 # No concurrency group, on purpose: cancelling (or replacing a pending) run could drop the synchronize run before it
 # voids a stale merge-ok. Labels are read live from the API, not from the event payload, for the same reason.

@@ -33,8 +33,7 @@ You are a worker session opened by the dispatcher, in your own worktree, for the
 - **Stay inside your issue's `Footprint:` line.** Another worker may be building beside you. If the change must
   reach outside it, put `Footprint grew: <paths>` on its own line of the PR body (paths comma-separated, no
   globs); the dispatcher reads it to keep a second worker out of those paths.
-- **Before you open the PR, run the checks yourself, in this order** (they are what `/ship` ran; nothing else runs
-  them for a worker). Record each result as evidence (exit code, test name, output line) for the PR body:
+- **Before you open the PR, run the checks yourself, in this order** (nothing else runs them for a worker). Record each result as evidence (exit code, test name, output line) for the PR body:
   1. **Gates.** Run the `Gates:` command of CLAUDE.md's `## Dispatcher` block, and every done-when command of your
      issue.
   2. **Scope.** Run `gh issue view <n>` plain (no pipe, no redirect), save the issue body to a scratchpad file with

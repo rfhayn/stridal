@@ -7,20 +7,20 @@
 - {{where the important code lives; 3-6 lines max}}
 
 ## Commands
-- Check (the one command CI runs; must exit 0 before /ship): `{{pnpm check}}`
+- Check (the one command CI runs; must exit 0 before the PR): `{{pnpm check}}`
 - Single test: `{{pnpm test -- path/to/file}}` · Dev: `{{pnpm dev}}` · Install: `{{pnpm install}}`
 
 ## How we work
-- Every change: `/brief` (it opens the worker itself when it has no open questions; `plan only` stops at the brief) -> build on a branch -> `/ship`. The owner chooses what ships by running `/brief`; they do not review intermediate output.
-- Write the check first. Done means: the tests exit 0, the diff touches only files listed in the brief (`.claude/bin/scope-check.sh`), and every claim in the PR cites a source (file:line, test name or command output). "Looks good", "I'm confident" and "no errors raised" are not checks.
+- Every change: a GitHub issue with a "Done when" -> the Now column of the Project -> `.claude/bin/dispatch.sh` -> a worker's PR (ADR-0001). The owner chooses what ships by moving issues into Now; they do not review intermediate output.
+- Write the check first. Done means: the tests exit 0, the diff touches only files in the issue's Footprint or Files (`.claude/bin/scope-check.sh`), and every claim in the PR cites a source (file:line, test name or command output). "Looks good", "I'm confident" and "no errors raised" are not checks.
 - Return the unit, not the batch: when a check fails, fix only the failing file/test ("fix X only"), rerun only that check, then the full check. After 3 failed attempts on the same unit, stop and re-brief. Do not keep looping.
 - Deterministic work is code, not a model call: merging, sorting, ranking, dedup, diffing, comparisons, counting. Write or use a script and cite its output.
 - One change = one branch = one squash PR to main. Branches: `feat/`, `fix/`, `chore/`, `docs/`. Never push to main.
-- One change at a time per builder, each in its own worktree: `/brief` opens a worker tab with `.claude/bin/session.sh` (macOS and Ghostty), and if that refuses it tells the owner to run `claude --worktree <slug>`. The worker starts through a login shell, so it has `gh` and `shellcheck`. The owner can type `/ship <slug>` in the main window; `session.sh send <slug> ship` then types `/ship` into the worker's tab. On a `worktree-<slug>` branch, first run `git switch -c <type>/<slug>`. At most 2-3 builders at once, and fewer if the check suite slows or flakes under load. Never build in the main checkout; it stays on `main`.
+- One change at a time per builder, each in its own worktree: the dispatcher opens a worker tab with `.claude/bin/session.sh` (macOS and Ghostty); by hand, run `claude --worktree <slug>`. The worker starts through a login shell, so it has `gh` and `shellcheck`. On a `worktree-<slug>` branch, first run `git switch -c <type>/<slug>`. At most 2-3 builders at once, and fewer if the check suite slows or flakes under load. Never build in the main checkout; it stays on `main`.
 - Do not script a rewrite of tracked source (`sed -i`, `perl -pi`, codemods); use the Edit tool.
 - New logic gets a test. Fix the code, not the test, unless the test is wrong (say so in the PR).
 - Architecture decisions: `docs/adr/NNNN-title.md` (copy 0000-template). Read an area's ADRs before changing it; supersede, don't contradict. There is no ADR index; list them and their status with `grep -HE '^(# |Date:)' docs/adr/*.md`.
-- Next work: `docs/ROADMAP.md` (Now/Next/Done is the status). `/brief <ID>` reads the item; the PR body says `Roadmap: <ID>` and the same PR moves the item to Done.
+- Next work: the issues in the Project's Now column (ADR-0001); there is no markdown roadmap. The PR body says `Closes #<n>`.
 
 ## Dispatcher
 The Now column of the GitHub Project is the backlog (ADR-0001). `/dispatch` works it; the scripts read these lines.
@@ -35,10 +35,10 @@ machine user first (ADR-0004; the steps are in `docs/runbooks/agent-token.md`).
   runs alone (ADR-0005). `max_workers` above 1 also needs the ruleset's strict status checks.
 
 ## Merge lanes (by blast radius, not confidence)
-Pick the lane in /brief; /ship labels the PR. CI's `lane` check forces lane 3 for the paths below.
+The issue names the lane; the worker labels the PR. CI's `lane` check forces lane 3 for the paths below.
 1. `lane:1-contained`, reversible and contained (copy, tests, isolated covered code): auto-merge when CI is green.
 2. `lane:2-wide`, reversible but wide (shared utilities, schema additions, config): CI + one `reviewer` round, then auto-merge.
-3. `lane:3-hard`, hard to reverse (migrations, deletions, production data, money): never auto-merges. Reviewer runs on Opus; the owner adds `merge-ok` and merges, either by hand or by typing `/merge <PR#>`. Claude adds `merge-ok` only inside that command, and its permission prompt must be confirmed; never on its own.
+3. `lane:3-hard`, hard to reverse (migrations, deletions, production data, money): never auto-merges. Reviewer runs on Opus; the owner adds `merge-ok` in GitHub's web UI and merges. Claude never adds it: Bash commands containing it are denied (ADR-0003).
 - Lane 3 paths here: {{every one-way path: migrations/schema, outbound email/SMS/webhooks, production-data writers (import, export, sync, delete scripts), credential handling, money, deploy/infra}} (keep in sync with `HARD_PATHS` in `.github/workflows/lane.yml`)
 
 ## Ask the owner first
