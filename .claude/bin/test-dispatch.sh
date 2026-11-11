@@ -382,5 +382,19 @@ total=$((total+1))
 o=$(cd "$T" && cp ok.md CLAUDE.md && bash "$DISPATCH" --name-key 2>&1)
 [ "$o" = alpha ] || { fail=$((fail+1)); echo "FAIL name-key: default CLAUDE.md in the cwd: got '$o'"; }
 
+# --- --field <Key>: one Key: value of the ## Dispatcher block (the launcher reads Agent, Agent keychain, Approver) ---
+md fld.md "- Name: alpha · Approver: acme · max_workers: 1" "- Agent: acme-bot · Agent keychain: acme-token"
+case_ "field: value" 0 '^acme-bot$' --field Agent --claude-md "$T/fld.md"
+case_ "field: a key with a space, not confused with its prefix" 0 '^acme-token$' --field "Agent keychain" --claude-md "$T/fld.md"
+case_ "field: missing key refused" 2 '^$' --field Deploy --claude-md "$T/fld.md"
+md fph.md "- Agent: acme-bot · Agent keychain: {{Keychain service}}"
+case_ "field: {{ placeholder refused" 2 '^$' --field "Agent keychain" --claude-md "$T/fph.md"
+md oth.md "- Name: alpha"
+case_ "field: a key only in another ## section is ignored (Project is in ## Other)" 2 '^$' --field Project --claude-md "$T/oth.md"
+case_ "field: the decoy section's Name is not the block's" 0 '^alpha$' --field Name --claude-md "$T/oth.md"
+case_ "field: missing file refused" 2 '^$' --field Agent --claude-md "$T/nope.md"
+case_ "field: needs a value" 2 '^$' --field
+case_ "field: bad key refused" 2 '^$' --field 'a;b' --claude-md "$T/fld.md"
+
 echo "$((total-fail))/$total passed"
 [ "$fail" = 0 ]
