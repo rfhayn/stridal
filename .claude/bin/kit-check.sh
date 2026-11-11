@@ -43,6 +43,29 @@ for f in .claude/bin/session.sh .claude/skills/land/SKILL.md; do
 done
 [ -x "$d/.claude/bin/session.sh" ] || { echo "kit-check: installed session.sh is not executable"; exit 1; }
 
+# Dispatcher (#436 part A): the scripts, skill, hook and lane files ship, scripts keep their executable bit,
+# the self-tests pass in the install, and nothing names the repo it was ported from.
+disp_scripts=".claude/bin/dispatch-next.sh .claude/bin/as-agent.sh .claude/bin/token-expiry.sh \
+  .claude/bin/test-session.sh .claude/bin/test-dispatch.sh .claude/bin/test-token-expiry.sh \
+  .claude/hooks/notify-waiting.sh .github/lane/lane.sh .github/lane/test.sh"
+for f in $disp_scripts .claude/skills/dispatch/SKILL.md .claude/skills/dispatch/worker-contract.md; do
+  [ -f "$d/$f" ] || { echo "kit-check: $f is missing from a new project"; exit 1; }
+  cmp -s "$f" "$d/$f" || { echo "kit-check: installed $f differs from the kit's"; exit 1; }
+done
+for f in $disp_scripts; do
+  [ -x "$d/$f" ] || { echo "kit-check: installed $f is not executable"; exit 1; }
+done
+(cd "$d" && .claude/bin/test-session.sh && .claude/bin/test-dispatch.sh && .claude/bin/test-token-expiry.sh \
+  && sh .github/lane/test.sh) >"$tmp/selftests.out" 2>&1 \
+  || { tail -n 20 "$tmp/selftests.out"; echo "kit-check: the dispatcher self-tests fail in a new project"; exit 1; }
+if (cd "$d" && grep -nE 'job-search|job-radar|rfhayn|/Users/' .claude/bin/session.sh .claude/bin/dispatch-next.sh \
+    .claude/bin/as-agent.sh .claude/bin/token-expiry.sh .claude/hooks/notify-waiting.sh \
+    .claude/skills/dispatch/*.md .github/lane/*.sh); then
+  echo "kit-check: a dispatcher file in a new project names job-search, a login or a home path"; exit 1
+fi
+grep -q 'test-dispatch.sh' .github/ci.template.yml || { echo "kit-check: ci.template.yml does not run the dispatcher self-tests"; exit 1; }
+grep -q '^## Dispatcher' CLAUDE.template.md || { echo "kit-check: CLAUDE.template.md has no ## Dispatcher block"; exit 1; }
+
 # Docs that ship unfilled must say so on their first line, in the repo and in what a new project receives.
 marker='> TEMPLATE, not filled in. Do not treat as project fact.'
 for f in docs/ARCHITECTURE.md docs/RISKS.md docs/templates/DATA-MODEL.md docs/templates/API.md \
