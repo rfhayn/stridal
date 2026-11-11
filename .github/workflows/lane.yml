@@ -1,17 +1,44 @@
-# Merge-lane gate (deterministic, ~10 s). Required check "lane" in the ruleset.
-# A PR is lane 3 (hard to reverse) if it has the lane:3-hard label OR touches HARD_PATHS.
-# Lane 3 fails until the owner adds the `merge-ok` label, so auto-merge can never land it.
-# Claude's commands containing "merge-ok" stop at a permission prompt (ask list in .claude/settings.json); the owner's /merge is the intended way to add it.
+# Merge-lane gate, judged by the default branch's (main's) rules (ADR-0002). Required check "lane" in the ruleset.
+#
+# Why pull_request_target: under `pull_request` a PR runs its OWN copy of this workflow, so it could weaken the
+# check that decides whether the owner must look, or add a workflow that labels itself merge-ok. pull_request_target
+# runs the default branch's copy of this file and checks out the default branch's latest commit, so the rules in
+# .github/lane/lane.sh are main's, not the PR's.
+#
+# Why ALSO pull_request: on a repo's first PR (a new project's kit PR, or the PR that adds this very file) main has
+# no copy of this file, so pull_request_target never runs and the required `lane` check would never report; with no
+# bypass actors the PR could not merge. The pull_request run reports then. Afterwards both runs happen on every PR, and
+# the ruleset requires EVERY run named `lane` to pass (observed in job-search, ADR-0002), so the PR's own copy can add
+# a failure but never mask main's. The cost is a second run per PR. The pull_request run reads the PR's own
+# CLAUDE.md and lane.sh, so only main's run is the judge; the first-PR run is a convenience, not a guard.
+#
+# Never check out or run the PR's head. This job reads only facts about the PR through the API: its body, labels,
+# changed file names (plus each previous name, so a move out of a hard path counts) and who added merge-ok.
+# Under pull_request_target the token can write; running PR code here would hand it to the PR.
+#
+# Rules (lane.sh): every PR body needs a `Why:` line. A PR touching a hard path needs lane:3-hard; lane 3 fails until
+# merge-ok is on the PR AND the latest merge-ok label event's actor is the `Approver:` in CLAUDE.md's `## Dispatcher`
+# block (read from main's copy). A label the agents' machine user adds is rejected (ADR-0004). Claude's Bash
+# commands containing "merge-ok" stop at a permission prompt (.claude/settings.json); that matches command text only,
+# so the actor check is what holds.
+#
+# No concurrency group, on purpose: cancelling (or replacing a pending) run could drop the synchronize run before it
+# voids a stale merge-ok. Labels are read live from the API, not from the event payload, for the same reason.
 # runs-on is set by bootstrap.sh from your runner choice. This job bills 1 hosted minute per run.
 name: Lane
 
+# Both events need the same types: a run that is not re-run on a label change would stay red (or green) on a stale
+# label list, and the ruleset requires every run named `lane`.
 on:
-  pull_request:
+  pull_request:   # the PR's own copy: the only run on a repo's first PR, before this file is on main
+    types: [opened, synchronize, reopened, labeled, unlabeled, edited]
+  pull_request_target:   # main's copy: the one that judges every later PR
     types: [opened, synchronize, reopened, labeled, unlabeled, edited]
 
 permissions:
   contents: read
   pull-requests: write   # only to drop a stale merge-ok after new commits
+  issues: read           # the label events (who added merge-ok)
 
 jobs:
   lane:
@@ -19,9 +46,10 @@ jobs:
     runs-on: ubuntu-26.04   # bootstrap.sh: hosted | self-hosted
     timeout-minutes: 2
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7   # the default branch's latest commit. Never the head.
         with:
-          fetch-depth: 0
+          persist-credentials: false
+      # First, so nothing that fails earlier can skip it.
       - name: New commits void merge-ok
         if: github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'merge-ok')
         env:
@@ -30,39 +58,38 @@ jobs:
         run: |
           gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --remove-label merge-ok
           echo "::error::New commits after merge-ok. The owner re-adds merge-ok after looking again."; exit 1
+      - name: Self-test main's lane rules
+        run: bash .github/lane/test.sh
       - name: PR body has a Why
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
-        run: |
-          set -euo pipefail
-          why=$(printf '%s\n' "$PR_BODY" | sed -n 's/^Why:[[:space:]]*//p' | head -n1 | sed 's/[[:space:]]*$//')
-          if [ -z "$why" ] || [ "$why" = "<one line>" ]; then
-            echo "::error::PR body needs a real 'Why:' line (one line, not the <one line> placeholder). Edit the body to re-run."; exit 1
-          fi
+        run: bash .github/lane/lane.sh body
       - name: Check lane
         env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          CHANGED: ${{ github.event.pull_request.changed_files }}
           # {{Extended regex of this project's ONE-WAY paths. Keep in sync with "Merge lanes" in CLAUDE.md.}}
           # Cover every kind, not only SQL: schema/migrations (any language), outbound messages (email, SMS,
           # webhooks, notifications), production-data writers (import/export/sync/backfill/delete scripts),
           # credential handling, deploy/infra, money, and the gate itself. Replace the example paths with yours.
           HARD_PATHS: '^(migrations/|db/migrations/|src/db/migrate|src/(email|mail|notify|notifications)/|src/.*(send|mailer|digest)[^/]*$|scripts/.*(sync|export|import|backfill|delete|purge)[^/]*$|src/(auth|credentials|secrets)/|(.*/)?\.env[^/]*$|.*\.(pem|key)$|infra/|deploy/|\.github/|\.claude/settings\.json$)'
-          LABELS: ${{ join(github.event.pull_request.labels.*.name, ' ') }}
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          hard_files=$(git diff --name-only "$BASE...$HEAD" | grep -E "$HARD_PATHS" || true)
-          labels=" $LABELS "
-          lane=none
-          for l in lane:1-contained lane:2-wide lane:3-hard; do
-            [[ "$labels" == *" $l "* ]] && lane=$l
-          done
-          if [ -n "$hard_files" ]; then
-            echo "Hard-to-reverse paths touched:"; echo "$hard_files"
-            [ "$lane" = "lane:3-hard" ] || { echo "::error::Touches lane-3 paths; label the PR lane:3-hard."; exit 1; }
-          fi
-          [ "$lane" != none ] || { echo "::error::Add one lane label: lane:1-contained, lane:2-wide or lane:3-hard."; exit 1; }
-          if [ "$lane" = "lane:3-hard" ] && [[ "$labels" != *" merge-ok "* ]]; then
-            echo "::error::Lane 3 waits for the owner: they add the merge-ok label, then merge."; exit 1
-          fi
-          echo "Lane OK: $lane"
+          R=$GITHUB_REPOSITORY
+          # The files API lists at most 3000 files, even paginated; past that a hard path could hide.
+          [ "$CHANGED" -lt 3000 ] || { echo "::error::$CHANGED changed files; the API lists only 3000, so lane cannot judge this PR. Split it."; exit 1; }
+          # The approver is main's `Approver:` login. Empty fails closed (lane.sh).
+          APPROVER=$(sed -n '/^## Dispatcher/,/^## [^D]/s/.*Approver: \([A-Za-z0-9-]*\).*/\1/p' CLAUDE.md | head -n1)
+          # A failed fetch fails the job (set -e on each assignment); it never reads as "no files".
+          # Labels are read live (newline list), not from the payload, which can be a stale snapshot.
+          LABELS=$(gh api --paginate "repos/$R/issues/$PR/labels" --jq '.[].name')
+          FILES=$(gh api --paginate "repos/$R/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)')
+          # An app acting (even on the approver's behalf) never counts as the approver.
+          MERGE_OK_BY=$(gh api --paginate "repos/$R/issues/$PR/events" \
+            --jq '.[] | select(.event=="labeled" and .label.name=="merge-ok")
+                  | if .performed_via_github_app == null then .actor.login else "app:" + .performed_via_github_app.slug end' \
+            | tail -n1)
+          [ -n "$FILES" ] || { echo "::error::The PR's file list came back empty."; exit 1; }
+          export LABELS FILES MERGE_OK_BY APPROVER
+          bash .github/lane/lane.sh lane

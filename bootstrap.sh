@@ -29,6 +29,10 @@ cd "$KIT"
 for f in CLAUDE.md .claude/settings.json .claude/agents/reviewer.md .claude/agents/researcher.md \
          .claude/skills/brief/SKILL.md .claude/skills/ship/SKILL.md .claude/skills/merge/SKILL.md .claude/skills/land/SKILL.md .claude/hooks/one-way-guard.sh \
          .claude/bin/scope-check.sh .claude/bin/preflight.sh .claude/bin/check-evidence.sh .claude/bin/session.sh .claude/statusline.sh .claude/rules/EXAMPLE-migrations.md.example \
+         .claude/bin/dispatch-next.sh .claude/bin/as-agent.sh .claude/bin/token-expiry.sh \
+         .claude/bin/test-session.sh .claude/bin/test-dispatch.sh .claude/bin/test-token-expiry.sh \
+         .claude/hooks/notify-waiting.sh .claude/skills/dispatch/SKILL.md .claude/skills/dispatch/worker-contract.md \
+         .github/lane/lane.sh .github/lane/test.sh \
          .github/workflows/ci.yml .github/workflows/lane.yml .github/pull_request_template.md \
          docs/ROADMAP.md docs/adr/0000-template.md docs/ARCHITECTURE.md docs/RISKS.md \
          docs/templates/DATA-MODEL.md docs/templates/API.md docs/templates/INVENTORY.md \
@@ -49,7 +53,7 @@ for f in CLAUDE.md .claude/settings.json .claude/agents/reviewer.md .claude/agen
 done
 grep -qF '.claude/worktrees/' "$DEST/.gitignore" 2>/dev/null || cat gitignore.append >> "$DEST/.gitignore"
 echo "Runner: $RUNNER for ci and lane."
-[ "$RUNNER" = hosted ] && echo "  Each lane run bills 1 minute and each ci run its length. If this account has ever paused pull_request CI for minutes, rerun with self-hosted."
+[ "$RUNNER" = hosted ] && echo "  Each lane run bills 1 minute (it runs on two events per PR update) and each ci run its length. If this account has ever paused pull_request CI for minutes, rerun with self-hosted."
 
 [ -n "$REPO" ] || { echo "Files copied. Pass owner/repo as the 3rd argument to protect main."; exit 0; }
 

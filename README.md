@@ -4,8 +4,8 @@ A copy-in kit for building with Claude Code, without the process tax.
 
 ## What it is
 Stridal is a copy-in kit for building with Claude Code: skills, agents, a permissions and sandbox config, GitHub CI and
-merge controls, and doc templates. `bootstrap.sh` installs it into a project. A new project gets 25 files plus a
-`.gitignore` addition (this repo tracks 36), and there is nothing to maintain between projects.
+merge controls, and doc templates. `bootstrap.sh` installs it into a project. A new project gets 38 files plus a
+`.gitignore` addition (this repo tracks 55; `bootstrap.sh` in copy-only mode prints one `added:` line per file), and there is nothing to maintain between projects.
 
 ## What it does
 - **One change per worktree.** The main session opens each change in its own worktree and Ghostty tab; the main checkout stays on `main`.
@@ -43,20 +43,24 @@ Everything else merges itself or stops and asks.
 `bootstrap.sh` is the only real install route. GitHub's "Use this template" skips the ruleset, runner choice and
 labels, and copies this repo's own `CLAUDE.md` and `ci.yml` instead of the templates.
 
-1. **Choose the runner.** `hosted` bills Actions minutes (`lane` ~1 minute per run, 2-4 runs per PR, plus every
+1. **Choose the runner.** `hosted` bills Actions minutes (`lane` ~1 minute per run, 4-8 runs per PR since it listens to two events (ADR-0002), plus every
    `ci` run). If this account has ever run out of minutes or paused `pull_request` CI, choose `self-hosted`
    (a machine you own that is on while you work; never a production box).
 2. `./bootstrap.sh ~/code/myproject <hosted|self-hosted> owner/myproject` (needs `gh auth login` as a repo admin;
    without `owner/repo` it copies files only). It posts the ruleset first, restores your previous merge
    settings if that fails, and leaves auto-merge OFF. Rulesets on a **private** repo need GitHub Pro or Team.
-3. Fill the `{{placeholders}}`: `CLAUDE.md` (stack, check command, lane-3 paths, personal-data paths), `ci.yml`
+3. Fill the `{{placeholders}}`: `CLAUDE.md` (stack, check command, lane-3 paths, personal-data paths, and `Approver:` in
+   the `## Dispatcher` block, which the kit PR needs because it touches `.github/`; the rest of that block waits for the
+   first `/dispatch`), `ci.yml`
    (the same check command, including the format check), `HARD_PATHS` in `lane.yml` (every one-way path: schema,
    outbound email/messages, production-data writers, credential handling, deploy), and `PERSONAL_DATA` in
    `.claude/settings.json` and `.gitignore`. Add package registries to `sandbox.network.allowedDomains`.
    For a pnpm project, add `"packageManager": "pnpm@9.15.4"` to `package.json` and commit `pnpm-lock.yaml`, because the
    CI template's `pnpm/action-setup@v6` has no `version` input.
 4. If the project's one-way failure is a git command, wire the optional hook (below) now, not after it happens.
-5. Open one PR with the kit, label `lane:2-wide`, merge it by hand when `ci` and `lane` are green. Time `ci`; over
+5. Open one PR with the kit and label it `lane:3-hard` (it touches `.github/` and `.claude/settings.json`). `lane` runs
+   from the PR's own copy this once, since main has none yet (ADR-0002). Add `merge-ok` yourself in GitHub's web UI
+   (the `Approver:` in `CLAUDE.md` must be your login) and merge by hand when `ci` and `lane` are green. Time `ci`; over
    10 minutes, move slow suites to a nightly workflow.
 6. **Prove a red PR can't merge**: open a PR with a deliberately failing test; when `ci` is red run
    `./bootstrap.sh --enable-auto-merge owner/myproject <PR>`. It checks the PR is BLOCKED with `ci` failing, then
@@ -100,7 +104,7 @@ Do not add `paths:` filters to required workflows: a skipped required check stay
 ## Files
 | Path | What it does |
 |---|---|
-| `CLAUDE.template.md` | ~48-line template, installed as `CLAUDE.md`: commands, how we work, merge lanes, ask-first list, guards (one-way + learned), extension point |
+| `CLAUDE.template.md` | ~60-line template, installed as `CLAUDE.md`: commands, how we work, the `## Dispatcher` block, merge lanes, ask-first list, guards (one-way + learned), extension point |
 | `CLAUDE.md` | This repo's own, filled in. Not copied to new projects |
 | `.claude/settings.json` | Sonnet + medium effort; `acceptEdits`; deny list (secrets, `--admin` merges, pushes to main, ruleset edits); ask list (`merge-ok`, `gh label`, unsandboxed retries); Bash sandbox with GitHub/npm network |
 | `.claude/hooks/one-way-guard.sh` | OPTIONAL, not wired by default. The one hook slot, for a blocking guard on the project's one-way failure (example: blocks `git add/commit/push` of personal-data or secret paths) |
@@ -117,12 +121,18 @@ Do not add `paths:` filters to required workflows: a skipped required check stay
 | `.claude/rules/EXAMPLE-migrations.md.example` | Example path-scoped domain rule (inactive until renamed to `.md`) |
 | `.github/ci.template.yml` | Installed as `.github/workflows/ci.yml`, the required `ci` check: one job, 10-minute timeout, cancels superseded runs, gitleaks secret scan, then your stack's check |
 | `.github/workflows/ci.yml` | This repo's own `ci`: gitleaks, then `kit-check.sh`. Not copied to new projects |
-| `.github/workflows/lane.yml` | The required `lane` check (merge-lane gate, ~10 s) |
+| `.github/workflows/lane.yml` | The required `lane` check (merge-lane gate, ~10 s). A `pull_request_target` workflow, so main's rules judge every PR (ADR-0002); calls `.github/lane/lane.sh` |
+| `.github/lane/lane.sh`, `.github/lane/test.sh` | The lane decision as a pure function of env, and its self-test. `merge-ok` counts only when the latest label event's actor is the `Approver:` in `CLAUDE.md`'s `## Dispatcher` block, so the agents' machine user can never approve (ADR-0003, ADR-0004) |
+| `.claude/skills/dispatch/SKILL.md`, `worker-contract.md` | `/dispatch`: works the GitHub Project's Now column up to `max_workers` issues, one worker session each (ADR-0001, ADR-0005, ADR-0006); the contract is what each worker is told. Needs the machine user set up first (the skill's adoption steps) |
+| `.claude/bin/dispatch-next.sh`, `as-agent.sh`, `token-expiry.sh` | Pick the next Now item (and a footprint-safe second), start a command with the machine user's token from the Keychain, and warn before that token expires |
+| `.claude/bin/test-session.sh`, `test-dispatch.sh`, `test-token-expiry.sh` | Self-tests for `session.sh` and the three dispatcher scripts. A new project's `ci` runs them, with `.github/lane/test.sh` |
+| `.claude/hooks/notify-waiting.sh` | Wired to the `permission_prompt` notification: marks a worker as waiting on a prompt so the dispatcher can tell the owner |
 | `.github/ruleset-main.json` | Ruleset for the default branch: PR required (0 approvals), squash only, checks `ci` + `lane`, no deletion, no force push, no bypass actors |
 | `.github/pull_request_template.md` | `Why:` and `Roadmap:` lines (lane.yml fails a PR with no real `Why:`), then what/why, lane, done-when evidence, decisions & assumptions with sources, review, guard |
 | `docs/ROADMAP.template.md` | Blank roadmap, installed as `docs/ROADMAP.md`: items with ID, Why, Done when and Links, in three sections: Now (max 3), Next, Done (last 10) |
 | `docs/ROADMAP.md` | This repo's own roadmap. Not copied to new projects |
 | `docs/adr/0000-template.md` | Short ADR, only for decisions expensive to reverse |
+| `docs/adr/0001-*.md` to `0006-*.md` | This repo's decisions for the dispatcher: backlog is the Project's Now column, lane judged by the base branch, `merge-ok` withheld from Claude, agents act as a machine user, two workers on declared footprints, session names carry a repo key. Not copied to new projects |
 | `docs/ARCHITECTURE.md` | Live doc, installed unfilled: components, data flow, constraints. First line marks it a template until filled in |
 | `docs/RISKS.md` | Live doc, installed unfilled: risk table (ID, Risk, Impact, Likelihood, Mitigation, Owner, Status) with one example row |
 | `docs/templates/DATA-MODEL.md` | Template: entity-relationship diagram as a mermaid block |
@@ -169,7 +179,7 @@ timeout block too; without it the guard fails open. Use the slot for whatever yo
 - A local runner script that calls the same steps file as CI, for the inner loop when Actions minutes are scarce. It never writes a receipt a merge trusts.
 
 ## Costs and limits to know
-- On hosted runners each `lane` run bills one rounded-up minute (2-4 runs per PR). The runner choice is install step 1.
+- On hosted runners each `lane` run bills one rounded-up minute (4-8 runs per PR: it runs on both `pull_request` and `pull_request_target`, ADR-0002). The runner choice is install step 1.
 - `bypass_actors` is empty, so even admins merge through PRs. To pause the ruleset, set `enforcement` to
   `disabled` in Settings → Rules; it can't be deleted from a Claude session (denied).
 - Permission rules evaluate deny, then ask, then allow; a deny always wins. They match command text, so `git -C . push` or

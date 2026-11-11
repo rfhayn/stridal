@@ -52,6 +52,15 @@ jobs:
           git rev-parse --verify --quiet "$HEAD^{commit}" >/dev/null || { echo "::error::Head commit not found: $HEAD"; exit 1; }
           gitleaks git --no-banner --redact --log-opts="$BASE..$HEAD" .
 
+      # ---- The dispatcher's self-tests (they need only bash, git, jq and awk, all on the runner). ----
+      - name: Dispatcher self-tests
+        run: |
+          set -euo pipefail
+          .claude/bin/test-session.sh
+          .claude/bin/test-dispatch.sh
+          .claude/bin/test-token-expiry.sh
+          sh .github/lane/test.sh
+
       # ---- {{STACK SETUP}}: replace for your stack. Node + pnpm example: ----
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7

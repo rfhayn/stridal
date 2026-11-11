@@ -43,6 +43,38 @@ for f in .claude/bin/session.sh .claude/skills/land/SKILL.md; do
 done
 [ -x "$d/.claude/bin/session.sh" ] || { echo "kit-check: installed session.sh is not executable"; exit 1; }
 
+# Dispatcher (#436 part A): the scripts, skill, hook and lane files ship, scripts keep their executable bit,
+# the self-tests pass in the install, and nothing names the repo it was ported from.
+disp_scripts=".claude/bin/dispatch-next.sh .claude/bin/as-agent.sh .claude/bin/token-expiry.sh \
+  .claude/bin/test-session.sh .claude/bin/test-dispatch.sh .claude/bin/test-token-expiry.sh \
+  .claude/hooks/notify-waiting.sh .github/lane/lane.sh .github/lane/test.sh"
+for f in $disp_scripts .claude/skills/dispatch/SKILL.md .claude/skills/dispatch/worker-contract.md; do
+  [ -f "$d/$f" ] || { echo "kit-check: $f is missing from a new project"; exit 1; }
+  cmp -s "$f" "$d/$f" || { echo "kit-check: installed $f differs from the kit's"; exit 1; }
+done
+for f in $disp_scripts; do
+  [ -x "$d/$f" ] || { echo "kit-check: installed $f is not executable"; exit 1; }
+done
+(cd "$d" && .claude/bin/test-session.sh && .claude/bin/test-dispatch.sh && .claude/bin/test-token-expiry.sh \
+  && sh .github/lane/test.sh) >"$tmp/selftests.out" 2>&1 \
+  || { tail -n 20 "$tmp/selftests.out"; echo "kit-check: the dispatcher self-tests fail in a new project"; exit 1; }
+if (cd "$d" && grep -nE 'job-search|job-radar|rfhayn|/Users/' .claude/bin/session.sh .claude/bin/dispatch-next.sh \
+    .claude/bin/as-agent.sh .claude/bin/token-expiry.sh .claude/hooks/notify-waiting.sh \
+    .claude/skills/dispatch/*.md .github/lane/*.sh); then
+  echo "kit-check: a dispatcher file in a new project names job-search, a login or a home path"; exit 1
+fi
+# lane.yml listens to BOTH events (ADR-0002): pull_request so the first PR of a repo that has no lane.yml on main yet
+# still gets a `lane` check (else the ruleset's required check never reports), pull_request_target so main's copy judges.
+for ev in pull_request pull_request_target; do
+  grep -Eq "^  $ev:( |\$)" .github/workflows/lane.yml || { echo "kit-check: lane.yml does not trigger on $ev"; exit 1; }
+done
+# Each trigger needs the same types, or a run that is not re-run on a label change stays stale (and the ruleset
+# requires every run named lane).
+[ "$(grep -c '^    types: \[opened, synchronize, reopened, labeled, unlabeled, edited\]$' .github/workflows/lane.yml)" = 2 ] \
+  || { echo "kit-check: lane.yml must give both triggers the types opened, synchronize, reopened, labeled, unlabeled, edited"; exit 1; }
+grep -q 'test-dispatch.sh' .github/ci.template.yml || { echo "kit-check: ci.template.yml does not run the dispatcher self-tests"; exit 1; }
+grep -q '^## Dispatcher' CLAUDE.template.md || { echo "kit-check: CLAUDE.template.md has no ## Dispatcher block"; exit 1; }
+
 # Docs that ship unfilled must say so on their first line, in the repo and in what a new project receives.
 marker='> TEMPLATE, not filled in. Do not treat as project fact.'
 for f in docs/ARCHITECTURE.md docs/RISKS.md docs/templates/DATA-MODEL.md docs/templates/API.md \

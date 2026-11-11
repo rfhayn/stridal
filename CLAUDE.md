@@ -17,6 +17,14 @@ A copy-in kit for building with Claude Code: `bootstrap.sh` installs it into a p
 - One change = one branch = one squash PR to main. Branches: `feat/`, `fix/`, `chore/`, `docs/`. Never push to main. Build in a worktree (`claude --worktree <slug>`); the main checkout stays on `main`. On a `worktree-<slug>` branch, first run `git switch -c <type>/<slug>`.
 - Do not script a rewrite of tracked source (`sed -i`, `perl -pi`, codemods); use the Edit tool.
 
+## Dispatcher
+The Now column of the GitHub Project is the backlog (ADR-0001). `/dispatch` works it; the scripts read these lines.
+- Name: stridal · Project: rfhayn #4 · Approver: rfhayn · max_workers: 1
+- Deploy: true · Gates: .claude/bin/kit-check.sh
+- Agent: rfhayn-bot · Agent keychain: job-radar-github-bot
+- Start: `.claude/bin/as-agent.sh job-radar-github-bot claude --name dispatch-stridal`
+- `Deploy: true` is a documented no-op: nothing here deploys. No `Footprint areas`, so one worker at a time (ADR-0005).
+
 ## Merge lanes
 Almost every change here touches `.claude/settings.json` or `.github/`, which `lane.yml` forces to lane 3: the owner adds `merge-ok` and merges, either by hand or by typing `/merge <PR#>`. Claude adds `merge-ok` only inside that command, and its permission prompt must be confirmed; never on its own.
 
