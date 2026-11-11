@@ -33,8 +33,8 @@ Names used below:
   the next command. Otherwise a label edit that keeps failing would re-comment on every pass. A different text
   (a new reason) is posted, so the issue never shows a stale reason.
 - **Free text goes through a file.** Write any comment or issue body longer than one of the fixed lines below
-  (a run record, a quoted error) to a scratchpad file with the Write tool and pass it with `--body-file <file>`
-  or `gh api ... -F body=@<file>`; never inline with `--body`, `-m` or a heredoc in the same Bash command as `git`
+  (a run record, a quoted error) to a scratchpad file with the Write tool and pass it with `--body-file <file>`,
+  `gh api ... -F body=@<file>` or, for a commit message, `git commit -F <file>`; never inline with `--body`, `-m` or a heredoc in the same Bash command as `git`
   or `gh`. A fixed `--body "dispatch: ..."` line below may run as written only while its filled-in `<reason>`
   quotes no path, flag or glob character; otherwise it goes through a file too. The reason: the permission rules
   and any command-text guard match the whole command text and never parse it, so text that only mentions a
