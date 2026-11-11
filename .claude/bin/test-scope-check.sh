@@ -35,6 +35,7 @@ case_ "no arguments is a usage error" 2 'usage'
 
 body all.md 'Footprint: src/a, docs, top.txt'
 case_ "footprint: files under a directory path are in scope" 0 'all changed files are in the brief' --footprint "$T/all.md"
+# shellcheck disable=SC2016  # backticks are literal Footprint text
 body part.md 'Footprint: `src/a/`, docs'
 case_ "footprint: a file outside is OUT OF SCOPE" 1 'OUT OF SCOPE: top.txt' --footprint "$T/part.md"
 body prefix.md 'Footprint: src/a/on, docs, top.txt'

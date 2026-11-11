@@ -398,6 +398,7 @@ case_ "field: bad key refused" 2 '^$' --field 'a;b' --claude-md "$T/fld.md"
 
 # --- --footprint-of <body-file>: the issue body's Footprint paths, one per line (scope-check reads the same rule) ---
 fpbody() { printf '%b' "$2" > "$T/$1"; }
+# shellcheck disable=SC2016  # backticks are literal Footprint text
 fpbody fp1.md 'Intro.\nFootprint: `src/a/`, ./b/c.txt\nDone when: x'
 case_ "footprint-of: plain line, backticks, ./ and trailing / normalised" 0 '^src/a'$'\n''b/c.txt$' --footprint-of "$T/fp1.md"
 fpbody fp2.md '- Footprint: docs/x.md'
