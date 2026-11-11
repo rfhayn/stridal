@@ -63,6 +63,9 @@ expect_refuse "already running (line end)" "$T/running" 'already'
 printf '%s\n' "claude --name dispatch-alpha-2 --x" "claude --name dispatch-alphabet" > "$T/ps.txt"
 total=$((total+1)); run "$T/running"
 [ "$rc" = 0 ] || bad "a longer name (dispatch-alpha-2) must not count as running: exit $rc: $(cat "$T/err")"
+# grep -q stops at the first match; a long ps listing after it must not turn that match into "not running" (SIGPIPE + pipefail)
+{ echo "claude --name dispatch-alpha"; head -c 300000 /dev/zero | tr '\0' 'x' | fold -w 100; } > "$T/ps.txt"
+expect_refuse "already running (match first, 300 KB of ps after it)" "$T/running" 'already'
 : > "$T/ps.txt"
 
 # 3. refuses with no Name:

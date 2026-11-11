@@ -32,7 +32,9 @@ key=$(bash "$next" --name-key) || refuse "CLAUDE.md has no valid Name: in its ##
 ps_ok=1
 if [ -n "${DISPATCH_PS:-}" ]; then ps_out=$("$DISPATCH_PS") || ps_ok=0; else ps_out=$(ps -axo command=) || ps_ok=0; fi
 [ "$ps_ok" = 1 ] || echo "dispatch.sh: warning: could not list processes, so a running dispatch-$key is not ruled out" >&2
-if printf '%s\n' "$ps_out" | grep -Eq "claude --name dispatch-$key( |\$)"; then
+# A here-string, not a pipe: grep -q stops at its first match, and a pipe's writer then dies of SIGPIPE, which
+# pipefail turns into "no match" and lets a second dispatcher start.
+if grep -Eq "claude --name dispatch-$key( |\$)" <<<"$ps_out"; then
   refuse "dispatch-$key already runs; switch to that tab (two dispatchers would take the same issues)"
 fi
 
