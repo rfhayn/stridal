@@ -3,6 +3,16 @@
   "model": "sonnet",
   "effortLevel": "medium",
   "statusLine": {"type": "command", "command": "sh \"${CLAUDE_PROJECT_DIR:-.}\"/.claude/statusline.sh"},
+  "hooks": {
+    "Notification": [
+      {
+        "matcher": "permission_prompt",
+        "hooks": [
+          {"type": "command", "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/notify-waiting.sh\""}
+        ]
+      }
+    ]
+  },
   "permissions": {
     "defaultMode": "acceptEdits",
     "disableBypassPermissionsMode": "disable",
@@ -30,6 +40,9 @@
       "Bash(gh pr merge * --squash --delete-branch)",
       "Bash(git worktree list*)",
       "Bash(.claude/bin/session.sh *)",
+      "Bash(bash .claude/bin/session.sh *)",
+      "Bash(bash .claude/bin/dispatch-next.sh *)",
+      "Bash(bash .claude/bin/token-expiry.sh *)",
       "Bash(.claude/bin/preflight.sh *)",
       "Bash(.claude/bin/check-evidence.sh *)"
     ],
@@ -71,6 +84,10 @@
       "Bash(gh * --body-file=*.env*)",
       "Bash(gh * -F *.env*)",
       "Bash(gh gist *)",
+      "Bash(*gh auth *)",
+      "Bash(*gh auth)",
+      "Bash(*security find-*)",
+      "Bash(*security dump-keychain*)",
       "Bash(rm -rf /*)",
       "Bash(rm -rf ~*)",
       "Bash(sed -i*)",
@@ -92,7 +109,8 @@
     "excludedCommands": [
       "gh *",
       "docker *",
-      ".claude/bin/session.sh *"
+      ".claude/bin/session.sh *",
+      "bash .claude/bin/session.sh *"
     ],
     "network": {
       "allowedDomains": [
