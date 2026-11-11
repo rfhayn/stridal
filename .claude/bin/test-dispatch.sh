@@ -396,5 +396,26 @@ case_ "field: missing file refused" 2 '^$' --field Agent --claude-md "$T/nope.md
 case_ "field: needs a value" 2 '^$' --field
 case_ "field: bad key refused" 2 '^$' --field 'a;b' --claude-md "$T/fld.md"
 
+# --- --footprint-of <body-file>: the issue body's Footprint paths, one per line (scope-check reads the same rule) ---
+fpbody() { printf '%b' "$2" > "$T/$1"; }
+fpbody fp1.md 'Intro.\nFootprint: `src/a/`, ./b/c.txt\nDone when: x'
+case_ "footprint-of: plain line, backticks, ./ and trailing / normalised" 0 '^src/a'$'\n''b/c.txt$' --footprint-of "$T/fp1.md"
+fpbody fp2.md '- Footprint: docs/x.md'
+case_ "footprint-of: '- ' prefix" 0 '^docs/x.md$' --footprint-of "$T/fp2.md"
+fpbody fp3.md '**Footprint:** one/two, three'
+case_ "footprint-of: **Footprint:** form" 0 '^one/two'$'\n''three$' --footprint-of "$T/fp3.md"
+fpbody fp4.md 'Footprint: none'
+case_ "footprint-of: none prints nothing" 0 '^$' --footprint-of "$T/fp4.md"
+fpbody fp5.md 'Footprint: tbd'
+case_ "footprint-of: placeholder prints nothing" 0 '^$' --footprint-of "$T/fp5.md"
+fpbody fp6.md 'Footprint: src/*, ok/a'
+case_ "footprint-of: unsafe (glob) prints nothing" 0 '^$' --footprint-of "$T/fp6.md"
+fpbody fp7.md 'Footprint: ../etc, ok/a'
+case_ "footprint-of: unsafe (..) prints nothing" 0 '^$' --footprint-of "$T/fp7.md"
+fpbody fp8.md 'No footprint line here.'
+case_ "footprint-of: no line prints nothing" 0 '^$' --footprint-of "$T/fp8.md"
+case_ "footprint-of: missing file refused" 2 '^$' --footprint-of "$T/nope.md"
+case_ "footprint-of: needs a value" 2 '^$' --footprint-of
+
 echo "$((total-fail))/$total passed"
 [ "$fail" = 0 ]
