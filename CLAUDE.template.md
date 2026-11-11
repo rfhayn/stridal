@@ -25,11 +25,11 @@
 ## Dispatcher
 The Now column of the GitHub Project is the backlog (ADR-0001). `/dispatch` works it; the scripts read these lines.
 Each line is `Key: value` pairs joined by ` · `. Fill in `Approver` before you open the kit's PR (a lane-3 PR cannot be approved without it; lanes 1 and 2 don't need it), the rest before the first `/dispatch`, and set up the agents'
-machine user first (ADR-0004; the steps are in `.claude/skills/dispatch/SKILL.md`).
+machine user first (ADR-0004; the steps are in `docs/runbooks/agent-token.md`).
 - Name: {{key: a letter first, lowercase, up to 20 characters; sessions are named dispatch-<key> and <key>-<slug>}} · Project: {{owner}} #{{project number}} · Approver: {{your GitHub login; must differ from Agent}} · max_workers: 1
 - Deploy: {{command that makes a merged main live, or `true` when nothing deploys}} · Gates: {{the Check command above}}
 - Agent: {{machine-user login}} · Agent keychain: {{Keychain service holding its token}}
-- Start: `.claude/bin/as-agent.sh {{Agent keychain}} claude --name dispatch-{{Name}}`
+- Start: `.claude/bin/dispatch.sh` (checks, then runs `as-agent.sh <Agent keychain> claude --name dispatch-<Name> -- "/loop /dispatch"`)
 - Footprint areas: {{the directories issues name in a `Footprint:` line; leave this line out to run one worker at a time}}
 - An issue runs beside another only with a `Footprint:` line in its body (paths or footprint areas); otherwise it
   runs alone (ADR-0005). `max_workers` above 1 also needs the ruleset's strict status checks.

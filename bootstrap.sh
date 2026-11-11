@@ -31,6 +31,7 @@ for f in CLAUDE.md .claude/settings.json .claude/agents/reviewer.md .claude/agen
          .claude/bin/scope-check.sh .claude/bin/preflight.sh .claude/bin/check-evidence.sh .claude/bin/session.sh .claude/statusline.sh .claude/rules/EXAMPLE-migrations.md.example \
          .claude/bin/dispatch-next.sh .claude/bin/as-agent.sh .claude/bin/token-expiry.sh \
          .claude/bin/test-session.sh .claude/bin/test-dispatch.sh .claude/bin/test-token-expiry.sh \
+         .claude/bin/dispatch.sh .claude/bin/test-launcher.sh docs/runbooks/agent-token.md \
          .claude/hooks/notify-waiting.sh .claude/skills/dispatch/SKILL.md .claude/skills/dispatch/worker-contract.md \
          .github/lane/lane.sh .github/lane/test.sh \
          .github/workflows/ci.yml .github/workflows/lane.yml .github/pull_request_template.md \
@@ -55,6 +56,9 @@ grep -qF '.claude/worktrees/' "$DEST/.gitignore" 2>/dev/null || cat gitignore.ap
 echo "Runner: $RUNNER for ci and lane."
 [ "$RUNNER" = hosted ] && echo "  Each lane run bills 1 minute (it runs on two events per PR update) and each ci run its length. If this account has ever paused pull_request CI for minutes, rerun with self-hosted."
 
+# Offered, never written: this script does not touch your shell rc. It resolves the repo when you use it, so one alias serves every kit project.
+echo "To start a project's dispatcher with one command (from any directory inside it), add this to your shell rc yourself:"
+echo "  alias dispatch='\"\$(git rev-parse --show-toplevel)\"/.claude/bin/dispatch.sh'"
 [ -n "$REPO" ] || { echo "Files copied. Pass owner/repo as the 3rd argument to protect main."; exit 0; }
 
 # 3. GitHub: ruleset FIRST. Auto-merge stays OFF until a red PR has been refused (--enable-auto-merge).
