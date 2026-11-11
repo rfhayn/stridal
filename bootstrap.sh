@@ -31,7 +31,7 @@ for f in CLAUDE.md .claude/settings.json .claude/agents/reviewer.md .claude/agen
          .claude/bin/scope-check.sh .claude/bin/preflight.sh .claude/bin/check-evidence.sh .claude/bin/session.sh .claude/statusline.sh .claude/rules/EXAMPLE-migrations.md.example \
          .claude/bin/dispatch-next.sh .claude/bin/as-agent.sh .claude/bin/token-expiry.sh \
          .claude/bin/test-session.sh .claude/bin/test-dispatch.sh .claude/bin/test-token-expiry.sh \
-         .claude/bin/dispatch.sh .claude/bin/test-launcher.sh docs/runbooks/agent-token.md \
+         .claude/bin/dispatch.sh .claude/bin/test-launcher.sh .claude/bin/test-scope-check.sh docs/runbooks/agent-token.md \
          .claude/hooks/notify-waiting.sh .claude/skills/dispatch/SKILL.md .claude/skills/dispatch/worker-contract.md \
          .github/lane/lane.sh .github/lane/test.sh \
          .github/workflows/ci.yml .github/workflows/lane.yml .github/pull_request_template.md \

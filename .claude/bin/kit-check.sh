@@ -48,7 +48,7 @@ done
 disp_scripts=".claude/bin/dispatch-next.sh .claude/bin/as-agent.sh .claude/bin/token-expiry.sh \
   .claude/bin/test-session.sh .claude/bin/test-dispatch.sh .claude/bin/test-token-expiry.sh \
   .claude/hooks/notify-waiting.sh .github/lane/lane.sh .github/lane/test.sh \
-  .claude/bin/dispatch.sh .claude/bin/test-launcher.sh"
+  .claude/bin/dispatch.sh .claude/bin/test-launcher.sh .claude/bin/test-scope-check.sh"
 for f in $disp_scripts .claude/skills/dispatch/SKILL.md .claude/skills/dispatch/worker-contract.md docs/runbooks/agent-token.md; do
   [ -f "$d/$f" ] || { echo "kit-check: $f is missing from a new project"; exit 1; }
   cmp -s "$f" "$d/$f" || { echo "kit-check: installed $f differs from the kit's"; exit 1; }
@@ -57,7 +57,7 @@ for f in $disp_scripts; do
   [ -x "$d/$f" ] || { echo "kit-check: installed $f is not executable"; exit 1; }
 done
 (cd "$d" && .claude/bin/test-session.sh && .claude/bin/test-dispatch.sh && .claude/bin/test-token-expiry.sh \
-  && .claude/bin/test-launcher.sh && sh .github/lane/test.sh) >"$tmp/selftests.out" 2>&1 \
+  && .claude/bin/test-launcher.sh && .claude/bin/test-scope-check.sh && sh .github/lane/test.sh) >"$tmp/selftests.out" 2>&1 \
   || { tail -n 20 "$tmp/selftests.out"; echo "kit-check: the dispatcher self-tests fail in a new project"; exit 1; }
 if (cd "$d" && grep -nE 'job-search|job-radar|rfhayn|/Users/' .claude/bin/session.sh .claude/bin/dispatch-next.sh \
     .claude/bin/as-agent.sh .claude/bin/token-expiry.sh .claude/hooks/notify-waiting.sh \
@@ -71,6 +71,8 @@ if head -n 1 "$d/docs/runbooks/agent-token.md" | grep -q '^> TEMPLATE'; then
 fi
 # #437: the launcher test is part of what ci runs in a new project.
 grep -q 'test-launcher.sh' .github/ci.template.yml || { echo "kit-check: ci.template.yml does not run test-launcher.sh"; exit 1; }
+# #438 C1: workers run scope-check themselves, so its test runs in a new project's ci too.
+grep -q 'test-scope-check.sh' .github/ci.template.yml || { echo "kit-check: ci.template.yml does not run test-scope-check.sh"; exit 1; }
 # The alias is offered, never forced: copy-only bootstrap with an empty HOME prints it and writes nothing there.
 mkdir "$tmp/home"
 alias_out=$(HOME="$tmp/home" ./bootstrap.sh "$tmp/aliasdest" hosted) \
