@@ -24,7 +24,7 @@
 
 ## Dispatcher
 The Now column of the GitHub Project is the backlog (ADR-0001). `/dispatch` works it; the scripts read these lines.
-Each line is `Key: value` pairs joined by ` · `. Fill them in before the first `/dispatch`, and set up the agents'
+Each line is `Key: value` pairs joined by ` · `. Fill in `Approver` before you open the kit's PR (a lane-3 PR cannot be approved without it; lanes 1 and 2 don't need it), the rest before the first `/dispatch`, and set up the agents'
 machine user first (ADR-0004; the steps are in `.claude/skills/dispatch/SKILL.md`).
 - Name: {{key: a letter first, lowercase, up to 20 characters; sessions are named dispatch-<key> and <key>-<slug>}} · Project: {{owner}} #{{project number}} · Approver: {{your GitHub login; must differ from Agent}} · max_workers: 1
 - Deploy: {{command that makes a merged main live, or `true` when nothing deploys}} · Gates: {{the Check command above}}

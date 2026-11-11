@@ -63,6 +63,15 @@ if (cd "$d" && grep -nE 'job-search|job-radar|rfhayn|/Users/' .claude/bin/sessio
     .claude/skills/dispatch/*.md .github/lane/*.sh); then
   echo "kit-check: a dispatcher file in a new project names job-search, a login or a home path"; exit 1
 fi
+# lane.yml listens to BOTH events (ADR-0002): pull_request so the first PR of a repo that has no lane.yml on main yet
+# still gets a `lane` check (else the ruleset's required check never reports), pull_request_target so main's copy judges.
+for ev in pull_request pull_request_target; do
+  grep -Eq "^  $ev:( |\$)" .github/workflows/lane.yml || { echo "kit-check: lane.yml does not trigger on $ev"; exit 1; }
+done
+# Each trigger needs the same types, or a run that is not re-run on a label change stays stale (and the ruleset
+# requires every run named lane).
+[ "$(grep -c '^    types: \[opened, synchronize, reopened, labeled, unlabeled, edited\]$' .github/workflows/lane.yml)" = 2 ] \
+  || { echo "kit-check: lane.yml must give both triggers the types opened, synchronize, reopened, labeled, unlabeled, edited"; exit 1; }
 grep -q 'test-dispatch.sh' .github/ci.template.yml || { echo "kit-check: ci.template.yml does not run the dispatcher self-tests"; exit 1; }
 grep -q '^## Dispatcher' CLAUDE.template.md || { echo "kit-check: CLAUDE.template.md has no ## Dispatcher block"; exit 1; }
 

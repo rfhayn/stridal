@@ -43,20 +43,24 @@ Everything else merges itself or stops and asks.
 `bootstrap.sh` is the only real install route. GitHub's "Use this template" skips the ruleset, runner choice and
 labels, and copies this repo's own `CLAUDE.md` and `ci.yml` instead of the templates.
 
-1. **Choose the runner.** `hosted` bills Actions minutes (`lane` ~1 minute per run, 2-4 runs per PR, plus every
+1. **Choose the runner.** `hosted` bills Actions minutes (`lane` ~1 minute per run, 4-8 runs per PR since it listens to two events (ADR-0002), plus every
    `ci` run). If this account has ever run out of minutes or paused `pull_request` CI, choose `self-hosted`
    (a machine you own that is on while you work; never a production box).
 2. `./bootstrap.sh ~/code/myproject <hosted|self-hosted> owner/myproject` (needs `gh auth login` as a repo admin;
    without `owner/repo` it copies files only). It posts the ruleset first, restores your previous merge
    settings if that fails, and leaves auto-merge OFF. Rulesets on a **private** repo need GitHub Pro or Team.
-3. Fill the `{{placeholders}}`: `CLAUDE.md` (stack, check command, lane-3 paths, personal-data paths), `ci.yml`
+3. Fill the `{{placeholders}}`: `CLAUDE.md` (stack, check command, lane-3 paths, personal-data paths, and `Approver:` in
+   the `## Dispatcher` block, which the kit PR needs because it touches `.github/`; the rest of that block waits for the
+   first `/dispatch`), `ci.yml`
    (the same check command, including the format check), `HARD_PATHS` in `lane.yml` (every one-way path: schema,
    outbound email/messages, production-data writers, credential handling, deploy), and `PERSONAL_DATA` in
    `.claude/settings.json` and `.gitignore`. Add package registries to `sandbox.network.allowedDomains`.
    For a pnpm project, add `"packageManager": "pnpm@9.15.4"` to `package.json` and commit `pnpm-lock.yaml`, because the
    CI template's `pnpm/action-setup@v6` has no `version` input.
 4. If the project's one-way failure is a git command, wire the optional hook (below) now, not after it happens.
-5. Open one PR with the kit, label `lane:2-wide`, merge it by hand when `ci` and `lane` are green. Time `ci`; over
+5. Open one PR with the kit and label it `lane:3-hard` (it touches `.github/` and `.claude/settings.json`). `lane` runs
+   from the PR's own copy this once, since main has none yet (ADR-0002). Add `merge-ok` yourself in GitHub's web UI
+   (the `Approver:` in `CLAUDE.md` must be your login) and merge by hand when `ci` and `lane` are green. Time `ci`; over
    10 minutes, move slow suites to a nightly workflow.
 6. **Prove a red PR can't merge**: open a PR with a deliberately failing test; when `ci` is red run
    `./bootstrap.sh --enable-auto-merge owner/myproject <PR>`. It checks the PR is BLOCKED with `ci` failing, then
@@ -175,7 +179,7 @@ timeout block too; without it the guard fails open. Use the slot for whatever yo
 - A local runner script that calls the same steps file as CI, for the inner loop when Actions minutes are scarce. It never writes a receipt a merge trusts.
 
 ## Costs and limits to know
-- On hosted runners each `lane` run bills one rounded-up minute (2-4 runs per PR). The runner choice is install step 1.
+- On hosted runners each `lane` run bills one rounded-up minute (4-8 runs per PR: it runs on both `pull_request` and `pull_request_target`, ADR-0002). The runner choice is install step 1.
 - `bypass_actors` is empty, so even admins merge through PRs. To pause the ruleset, set `enforcement` to
   `disabled` in Settings → Rules; it can't be deleted from a Claude session (denied).
 - Permission rules evaluate deny, then ask, then allow; a deny always wins. They match command text, so `git -C . push` or

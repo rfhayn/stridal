@@ -5,6 +5,13 @@
 # runs the default branch's copy of this file and checks out the default branch's latest commit, so the rules in
 # .github/lane/lane.sh are main's, not the PR's.
 #
+# Why ALSO pull_request: on a repo's first PR (a new project's kit PR, or the PR that adds this very file) main has
+# no copy of this file, so pull_request_target never runs and the required `lane` check would never report; with no
+# bypass actors the PR could not merge. The pull_request run reports then. Afterwards both runs happen on every PR, and
+# the ruleset requires EVERY run named `lane` to pass (observed in job-search, ADR-0002), so the PR's own copy can add
+# a failure but never mask main's. The cost is a second run per PR. The pull_request run reads the PR's own
+# CLAUDE.md and lane.sh, so only main's run is the judge; the first-PR run is a convenience, not a guard.
+#
 # Never check out or run the PR's head. This job reads only facts about the PR through the API: its body, labels,
 # changed file names (plus each previous name, so a move out of a hard path counts) and who added merge-ok.
 # Under pull_request_target the token can write; running PR code here would hand it to the PR.
@@ -20,8 +27,12 @@
 # runs-on is set by bootstrap.sh from your runner choice. This job bills 1 hosted minute per run.
 name: Lane
 
+# Both events need the same types: a run that is not re-run on a label change would stay red (or green) on a stale
+# label list, and the ruleset requires every run named `lane`.
 on:
-  pull_request_target:
+  pull_request:   # the PR's own copy: the only run on a repo's first PR, before this file is on main
+    types: [opened, synchronize, reopened, labeled, unlabeled, edited]
+  pull_request_target:   # main's copy: the one that judges every later PR
     types: [opened, synchronize, reopened, labeled, unlabeled, edited]
 
 permissions:

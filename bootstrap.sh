@@ -53,7 +53,7 @@ for f in CLAUDE.md .claude/settings.json .claude/agents/reviewer.md .claude/agen
 done
 grep -qF '.claude/worktrees/' "$DEST/.gitignore" 2>/dev/null || cat gitignore.append >> "$DEST/.gitignore"
 echo "Runner: $RUNNER for ci and lane."
-[ "$RUNNER" = hosted ] && echo "  Each lane run bills 1 minute and each ci run its length. If this account has ever paused pull_request CI for minutes, rerun with self-hosted."
+[ "$RUNNER" = hosted ] && echo "  Each lane run bills 1 minute (it runs on two events per PR update) and each ci run its length. If this account has ever paused pull_request CI for minutes, rerun with self-hosted."
 
 [ -n "$REPO" ] || { echo "Files copied. Pass owner/repo as the 3rd argument to protect main."; exit 0; }
 
