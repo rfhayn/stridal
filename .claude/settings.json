@@ -24,9 +24,7 @@
       "Bash(git add*)",
       "Bash(git commit*)",
       "Bash(git fetch*)",
-      "Bash(git rebase origin/main*)",
       "Bash(git push origin*)",
-      "Bash(git push --force-with-lease*)",
       "Bash(gh pr create*)",
       "Bash(gh pr view*)",
       "Bash(gh pr list*)",
@@ -37,13 +35,11 @@
       "Bash(gh issue view*)",
       "Bash(gh pr merge --auto --squash --delete-branch)",
       "Bash(gh pr merge --auto --squash --delete-branch *)",
-      "Bash(gh pr merge * --squash --delete-branch)",
       "Bash(git worktree list*)",
       "Bash(.claude/bin/session.sh *)",
       "Bash(bash .claude/bin/session.sh *)",
       "Bash(bash .claude/bin/dispatch-next.sh *)",
       "Bash(bash .claude/bin/token-expiry.sh *)",
-      "Bash(.claude/bin/preflight.sh *)",
       "Bash(.claude/bin/check-evidence.sh *)"
     ],
     "ask": [
@@ -53,7 +49,6 @@
       "Edit(./.claude/hooks/**)",
       "Edit(./.github/**)",
       "Bash(dangerouslyDisableSandbox:true)",
-      "Bash(*merge-ok*)",
       "Bash(gh label*)"
     ],
     "deny": [
@@ -84,6 +79,7 @@
       "Bash(gh * --body-file=*.env*)",
       "Bash(gh * -F *.env*)",
       "Bash(gh gist *)",
+      "Bash(*merge-ok*)",
       "Bash(*gh auth *)",
       "Bash(*gh auth)",
       "Bash(*security find-*)",

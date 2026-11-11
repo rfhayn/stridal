@@ -193,7 +193,7 @@ gcd=$(git rev-parse --path-format=absolute --git-common-dir)
 out=$("$sess" open feat zz-ok --key kit --report-to main --dry-run 2>&1) \
   || { echo "kit-check: session.sh good dry-run open failed: $out"; exit 1; }
 # The tab runs through the login shell so a worker gets the user's PATH (gh, shellcheck); only validated tokens go in.
-want="/bin/zsh -lc 'exec $(command -v claude || echo claude) --name kit-zz-ok--permission-mode auto --strict-mcp-config -- \"\$(cat $gcd/spawn/zz-ok.prompt)\"'"
+want="/bin/zsh -lc 'exec $(command -v claude || echo claude) --name kit-zz-ok --permission-mode auto --strict-mcp-config -- \"\$(cat $gcd/spawn/zz-ok.prompt)\"'"
 [ "$(printf '%s\n' "$out" | grep '^tab command: ')" = "tab command: $want" ] \
   || { echo "kit-check: session.sh tab command is not exactly: $want"; printf '%s\n' "$out"; exit 1; }
 case "$out" in *SECRET-ENV-TEXT*) echo "kit-check: session.sh dry-run printed .env text"; exit 1 ;; esac
@@ -272,7 +272,7 @@ case "$out" in *"--strict-mcp-config"*) ;; *) echo "kit-check: open --dry-run's 
 tabline=$(printf '%s\n' "$out" | grep '^tab command: ')
 case "$tabline" in "tab command: /bin/zsh -lc '"*) ;; *) echo "kit-check: tab command does not start with /bin/zsh -lc: $tabline"; exit 1 ;; esac
 rest=${tabline#"tab command: /bin/zsh -lc '"}
-[[ $rest =~ ^exec\ [A-Za-z0-9/._-]+\ --name\ kit-zz-ok\--permission-mode\ auto\ --strict-mcp-config\ --\ \"\$\(cat\ [A-Za-z0-9/._-]+\)\"\'$ ]] \
+[[ $rest =~ ^exec\ [A-Za-z0-9/._-]+\ --name\ kit-zz-ok\ --permission-mode\ auto\ --strict-mcp-config\ --\ \"\$\(cat\ [A-Za-z0-9/._-]+\)\"\'$ ]] \
   || { echo "kit-check: tab command holds something other than validated tokens (and the one constant --strict-mcp-config): $tabline"; exit 1; }
 
 # Connector isolation, two layers: the flag above keeps claude.ai connectors out of a worker session.
@@ -287,6 +287,7 @@ jq -e '(.permissions.deny|index("Bash(*merge-ok*)"))!=null and (.permissions.ask
 
 # close when the worktree and the recorded branch are already gone: a cleanup plan, not a refusal.
 echo "feat/zz-ok" > "$gcd/spawn/zz-ok.branch"
+echo "FAKE-TERM-ID-1" > "$gcd/spawn/zz-ok.term"
 out=$("$sess" close zz-ok --dry-run 2>&1) \
   || { echo "kit-check: close --dry-run refused when worktree and branch are gone: $out"; exit 1; }
 case "$out" in *"already gone"*"delete $gcd/spawn/zz-ok."*) ;; *) echo "kit-check: close --dry-run did not print the cleanup plan"; printf '%s\n' "$out"; exit 1 ;; esac
