@@ -31,6 +31,12 @@ and nothing else does.
      the kit's own changes touch those files.
 
    Copy the value once; GitHub shows it only on this page.
+
+   **Who moves cards.** The token has `read:project`, not `project`, so the dispatcher can read the Now column but
+   cannot move a card between columns or change a board field. That is intended (#453): **you move cards**. You put
+   an issue in Now to start it; the dispatcher tracks progress with the `agent:working` and `agent:blocked` labels
+   and a closed issue, never the board. Do not add the `project` scope to make cards move on their own: it gives the
+   token write access to every Project you can reach.
 4. **Store it in the Keychain**, from your own terminal (not a Claude session):
    ```sh
    security add-generic-password -s <service> -a <login> -w

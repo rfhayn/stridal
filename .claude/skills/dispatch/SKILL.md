@@ -61,8 +61,12 @@ Run git and gh as single plain commands (no pipes or `&&`); put any loop in a sc
    `claude --name dispatch-<key>`, or renamed with `/rename dispatch-<key>`. Run `ps -axo command=` as a hint only,
    since a `/rename` leaves no trace there and an old tab can match (a line matches when `claude --name
    dispatch-<key>` is followed by a space or the line's end):
-   - `ps` fails: push `<repo>: ps failed; can't tell which workers are alive` once per session (the same push as
-     Reconcile's, so the two share the "once") and stop this pass;
+   - `ps` says "operation not permitted" (the sandbox refused it; `ps *` is in `sandbox.excludedCommands`, so
+     this means the project's settings are stale, not that no worker runs): never read it as "no worker" and
+     never retry with `dangerouslyDisableSandbox`. Push `<repo>: ps refused by the sandbox; update .claude/settings.json
+     from the kit (ps * in sandbox.excludedCommands)` once per session and stop this pass;
+   - `ps` fails any other way: push `<repo>: ps failed; can't tell which workers are alive` once per session (the
+     same push as Reconcile's, so the two share the "once") and stop this pass;
    - exactly one line runs `claude --name dispatch-<key>`: go on;
    - none: ask the user to confirm this session was renamed with `/rename dispatch-<key>` (or to restart it with
      `claude --name dispatch-<key>`), and go on only once they confirm. Ask once per session;
@@ -138,7 +142,8 @@ worker's state is known.
    push `<repo>: session.sh name <slug> refused: <reason>` once per slug and skip this issue this pass). Run
    `ps -axo command=` once per pass and look for `claude --name <session>` (followed by a space or the line's
    end): the full name, so another repo's worker for the same issue number never counts. If `ps` fails, push `<repo>: ps failed; can't tell which workers are alive` once per
-   session and stop this pass: never read a failure as "no worker".
+   session and stop this pass: never read a failure as "no worker". A sandbox refusal ("operation not permitted")
+   is handled as in section 1, step 1: the push there, not this one.
 5. Is it starting? `find <spawn> -name <slug>.term -mmin -1` prints a path when its tab opened less than a minute
    ago. The file's age survives a dispatcher restart. A starting slug counts as a live worker.
 6. Act on the first row that fits each `agent:working` issue:
