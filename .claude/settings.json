@@ -40,7 +40,20 @@
       "Bash(bash .claude/bin/session.sh *)",
       "Bash(bash .claude/bin/dispatch-next.sh *)",
       "Bash(bash .claude/bin/token-expiry.sh *)",
-      "Bash(.claude/bin/check-evidence.sh *)"
+      "Bash(.claude/bin/check-evidence.sh *)",
+      "Bash(ps -axo command=)",
+      "Bash(gh api graphql *)",
+      "Bash(gh api user*)",
+      "Bash(gh api repos/*/compare/*)",
+      "Bash(gh api repos/*/rules/branches/main*)",
+      "Bash(gh project field-list*)",
+      "Bash(gh project view*)",
+      "Bash(gh issue list*)",
+      "Bash(gh issue comment*)",
+      "Bash(gh issue edit*)",
+      "Bash(gh pr update-branch*)",
+      "Bash(gh label create agent:working --force)",
+      "Bash(gh label create agent:blocked --force)"
     ],
     "ask": [
       "Edit(./.claude/settings.json)",
@@ -49,7 +62,9 @@
       "Edit(./.claude/hooks/**)",
       "Edit(./.github/**)",
       "Bash(dangerouslyDisableSandbox:true)",
-      "Bash(gh label*)"
+      "Bash(gh label delete*)",
+      "Bash(gh label edit*)",
+      "Bash(gh label clone*)"
     ],
     "deny": [
       "Read(./.env)",
@@ -96,7 +111,8 @@
       "Bash(git add --force*)",
       "Bash(git add * -f*)",
       "Bash(git add * --force*)",
-      "mcp__claude_ai_*"
+      "mcp__claude_ai_*",
+      "Bash(gh api graphql *mutation*)"
     ]
   },
   "sandbox": {
@@ -105,6 +121,9 @@
     "excludedCommands": [
       "gh *",
       "docker *",
+      "ps *",
+      "bash .claude/bin/dispatch-next.sh *",
+      "bash .claude/bin/token-expiry.sh *",
       ".claude/bin/session.sh *",
       "bash .claude/bin/session.sh *"
     ],
