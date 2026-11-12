@@ -132,6 +132,11 @@ grep -q "^## \[\?$ver" CHANGELOG.md || { echo "kit-check: CHANGELOG.md has no he
 bash .claude/bin/test-bootstrap.sh >"$tmp/test-bootstrap.out" 2>&1 \
   || { tail -n 20 "$tmp/test-bootstrap.out"; echo "kit-check: test-bootstrap.sh failed"; exit 1; }
 
+# #453 (ADR-0008): the dispatcher's own commands need no approval, and no deny rule was removed. Kit's own test.
+[ ! -e "$d/.claude/bin/test-settings.sh" ] || { echo "kit-check: test-settings.sh must not be copied to a new project"; exit 1; }
+bash .claude/bin/test-settings.sh >"$tmp/test-settings.out" 2>&1 \
+  || { tail -n 20 "$tmp/test-settings.out"; echo "kit-check: test-settings.sh failed"; exit 1; }
+
 # The runner choice reaches both required workflows.
 s="$tmp/self-hosted"
 ./bootstrap.sh "$s" self-hosted >/dev/null || { echo "kit-check: bootstrap.sh failed with self-hosted"; exit 1; }
