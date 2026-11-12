@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# Lean kit installer. Three modes:
-#   ./bootstrap.sh <dest-repo-dir> <hosted|self-hosted>                 copy files only (never overwrites)
+# Lean kit installer. Modes:
+#   ./bootstrap.sh <dest-repo-dir> <hosted|self-hosted>                 copy files only (never overwrites), write .claude/kit.lock
 #   ./bootstrap.sh <dest-repo-dir> <hosted|self-hosted> <owner/repo>    copy files, then protect main
+#   ./bootstrap.sh --upgrade <dest-repo-dir> [--apply]                  compare a project with this kit and its lock; dry run unless --apply
+#   ./bootstrap.sh --adopt <dest-repo-dir>                              write a lock for a project installed before locks existed
 #   ./bootstrap.sh --enable-auto-merge <owner/repo> <red-PR-number>     only after a red PR was refused
 # GitHub steps need `gh auth login` as a repo admin. Private repos need GitHub Pro/Team for rulesets.
+# --upgrade and --adopt never call gh and never delete a file (ADR-0007).
 set -euo pipefail
 KIT="$(cd "$(dirname "$0")" && pwd)"
 
@@ -21,37 +24,149 @@ if [ "${1:-}" = "--enable-auto-merge" ]; then
   exit 0
 fi
 
-DEST="${1:?usage: see header}"; RUNNER="${2:?runner choice required: hosted or self-hosted}"; REPO="${3:-}"
+# The kit's file list: what a project receives, and what --upgrade compares.
+FILES=(CLAUDE.md .claude/settings.json .claude/agents/reviewer.md .claude/agents/researcher.md
+       .claude/hooks/one-way-guard.sh
+       .claude/bin/scope-check.sh .claude/bin/check-evidence.sh .claude/bin/session.sh .claude/statusline.sh .claude/rules/EXAMPLE-migrations.md.example
+       .claude/bin/dispatch-next.sh .claude/bin/as-agent.sh .claude/bin/token-expiry.sh
+       .claude/bin/test-session.sh .claude/bin/test-dispatch.sh .claude/bin/test-token-expiry.sh
+       .claude/bin/dispatch.sh .claude/bin/test-launcher.sh .claude/bin/test-scope-check.sh docs/runbooks/agent-token.md
+       .claude/hooks/notify-waiting.sh .claude/skills/dispatch/SKILL.md .claude/skills/dispatch/worker-contract.md
+       .github/lane/lane.sh .github/lane/test.sh
+       .github/workflows/ci.yml .github/workflows/lane.yml .github/pull_request_template.md
+       docs/adr/0000-template.md docs/ARCHITECTURE.md docs/RISKS.md
+       docs/templates/DATA-MODEL.md docs/templates/API.md docs/templates/INVENTORY.md
+       docs/templates/runbook.md docs/templates/spec.md)
+LOCK=.claude/kit.lock
+VERSION=$(tr -d '[:space:]' < "$KIT/VERSION")
+
+# This repo keeps its own CLAUDE.md and ci.yml; new projects get the templates.
+src_for() {
+  case "$1" in
+    CLAUDE.md) echo CLAUDE.template.md ;;
+    .github/workflows/ci.yml) echo .github/ci.template.yml ;;
+    *) echo "$1" ;;
+  esac
+}
+sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
+STAGE=$(mktemp -d "${TMPDIR:-/tmp}/kit-stage.XXXXXX")
+trap 'rm -rf "$STAGE"' EXIT
+# stage <file> <runner>: the kit's copy of a file as a project on that runner receives it; prints its path.
+stage() {
+  local out="$STAGE/$1"
+  mkdir -p "$(dirname "$out")"; cp -p "$KIT/$(src_for "$1")" "$out"
+  # The runner choice is applied to the two required-check workflows.
+  if [ "$2" = self-hosted ] && [[ "$1" == .github/workflows/* ]]; then
+    sed -i.bak 's/runs-on: ubuntu-[^ ]*/runs-on: [self-hosted]/' "$out" && rm -f "$out.bak"
+  fi
+  echo "$out"
+}
+# Lock lines are "<sha256 or -> <path>" (two spaces); "-" means edited, never equal to a file's hash. See ADR-0007.
+lock_hash() { awk -v p="$2" '$2 == p && $1 != "version" && $1 != "runner" { print $1; exit }' "$1/$LOCK"; }
+lock_runner() { awk '$1 == "runner" { print $2; exit }' "$1/$LOCK"; }
+lock_version() { awk '$1 == "version" { print $2; exit }' "$1/$LOCK"; }
+# write_lock <dest> <runner> <entries file>: header plus entries, sorted by path, replacing the lock whole.
+write_lock() {
+  mkdir -p "$1/.claude"
+  { echo "# stridal kit.lock 1: sha256 of each file as the kit installed it; - means edited. Written by bootstrap.sh."
+    echo "version $VERSION"; echo "runner $2"
+    LC_ALL=C sort -k2 "$3"; } > "$STAGE/lock.new"
+  cp "$STAGE/lock.new" "$1/$LOCK"
+}
+detect_runner() { if grep -q 'runs-on: \[self-hosted\]' "$1/.github/workflows/ci.yml" 2>/dev/null; then echo self-hosted; else echo hosted; fi; }
+
+if [ "${1:-}" = "--adopt" ]; then
+  [ $# -eq 2 ] || { echo "usage: ./bootstrap.sh --adopt <dest-repo-dir>"; exit 1; }
+  DEST="$2"
+  [ -d "$DEST" ] || { echo "adopt: $DEST is not a directory"; exit 1; }
+  [ ! -e "$DEST/$LOCK" ] || { echo "adopt: $DEST/$LOCK already exists; nothing written"; exit 1; }
+  runner=$(detect_runner "$DEST"); : > "$STAGE/entries"; same=0; edited=0
+  for f in "${FILES[@]}"; do
+    [ -e "$DEST/$f" ] || continue
+    s=$(stage "$f" "$runner")
+    if [ "$(sha "$DEST/$f")" = "$(sha "$s")" ]; then echo "$(sha "$s")  $f" >> "$STAGE/entries"; same=$((same + 1))
+    else echo "-  $f" >> "$STAGE/entries"; edited=$((edited + 1)); echo "differs from the kit, recorded as edited: $f"; fi
+  done
+  write_lock "$DEST" "$runner" "$STAGE/entries"
+  echo "adopt: wrote $DEST/$LOCK (version $VERSION, runner $runner): $same files match the kit, $edited recorded as edited."
+  echo "Next: ./bootstrap.sh --upgrade $DEST"
+  exit 0
+fi
+
+if [ "${1:-}" = "--upgrade" ]; then
+  usage="usage: ./bootstrap.sh --upgrade <dest-repo-dir> [--apply]"
+  [ $# -ge 2 ] && [ $# -le 3 ] || { echo "$usage"; exit 1; }
+  DEST="$2"; APPLY=0
+  case "${3:-}" in "") ;; --apply) APPLY=1 ;; *) echo "$usage"; exit 1 ;; esac
+  [ -d "$DEST" ] || { echo "upgrade: $DEST is not a directory"; exit 1; }
+  [ -f "$DEST/$LOCK" ] || { echo "upgrade: $DEST has no $LOCK, so there is nothing to compare against. Nothing written."
+    echo "  If it was installed before locks existed, run: ./bootstrap.sh --adopt $DEST"; exit 1; }
+  runner=$(lock_runner "$DEST"); case "$runner" in hosted|self-hosted) ;; *) echo "upgrade: $DEST/$LOCK has no valid runner line. Nothing written."; exit 1 ;; esac
+  P="would "; [ "$APPLY" = 1 ] && P=""
+  [ "$APPLY" = 1 ] || echo "Dry run: nothing is written. Add --apply to carry out this plan."
+  echo "Project at kit $(lock_version "$DEST"), this kit is $VERSION (runner $runner)."
+  : > "$STAGE/changes"; n_add=0; n_rep=0; n_keep=0; n_cur=0
+  for f in "${FILES[@]}"; do
+    [ "$f" != CLAUDE.md ] || continue   # never touched; its diff is printed below
+    s=$(stage "$f" "$runner"); ks=$(sha "$s")
+    if [ ! -e "$DEST/$f" ]; then
+      echo "${P}add: $f"; n_add=$((n_add + 1))
+      if [ "$APPLY" = 1 ]; then mkdir -p "$DEST/$(dirname "$f")"; cp -p "$s" "$DEST/$f"; echo "$ks  $f" >> "$STAGE/changes"; fi
+      continue
+    fi
+    ps=$(sha "$DEST/$f"); ls=$(lock_hash "$DEST" "$f")
+    if [ "$ps" = "$ks" ]; then n_cur=$((n_cur + 1))
+    elif [ "$ps" = "$ls" ]; then
+      echo "${P}replace (never edited): $f"; n_rep=$((n_rep + 1))
+      if [ "$APPLY" = 1 ]; then cp -p "$s" "$DEST/$f"; echo "$ks  $f" >> "$STAGE/changes"; fi
+    elif [ "$ks" = "$ls" ]; then
+      echo "keep (edited here, kit unchanged): $f"; n_keep=$((n_keep + 1))
+    else
+      echo "keep (edited here, kit changed): $f -> ${P}write $f.kit-new"; n_keep=$((n_keep + 1))
+      if [ "$APPLY" = 1 ]; then cp -p "$s" "$DEST/$f.kit-new"; fi
+    fi
+  done
+  # In the lock, no longer in the kit's list: reported, never deleted.
+  while read -r h p; do
+    case "$h" in "#"*|version|runner|"") continue ;; esac
+    found=0; for f in "${FILES[@]}"; do [ "$f" = "$p" ] && found=1; done
+    [ "$found" = 1 ] || echo "dropped from the kit (left in place, delete it yourself if you want): $p"
+  done < "$DEST/$LOCK"
+  if [ -f "$DEST/CLAUDE.md" ]; then
+    if diff -u "$DEST/CLAUDE.md" "$KIT/CLAUDE.template.md" > "$STAGE/claude.diff"; then echo "CLAUDE.md: same as the template."
+    else echo "CLAUDE.md is never touched. The template differs from yours (- yours, + template):"; cat "$STAGE/claude.diff"; fi
+  fi
+  echo "Summary: $n_add to add, $n_rep to replace, $n_keep kept as edited, $n_cur already current."
+  if [ "$APPLY" = 1 ] && [ -s "$STAGE/changes" ]; then
+    # Only files upgrade changed are rewritten in the lock; every other line stays as it was.
+    awk 'NR == FNR { new[$2] = $0; next } /^#/ || $1 == "version" || $1 == "runner" { next } !($2 in new) { print }
+         END { for (p in new) print new[p] }' "$STAGE/changes" "$DEST/$LOCK" > "$STAGE/entries"
+    write_lock "$DEST" "$runner" "$STAGE/entries"
+    echo "Wrote $DEST/$LOCK (version $VERSION)."
+  fi
+  exit 0
+fi
+
+[ $# -ge 1 ] || { echo "usage: see the header of bootstrap.sh"; exit 1; }
+[ $# -ge 2 ] || { echo "runner choice required: hosted or self-hosted"; exit 1; }
+DEST="$1"; RUNNER="$2"; REPO="${3:-}"
 case "$RUNNER" in hosted|self-hosted) ;; *) echo "runner must be 'hosted' or 'self-hosted'"; exit 1;; esac
 
-# 1. Files (never overwrite).
-cd "$KIT"
-for f in CLAUDE.md .claude/settings.json .claude/agents/reviewer.md .claude/agents/researcher.md \
-         .claude/hooks/one-way-guard.sh \
-         .claude/bin/scope-check.sh .claude/bin/check-evidence.sh .claude/bin/session.sh .claude/statusline.sh .claude/rules/EXAMPLE-migrations.md.example \
-         .claude/bin/dispatch-next.sh .claude/bin/as-agent.sh .claude/bin/token-expiry.sh \
-         .claude/bin/test-session.sh .claude/bin/test-dispatch.sh .claude/bin/test-token-expiry.sh \
-         .claude/bin/dispatch.sh .claude/bin/test-launcher.sh .claude/bin/test-scope-check.sh docs/runbooks/agent-token.md \
-         .claude/hooks/notify-waiting.sh .claude/skills/dispatch/SKILL.md .claude/skills/dispatch/worker-contract.md \
-         .github/lane/lane.sh .github/lane/test.sh \
-         .github/workflows/ci.yml .github/workflows/lane.yml .github/pull_request_template.md \
-         docs/adr/0000-template.md docs/ARCHITECTURE.md docs/RISKS.md \
-         docs/templates/DATA-MODEL.md docs/templates/API.md docs/templates/INVENTORY.md \
-         docs/templates/runbook.md docs/templates/spec.md; do
-  if [ -e "$DEST/$f" ]; then echo "skip (exists): $f"; continue; fi
-  # This repo keeps its own CLAUDE.md and ci.yml; new projects get the templates.
-  case "$f" in
-    CLAUDE.md) src=CLAUDE.template.md ;;
-    .github/workflows/ci.yml) src=.github/ci.template.yml ;;
-    *) src="$f" ;;
-  esac
-  mkdir -p "$DEST/$(dirname "$f")"; cp -p "$src" "$DEST/$f"; echo "added: $f"
-  # 2. Runner choice is applied to the two required-check workflows we just copied.
-  if [ "$RUNNER" = self-hosted ] && [[ "$f" == .github/workflows/* ]]; then
-    sed -i.bak 's/runs-on: ubuntu-[^ ]*/runs-on: [self-hosted]/' "$DEST/$f" && rm -f "$DEST/$f.bak"
+# 1. Files (never overwrite). The lock is written only on the first run; later runs leave it alone.
+: > "$STAGE/entries"
+for f in "${FILES[@]}"; do
+  s=$(stage "$f" "$RUNNER")
+  if [ -e "$DEST/$f" ]; then
+    echo "skip (exists): $f"
+    # A file that was already there is recorded as it stands if it equals the kit's copy, else as edited.
+    if [ "$(sha "$DEST/$f")" = "$(sha "$s")" ]; then echo "$(sha "$s")  $f" >> "$STAGE/entries"; else echo "-  $f" >> "$STAGE/entries"; fi
+    continue
   fi
+  mkdir -p "$DEST/$(dirname "$f")"; cp -p "$s" "$DEST/$f"; echo "added: $f"
+  echo "$(sha "$s")  $f" >> "$STAGE/entries"
 done
-grep -qF '.claude/worktrees/' "$DEST/.gitignore" 2>/dev/null || cat gitignore.append >> "$DEST/.gitignore"
+if [ -e "$DEST/$LOCK" ]; then echo "skip (exists): $LOCK"; else write_lock "$DEST" "$RUNNER" "$STAGE/entries"; echo "added: $LOCK (kit version $VERSION)"; fi
+grep -qF '.claude/worktrees/' "$DEST/.gitignore" 2>/dev/null || cat "$KIT/gitignore.append" >> "$DEST/.gitignore"
 echo "Runner: $RUNNER for ci and lane."
 [ "$RUNNER" = hosted ] && echo "  Each lane run bills 1 minute (it runs on two events per PR update) and each ci run its length. If this account has ever paused pull_request CI for minutes, rerun with self-hosted."
 

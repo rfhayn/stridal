@@ -121,6 +121,17 @@ cmp -s "$tmp/tree.first" "$tmp/tree.second" || { echo "kit-check: second run cha
 cmp -s "$tmp/CLAUDE.edited" "$d/CLAUDE.md" || { echo "kit-check: second run overwrote an edited file"; exit 1; }
 cmp -s "$tmp/gitignore.first" "$d/.gitignore" || { echo "kit-check: second run changed .gitignore"; exit 1; }
 
+# #452 (ADR-0007): the install records a lock, the kit has a VERSION and a changelog entry for it, and test-bootstrap.sh
+# (lock, --upgrade, --adopt) passes. test-bootstrap.sh is the kit's own and is not copied to new projects.
+[ -f "$d/.claude/kit.lock" ] || { echo "kit-check: the install wrote no .claude/kit.lock"; exit 1; }
+ver=$(tr -d '[:space:]' < VERSION)
+[[ $ver =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "kit-check: VERSION is not x.y.z: $ver"; exit 1; }
+grep -qx "version $ver" "$d/.claude/kit.lock" || { echo "kit-check: the installed lock does not carry VERSION $ver"; exit 1; }
+grep -q "^## \[\?$ver" CHANGELOG.md || { echo "kit-check: CHANGELOG.md has no heading for $ver"; exit 1; }
+[ ! -e "$d/.claude/bin/test-bootstrap.sh" ] || { echo "kit-check: test-bootstrap.sh must not be copied to a new project"; exit 1; }
+bash .claude/bin/test-bootstrap.sh >"$tmp/test-bootstrap.out" 2>&1 \
+  || { tail -n 20 "$tmp/test-bootstrap.out"; echo "kit-check: test-bootstrap.sh failed"; exit 1; }
+
 # The runner choice reaches both required workflows.
 s="$tmp/self-hosted"
 ./bootstrap.sh "$s" self-hosted >/dev/null || { echo "kit-check: bootstrap.sh failed with self-hosted"; exit 1; }
