@@ -4,8 +4,8 @@ A copy-in kit for building with Claude Code, without the process tax.
 
 ## What it is
 Stridal is a copy-in kit for building with Claude Code: skills, agents, a permissions and sandbox config, GitHub CI and
-merge controls, and doc templates. `bootstrap.sh` installs it into a project. A new project gets 36 files plus a
-`.gitignore` addition (this repo tracks 53; `bootstrap.sh` in copy-only mode prints one `added:` line per file), and there is nothing to maintain between projects.
+merge controls, and doc templates. `bootstrap.sh` installs it into a project. A new project gets 36 files, `.claude/kit.lock` (which records the kit
+version and a hash per file) and a `.gitignore` addition (this repo tracks 57; `bootstrap.sh` in copy-only mode prints one `added:` line per file). Later kit fixes reach it with `--upgrade` (below).
 
 ## What it does
 - **One change per worktree.** The dispatcher opens each issue in its own worktree and Ghostty tab; the main checkout stays on `main`.
@@ -55,7 +55,9 @@ labels, and copies this repo's own `CLAUDE.md` and `ci.yml` instead of the templ
 1. **Choose the runner.** `hosted` bills Actions minutes (`lane` ~1 minute per run, 4-8 runs per PR since it listens to two events (ADR-0002), plus every
    `ci` run). If this account has ever run out of minutes or paused `pull_request` CI, choose `self-hosted`
    (a machine you own that is on while you work; never a production box).
-2. `./bootstrap.sh ~/code/myproject <hosted|self-hosted> owner/myproject` (needs `gh auth login` as a repo admin;
+2. Get the kit at a release tag, then run it:
+   `git clone --depth 1 --branch v0.1.0 https://github.com/rfhayn/stridal.git ~/code/stridal-kit`, then
+   `~/code/stridal-kit/bootstrap.sh ~/code/myproject <hosted|self-hosted> owner/myproject` (needs `gh auth login` as a repo admin;
    without `owner/repo` it copies files only). It posts the ruleset first, restores your previous merge
    settings if that fails, and leaves auto-merge OFF. Rulesets on a **private** repo need GitHub Pro or Team.
 3. Fill the `{{placeholders}}`: `CLAUDE.md` (stack, check command, lane-3 paths, personal-data paths, and `Approver:` in
@@ -79,6 +81,25 @@ labels, and copies this repo's own `CLAUDE.md` and `ci.yml` instead of the templ
 The ruleset is strict: a PR must be up to date with main to merge (the dispatcher merges main into a worker's PR branch with `gh pr update-branch`).
 The check names `ci` and `lane` are the job names. The ruleset requires exactly those names, so rename both or neither.
 Do not add `paths:` filters to required workflows: a skipped required check stays pending and blocks the merge.
+
+## Upgrade a project (ADR-0007)
+`bootstrap.sh` never overwrites, and `.claude/kit.lock` is how a later kit reaches a project: it holds the kit version and
+the sha256 of each file as installed. Update your kit checkout to the release you want
+(`git -C ~/code/stridal-kit fetch --tags && git -C ~/code/stridal-kit checkout v0.1.1`, for example), then:
+
+```
+~/code/stridal-kit/bootstrap.sh --upgrade ~/code/myproject           # dry run: prints the plan, writes nothing
+~/code/stridal-kit/bootstrap.sh --upgrade ~/code/myproject --apply   # carries it out
+```
+For each file in the kit's list: missing, it is added; unedited since install, it is replaced; edited here, it is left
+alone and the kit's copy is written beside it as `<file>.kit-new` for you to merge by hand; in the lock but no longer in
+the kit, it is reported and never deleted. `CLAUDE.md` is never touched: upgrade prints the template's diff for you to
+read. Upgrade never calls `gh`, so settings and the ruleset are not part of it.
+
+**A project installed before the lock existed** has no `.claude/kit.lock`, so `--upgrade` stops and writes nothing.
+Adopt it once: `~/code/stridal-kit/bootstrap.sh --adopt ~/code/myproject` writes a lock from the project's current files.
+A file equal to the kit's copy is recorded as it is; every file that differs is recorded as edited, so the next upgrade
+leaves it alone and writes a `.kit-new`. Adopt refuses to overwrite a lock.
 
 ## Principles
 1. **GitHub enforces, Claude follows.** main is protected by a ruleset (required checks, squash only,
@@ -120,7 +141,10 @@ Do not add `paths:` filters to required workflows: a skipped required check stay
 | `.claude/bin/scope-check.sh`, `.claude/bin/test-scope-check.sh` | Deterministic check that the branch touches only the brief's files, or, with `--footprint <issue-body-file>`, the issue's `Footprint:` paths (read through `dispatch-next.sh --footprint-of`; no Footprint means no scope check). A dispatcher worker runs it, the lane's reviewer and `check-evidence.sh` before it opens its PR (`worker-contract.md`) |
 | `.claude/bin/session.sh` | `open <type> <slug> --key <key> --report-to <name>` makes `.claude/worktrees/<slug>` on `<type>/<slug>` from `origin/main` and opens a Ghostty tab running Claude (named `<key>-<slug>`, in auto mode with `--strict-mcp-config`, so claude.ai connectors stay out) on `.claude/review/spawn-<slug>.md`; `close <slug>` ends it (the only text it types into a terminal is `/exit`), and still finishes if the worktree and branch are already gone; `watch`, `notified`, `clear` and `name` serve the dispatcher. Workers start through a login shell (`/bin/zsh -lc`) so they get `gh` and `shellcheck` on PATH. The dispatcher calls it. macOS and Ghostty only |
 | `.claude/statusline.sh` | The status line, wired by `statusLine` in `settings.json`: project, branch, `●` dirty or `✓` clean, `↑a↓b` against upstream, context %, model, and `workers: N` (open `spawn/*.term` records) in the main checkout. POSIX sh, `jq` and `git` only, no network; prints something and exits 0 on bad input |
-| `.claude/bin/kit-check.sh` | This repo's own check: shellcheck, JSON, and `bootstrap.sh` in copy-only mode. Not copied to new projects |
+| `.claude/bin/kit-check.sh` | This repo's own check: shellcheck, JSON, `bootstrap.sh` in copy-only mode, and `test-bootstrap.sh`. Not copied to new projects |
+| `.claude/bin/test-bootstrap.sh` | Self-test of the lock, `--upgrade` and `--adopt` against temp directories (two copies of the kit). Not copied to new projects |
+| `VERSION`, `CHANGELOG.md` | The kit version `bootstrap.sh` writes into `.claude/kit.lock`, and the release notes built from merged PR titles. Not copied to new projects |
+| `.claude/kit.lock` | Written into a project by `bootstrap.sh`: kit version, runner, and a sha256 per installed file. Read by `--upgrade`; not a kit file |
 | `.claude/agents/reviewer.md` | Fresh-context reviewer with no shell: one round, blocking findings with file:line evidence, lane check, decisions and assumptions check. Sonnet by default, Opus for lane 3 |
 | `.claude/agents/researcher.md` | Read-only research agent (no Edit, Write or Bash); answers with sources |
 | `.claude/rules/EXAMPLE-migrations.md.example` | Example path-scoped domain rule (inactive until renamed to `.md`) |
@@ -138,7 +162,7 @@ Do not add `paths:` filters to required workflows: a skipped required check stay
 | `.github/pull_request_template.md` | `Why:` and `Roadmap:` lines (lane.yml fails a PR with no real `Why:`), then what/why, lane, done-when evidence, decisions & assumptions with sources, review, guard |
 | `docs/ROADMAP.md` | A pointer to this repo's backlog, GitHub Project #4. There is no markdown roadmap template: the backlog is Issues plus the Project's Now column (ADR-0001). Not copied to new projects |
 | `docs/adr/0000-template.md` | Short ADR, only for decisions expensive to reverse |
-| `docs/adr/0001-*.md` to `0006-*.md` | This repo's decisions for the dispatcher: backlog is the Project's Now column, lane judged by the base branch, `merge-ok` withheld from Claude, agents act as a machine user, two workers on declared footprints, session names carry a repo key. Not copied to new projects |
+| `docs/adr/0001-*.md` to `0007-*.md` | This repo's decisions for the dispatcher: backlog is the Project's Now column, lane judged by the base branch, `merge-ok` withheld from Claude, agents act as a machine user, two workers on declared footprints, session names carry a repo key, and the kit lock with its three-way upgrade rule. Not copied to new projects |
 | `docs/ARCHITECTURE.md` | Live doc, installed unfilled: components, data flow, constraints. First line marks it a template until filled in |
 | `docs/RISKS.md` | Live doc, installed unfilled: risk table (ID, Risk, Impact, Likelihood, Mitigation, Owner, Status) with one example row |
 | `docs/templates/DATA-MODEL.md` | Template: entity-relationship diagram as a mermaid block |
