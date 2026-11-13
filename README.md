@@ -161,6 +161,7 @@ leaves it alone and writes a `.kit-new`. Adopt refuses to overwrite a lock.
 | `.github/ruleset-main.json` | Ruleset for the default branch: PR required (0 approvals), squash only, checks `ci` + `lane`, no deletion, no force push, no bypass actors |
 | `.github/pull_request_template.md` | `Why:` and `Roadmap:` lines (lane.yml fails a PR with no real `Why:`), then what/why, lane, done-when evidence, decisions & assumptions with sources, review, guard |
 | `docs/ROADMAP.md` | A pointer to this repo's backlog, GitHub Project #4. There is no markdown roadmap template: the backlog is Issues plus the Project's Now column (ADR-0001). Not copied to new projects |
+| `docs/cutover/2026-11-cutover-and-upgrade-test.md` | The owner's step-by-step for testing `--upgrade` on another repo and moving this kit to a clean repo. Delete it once the cutover is done. Not copied to new projects |
 | `docs/adr/0000-template.md` | Short ADR, only for decisions expensive to reverse |
 | `docs/adr/0001-*.md` to `0007-*.md` | This repo's decisions for the dispatcher: backlog is the Project's Now column, lane judged by the base branch, `merge-ok` withheld from Claude, agents act as a machine user, two workers on declared footprints, session names carry a repo key, and the kit lock with its three-way upgrade rule. Not copied to new projects |
 | `docs/ARCHITECTURE.md` | Live doc, installed unfilled: components, data flow, constraints. First line marks it a template until filled in |
