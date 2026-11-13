@@ -447,6 +447,21 @@ fpbody fp7.md 'Footprint: ../etc, ok/a'
 case_ "footprint-of: unsafe (..) prints nothing" 0 '^$' --footprint-of "$T/fp7.md"
 fpbody fp8.md 'No footprint line here.'
 case_ "footprint-of: no line prints nothing" 0 '^$' --footprint-of "$T/fp8.md"
+# shellcheck disable=SC2016  # backticks are literal Footprint text
+fpbody fh1.md '## Why\nx\n\n## Footprint\n\n`a/b.sh`, ./c/d/, e.md.\n\n## Done when\n- [ ] y'
+case_ "footprint-of: ## heading, comma list normalised, trailing period" 0 '^a/b.sh'$'\n''c/d'$'\n''e.md$' --footprint-of "$T/fh1.md"
+fpbody fh2.md '### Footprint\nx/y\nz/w\n'
+case_ "footprint-of: ### heading, lines up to a blank" 0 '^x/y'$'\n''z/w$' --footprint-of "$T/fh2.md"
+fpbody fh3.md '## footprint\nlow/er'
+case_ "footprint-of: lowercase heading" 0 '^low/er$' --footprint-of "$T/fh3.md"
+fpbody fh4.md '## Footprint\nnone\n'
+case_ "footprint-of: heading then none prints nothing" 0 '^$' --footprint-of "$T/fh4.md"
+fpbody fh5.md '## Footprint\nsrc/*\n'
+case_ "footprint-of: heading then glob prints nothing" 0 '^$' --footprint-of "$T/fh5.md"
+fpbody fh6.md '## Footprint\n\n## Done when\nx'
+case_ "footprint-of: heading then nothing prints nothing" 0 '^$' --footprint-of "$T/fh6.md"
+fpbody fh7.md '## Footprint\nfrom/heading\n\nFootprint: from/line'
+case_ "footprint-of: the Footprint: line wins over the heading" 0 '^from/line$' --footprint-of "$T/fh7.md"
 case_ "footprint-of: missing file refused" 2 '^$' --footprint-of "$T/nope.md"
 case_ "footprint-of: needs a value" 2 '^$' --footprint-of
 

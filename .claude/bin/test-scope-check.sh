@@ -48,6 +48,10 @@ body unsafe.md 'Footprint: src/*, docs'
 case_ "footprint: unsafe value, scope not checked" 0 '^scope-check: no Footprint, scope not checked$' --footprint "$T/unsafe.md"
 case_ "footprint plus extra globs: both count" 0 'all changed files are in the brief' --footprint "$T/part.md" 'top.txt'
 case_ "footprint plus extra globs: still a stray" 1 'OUT OF SCOPE: top.txt' --footprint "$T/part.md" 'nothing/*'
+printf '## Footprint\n\nsrc/a, docs, top.txt\n\n## Done when\n' > "$T/hall.md"
+case_ "footprint heading form: files inside are in scope" 0 'all changed files are in the brief' --footprint "$T/hall.md"
+printf '## Footprint\n\nsrc/a, docs\n' > "$T/hpart.md"
+case_ "footprint heading form: a file outside is OUT OF SCOPE" 1 'OUT OF SCOPE: top.txt' --footprint "$T/hpart.md"
 case_ "footprint: missing file refused" 2 'cannot read' --footprint "$T/nope.md"
 case_ "no footprint but extra globs: the globs still apply" 1 'OUT OF SCOPE' --footprint "$T/nofp.md" 'docs/*'
 
