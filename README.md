@@ -164,7 +164,7 @@ leaves it alone and writes a `.kit-new`. Adopt refuses to overwrite a lock.
 | `docs/runbooks/agent-token.md` | The machine user and its token: account and 2FA, least access, classic-token scopes and why, Keychain, the `Agent:` lines, expiry warning and rotation |
 | `.claude/bin/dispatch-next.sh`, `as-agent.sh`, `token-expiry.sh` | Pick the next Now item (and a footprint-safe second), start a command with the machine user's token from the Keychain, and warn before that token expires |
 | `.claude/bin/test-session.sh`, `test-dispatch.sh`, `test-token-expiry.sh` | Self-tests for `session.sh` and the three dispatcher scripts. A new project's `ci` runs them, with `test-launcher.sh`, `test-scope-check.sh` and `.github/lane/test.sh` |
-| `.claude/hooks/notify-waiting.sh` | Wired to the `permission_prompt` notification: marks a worker as waiting on a prompt so the dispatcher can tell the owner |
+| `.claude/hooks/notify-waiting.sh` | Wired to the `permission_prompt` notification: marks a worker as waiting on a prompt so the dispatcher can tell the owner; with `clear` (PostToolUse, Stop) it removes the marker once the prompt is answered |
 | `.github/ruleset-main.json` | Ruleset for the default branch: PR required (0 approvals), squash only, checks `ci` + `lane`, no deletion, no force push, no bypass actors |
 | `.github/pull_request_template.md` | `Why:` and `Roadmap:` lines (lane.yml fails a PR with no real `Why:`), then what/why, lane, done-when evidence, decisions & assumptions with sources, review, guard |
 | `docs/ROADMAP.md` | A pointer to this repo's backlog, GitHub Project #4. There is no markdown roadmap template: the backlog is Issues plus the Project's Now column (ADR-0001). Not copied to new projects |

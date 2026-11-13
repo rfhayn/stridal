@@ -11,6 +11,20 @@
           {"type": "command", "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/notify-waiting.sh\""}
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {"type": "command", "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/notify-waiting.sh\" clear"}
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {"type": "command", "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/notify-waiting.sh\" clear"}
+        ]
+      }
     ]
   },
   "permissions": {
