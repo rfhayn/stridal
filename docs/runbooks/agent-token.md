@@ -1,7 +1,7 @@
 # Runbook: the agents' machine user and its GitHub token
 
 ## Purpose
-The dispatcher and its workers act on GitHub as a separate **machine user**, not as you (ADR-0004). That keeps
+The dispatcher and its workers act on GitHub as a separate **machine user**, not as you (Stridal's ADR-0004). That keeps
 the approver and the agent apart: a lane-3 PR needs the `merge-ok` label from the `Approver:` in `CLAUDE.md`'s
 `## Dispatcher` block, and `lane.sh` counts it only when the Approver, never the Agent, applied it. The machine
 user's classic personal access token lives in the macOS Keychain; `.claude/bin/as-agent.sh` reads it at launch
@@ -21,7 +21,7 @@ and nothing else does.
 1. **Create the account.** Sign up a second GitHub account for the agents (a private window keeps it apart from
    your own session). Turn on **2FA** for it and keep its recovery codes. This is the `Agent:` login.
 2. **Give it the least access.** Add it to the repo as a **write** collaborator, never admin, and accept the
-   invitation as that account. Give it **Read** on the Project board (the Now column is the backlog, ADR-0001);
+   invitation as that account. Give it **Read** on the Project board (the Now column is the backlog, Stridal's ADR-0001);
    write access to the board is not needed. Never make it a repo admin and never let it be the Approver.
 3. **Create a classic token** as the machine user: Settings, Developer settings, Personal access tokens,
    **Tokens (classic)**, Generate new token (classic). Pick an expiry (90 days is a reasonable choice). Tick exactly:

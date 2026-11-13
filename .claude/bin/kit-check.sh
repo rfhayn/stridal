@@ -157,6 +157,27 @@ bash .claude/bin/test-bootstrap.sh >"$tmp/test-bootstrap.out" 2>&1 \
 bash .claude/bin/test-settings.sh >"$tmp/test-settings.out" 2>&1 \
   || { tail -n 20 "$tmp/test-settings.out"; echo "kit-check: test-settings.sh failed"; exit 1; }
 
+# #360: a file a project receives must not cite a Stridal record by its bare number ("ADR-0003"): the project has no such
+# record, or has an unrelated one of its own numbering. Write "Stridal's ADR-0003". Checked: every installed file
+# except .github/ (its citations are a follow-up, so that this change stays out of lane 3) plus bootstrap.sh, which
+# is not installed but is held to the same rule. bare_citations <dir>... prints each offending file:line.
+bare_citations() {
+  local f
+  while IFS= read -r f; do
+    awk -v f="$f" '{ s = $0; gsub(/Stridal.s (ADR|PRAC)-[0-9]+/, "", s)
+                     if (s ~ /(^|[^A-Za-z0-9_])(ADR|PRAC)-[0-9]+/) print f ":" NR ": " $0 }' "$f"
+  done < <(find "$@" -type f ! -path '*/.github/*' ! -path '*/.git/*' ! -name kit.lock 2>/dev/null)
+}
+bare=$(bare_citations "$d" bootstrap.sh)
+[ -z "$bare" ] || { echo "$bare"; echo "kit-check: a shipped file cites a Stridal record by its bare number; write \"Stridal's ADR-NNNN\" (.github/ is not checked yet, #360 follow-up)"; exit 1; }
+# The rule itself: a planted bare citation must be found, and the qualified form must pass.
+mkdir -p "$tmp/planted"
+printf 'see (ADR-0003) here\n' > "$tmp/planted/bare.md"
+printf "see Stridal's ADR-0003 here\n" > "$tmp/planted/ok.md"
+planted=$(bare_citations "$tmp/planted")
+[[ $planted == *"bare.md:1:"* && $planted != *"ok.md"* ]] \
+  || { echo "kit-check: the bare-citation rule missed a planted citation or flagged a qualified one"; exit 1; }
+
 # The runner choice reaches both required workflows.
 s="$tmp/self-hosted"
 ./bootstrap.sh "$s" self-hosted >/dev/null || { echo "kit-check: bootstrap.sh failed with self-hosted"; exit 1; }
