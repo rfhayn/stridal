@@ -53,5 +53,13 @@ another by path or flag must be listed; adding such a call means adding its line
   Upgrade replaces only when P = L, so a hand-edited lock is the only way to lose an edit.
 - Revisit if: kit files are renamed (upgrade would add the new name and report the old as dropped).
 
+## Amendment (#471): the one write outside the project
+`bootstrap.sh` writes only inside the project it installs into. The single exception is the opt-in flag
+`--install-alias`, which appends one line (`alias dispatch=...` ending in the marker comment `# stridal-dispatch-alias`)
+to `~/.zshrc` when `$SHELL` is zsh or `~/.bashrc` when it is bash. With any other shell it writes nothing, exits non-zero
+and prints the line. It is idempotent: a file already holding the marker is left byte for byte. No other flag and no
+default run touches a file outside the project; a future write outside it needs its own amendment here.
+`test-bootstrap.sh` checks each of these against a temporary `HOME`.
+
 ## Links
-Issue #452. Related: 0001 (the dispatcher is how it was built).
+Issue #452, #471. Related: 0001 (the dispatcher is how it was built).

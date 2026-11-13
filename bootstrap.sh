@@ -5,10 +5,37 @@
 #   ./bootstrap.sh --upgrade <dest-repo-dir> [--apply]                  compare a project with this kit and its lock; dry run unless --apply
 #   ./bootstrap.sh --adopt <dest-repo-dir>                              write a lock for a project installed before locks existed
 #   ./bootstrap.sh --enable-auto-merge <owner/repo> <red-PR-number>     only after a red PR was refused
+#   ./bootstrap.sh --install-alias                                      append a `dispatch` alias to ~/.zshrc or ~/.bashrc (opt-in; also accepted with an install)
 # GitHub steps need `gh auth login` as a repo admin. Private repos need GitHub Pro/Team for rulesets.
 # --upgrade and --adopt never call gh and never delete a file (Stridal's ADR-0007).
 set -euo pipefail
 KIT="$(cd "$(dirname "$0")" && pwd)"
+
+# --install-alias: the one thing this script writes outside the project (Stridal's ADR-0007, amended). Opt-in.
+ALIAS_MARK="# stridal-dispatch-alias"
+ALIAS_LINE="alias dispatch='\"\$(git rev-parse --show-toplevel)\"/.claude/bin/dispatch.sh'"
+install_alias() {
+  local rc
+  case "$(basename "${SHELL:-}")" in
+    zsh) rc="$HOME/.zshrc" ;;
+    bash) rc="$HOME/.bashrc" ;;
+    *) echo "install-alias: SHELL is '${SHELL:-}', not zsh or bash. Nothing written. Add this to your shell rc yourself:"
+       echo "  $ALIAS_LINE"; return 1 ;;
+  esac
+  if grep -qF "$ALIAS_MARK" "$rc" 2>/dev/null; then echo "Already in $rc: nothing changed."; return 0; fi
+  # An rc that does not end in a newline would swallow the alias into its last line.
+  if [ -s "$rc" ] && [ -n "$(tail -c 1 "$rc")" ]; then echo >> "$rc"; fi
+  echo "$ALIAS_LINE $ALIAS_MARK" >> "$rc"
+  echo "Wrote to $rc:"
+  echo "  $ALIAS_LINE $ALIAS_MARK"
+}
+DO_ALIAS=0; ARGS=()
+for a in "$@"; do if [ "$a" = --install-alias ]; then DO_ALIAS=1; else ARGS+=("$a"); fi; done
+set -- ${ARGS[@]+"${ARGS[@]}"}
+if [ "$DO_ALIAS" = 1 ]; then
+  install_alias || exit 1
+  [ $# -gt 0 ] || exit 0
+fi
 
 if [ "${1:-}" = "--enable-auto-merge" ]; then
   REPO="${2:?owner/repo}"; PR="${3:?number of a PR whose ci check is red}"
@@ -189,9 +216,12 @@ echo "Runner: $RUNNER for ci and lane."
 
 echo "Public repo? lane.yml runs on pull_request_target, which GitHub blocks by default for public repos from 2026-12-02, so without an Actions policy that allows it there is no lane check and nothing merges. Setting it is a GitHub settings change (Settings > Actions > General) and needs the owner's yes; this script does not do it."
 
-# Offered, never written: this script does not touch your shell rc. It resolves the repo when you use it, so one alias serves every kit project.
-echo "To start a project's dispatcher with one command (from any directory inside it), add this to your shell rc yourself:"
-echo "  alias dispatch='\"\$(git rev-parse --show-toplevel)\"/.claude/bin/dispatch.sh'"
+# Offered, written only with --install-alias: it resolves the repo when you use it, so one alias serves every kit project.
+if [ "$DO_ALIAS" = 0 ]; then
+  echo "To start a project's dispatcher with one command (from any directory inside it), add this to your shell rc yourself,"
+  echo "or rerun with --install-alias to have it appended to ~/.zshrc or ~/.bashrc:"
+  echo "  $ALIAS_LINE"
+fi
 [ -n "$REPO" ] || { echo "Files copied. Pass owner/repo as the 3rd argument to protect main."; exit 0; }
 
 # 3. GitHub: ruleset FIRST. Auto-merge stays OFF until a red PR has been refused (--enable-auto-merge).
