@@ -107,6 +107,11 @@ alias_out=$(HOME="$tmp/home" ./bootstrap.sh "$tmp/aliasdest" hosted) \
   || { echo "kit-check: bootstrap.sh failed with HOME=$tmp/home"; exit 1; }
 [ -z "$(ls -A "$tmp/home")" ] || { echo "kit-check: bootstrap.sh wrote into HOME: $(ls -A "$tmp/home")"; exit 1; }
 case "$alias_out" in *'alias dispatch='*) ;; *) echo "kit-check: bootstrap.sh did not print the dispatch alias"; exit 1 ;; esac
+# #442: lane.yml's pull_request_target is blocked by default on public repos from 2026-12-02, so the install says so
+# and says it needs the owner's yes; the README says the same.
+case "$alias_out" in *pull_request_target*) ;; *) echo "kit-check: bootstrap.sh output does not name the pull_request_target Actions policy"; exit 1 ;; esac
+case "$alias_out" in *owner*yes*) ;; *) echo "kit-check: bootstrap.sh output does not say the policy needs the owner's yes"; exit 1 ;; esac
+grep -q 'pull_request_target.*Actions policy\|Actions policy.*pull_request_target' README.md || { echo "kit-check: README.md does not name the pull_request_target Actions policy"; exit 1; }
 # lane.yml listens to BOTH events (ADR-0002): pull_request so the first PR of a repo that has no lane.yml on main yet
 # still gets a `lane` check (else the ruleset's required check never reports), pull_request_target so main's copy judges.
 for ev in pull_request pull_request_target; do
