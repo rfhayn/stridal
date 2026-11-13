@@ -136,8 +136,21 @@ worker's state is known.
    `agent:working`: a merged PR closes its issue.)
 2. For each issue, find its slug: list `<spawn>/*.branch` and read each; the issue's slug is the one whose branch
    is `<type>/<slug>` with the slug equal to `<number>` or starting `<number>-`. No match means no spawn record.
-3. Find its PR: `gh pr list --state all --head <type>/<slug> --json number,state,labels`. If several PRs share
-   the head, use the OPEN one, else the MERGED one, else the newest CLOSED one.
+   - **No spawn record: look for its PR another way, before any row.** (A cleanup interrupted after
+     `session.sh close` deleted the records but before the label came off leaves an OPEN `agent:working` issue
+     like this; "ended with no PR" would be a guess, false when a PR was in fact merged.) Run
+     `gh pr list --state all --search "<number> in:body" --json number,state,labels,headRefName` and keep only the
+     PRs whose head is `fix/<number>`, `feat/<number>`, or starts `fix/<number>-` or `feat/<number>-`:
+     `jq --arg n <number> '[.[] | select(.headRefName | test("^(fix|feat)/" + $n + "(-|$)"))]'`
+     (`test-dispatch.sh` runs this exact filter). Pick among them as step 3 does (OPEN, else MERGED, else the newest
+     CLOSED). That PR is the issue's PR, its `<type>/<slug>` comes from its head, and there is no worker (no
+     record, nothing to close), so skip steps 4 and 5. Then:
+     - PR MERGED: the "PR MERGED" row without `session.sh close` (the records are already gone);
+     - PR OPEN or CLOSED: its row as usual;
+     - none found, issue CLOSED: the "issue CLOSED, no spawn record" row;
+     - none found, issue OPEN: `gh issue comment <number> --body "dispatch: agent:working but its spawn record is missing and no PR was found; blocked until answered here."`, then `gh issue edit <number> --remove-label agent:working --add-label agent:blocked`, then push `<repo>: #<number> lost its spawn record, no PR found; answer on the issue` once per issue. Never the "no PR, no worker" row.
+3. Find its PR (with a spawn record): `gh pr list --state all --head <type>/<slug> --json number,state,labels`. If
+   several PRs share the head, use the OPEN one, else the MERGED one, else the newest CLOSED one.
 4. Is its worker alive? Get its `<session>` (`bash .claude/bin/session.sh name <slug>`; exit 2, a bad record:
    push `<repo>: session.sh name <slug> refused: <reason>` once per slug and skip this issue this pass). Run
    `ps -axo command=` once per pass and look for `claude --name <session>` (followed by a space or the line's
