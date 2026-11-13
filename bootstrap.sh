@@ -187,6 +187,8 @@ grep -qF '.claude/worktrees/' "$DEST/.gitignore" 2>/dev/null || cat "$KIT/gitign
 echo "Runner: $RUNNER for ci and lane."
 [ "$RUNNER" = hosted ] && echo "  Each lane run bills 1 minute (it runs on two events per PR update) and each ci run its length. If this account has ever paused pull_request CI for minutes, rerun with self-hosted."
 
+echo "Public repo? lane.yml runs on pull_request_target, which GitHub blocks by default for public repos from 2026-12-02, so without an Actions policy that allows it there is no lane check and nothing merges. Setting it is a GitHub settings change (Settings > Actions > General) and needs the owner's yes; this script does not do it."
+
 # Offered, never written: this script does not touch your shell rc. It resolves the repo when you use it, so one alias serves every kit project.
 echo "To start a project's dispatcher with one command (from any directory inside it), add this to your shell rc yourself:"
 echo "  alias dispatch='\"\$(git rev-parse --show-toplevel)\"/.claude/bin/dispatch.sh'"
