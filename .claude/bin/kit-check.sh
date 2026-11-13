@@ -510,4 +510,19 @@ grep -q 'check-evidence.sh' .claude/skills/dispatch/worker-contract.md \
 grep -qE 'missing or empty.*FIX FIRST' .claude/agents/reviewer.md \
   || { echo "kit-check: reviewer.md does not make a missing or empty diff.txt/log.txt FIX FIRST"; exit 1; }
 
+# #466: the PR body starts with `Why:` (lane.yml fails a PR without one). The worker contract must tell workers so
+# and point at the template, and the template must start with a `Why:` line. Tested on copies missing each.
+pr_why_check() {
+  grep -q 'Why:' "$1" || { echo "kit-check: worker-contract.md does not mention Why:"; return 1; }
+  grep -q 'pull_request_template.md' "$1" || { echo "kit-check: worker-contract.md does not mention pull_request_template.md"; return 1; }
+  [ "$(head -n 1 "$2" | cut -c1-4)" = "Why:" ] || { echo "kit-check: pull_request_template.md does not start with a Why: line"; return 1; }
+}
+pr_why_check .claude/skills/dispatch/worker-contract.md .github/pull_request_template.md || exit 1
+grep -v 'Why:' .claude/skills/dispatch/worker-contract.md > "$fx/c-nowhy.md"
+grep -v 'pull_request_template.md' .claude/skills/dispatch/worker-contract.md > "$fx/c-notpl.md"
+tail -n +2 .github/pull_request_template.md > "$fx/t-nowhy.md"
+expect "contract without Why:" 1 "mention Why:" pr_why_check "$fx/c-nowhy.md" .github/pull_request_template.md
+expect "contract without template" 1 "mention pull_request_template" pr_why_check "$fx/c-notpl.md" .github/pull_request_template.md
+expect "template without Why: first line" 1 "start with a Why:" pr_why_check .claude/skills/dispatch/worker-contract.md "$fx/t-nowhy.md"
+
 echo "kit-check: all checks passed ($count shell scripts)"

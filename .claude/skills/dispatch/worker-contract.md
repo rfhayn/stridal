@@ -62,6 +62,12 @@ You are a worker session opened by the dispatcher, in your own worktree, for the
   4. **Evidence in the PR body.** Every claim cites a source (file:line, test name or command output); one without
      a source is removed or marked "unverified". Put the review result and the lane's reason in the body. Leave
      `.claude/review/` uncommitted.
+- **The PR body's first line is `Why: <one sentence>`**; the `lane` check fails a body without it. Start from
+  `.github/pull_request_template.md` and label the PR with its lane. `gh pr edit` fails under the agent token
+  ("needs read:org"), so edit through the REST API, each as a single plain command (the body file written with the
+  Write tool):
+  `gh api -X PATCH repos/{owner}/{repo}/pulls/<n> -F body=@<file>`
+  `gh api -X POST repos/{owner}/{repo}/issues/<n>/labels -f 'labels[]=<lane label>'`
 - **The dispatcher may merge `main` into your PR branch** (`gh pr update-branch`). `git pull --no-rebase` before
   you push again; never force-push.
 - **File follow-up issues as usual.** They land in Later; the dispatcher never picks them up on its own.
