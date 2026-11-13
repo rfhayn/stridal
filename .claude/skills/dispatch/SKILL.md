@@ -139,7 +139,7 @@ worker's state is known.
    - **No spawn record: look for its PR another way, before any row.** (A cleanup interrupted after
      `session.sh close` deleted the records but before the label came off leaves an OPEN `agent:working` issue
      like this; "ended with no PR" would be a guess, false when a PR was in fact merged.) Run
-     `gh pr list --state all --search "<number> in:body" --json number,state,labels,headRefName` and keep only the
+     `gh pr list --state all --limit 100 --search "<number> in:body" --json number,state,labels,headRefName` and keep only the
      PRs whose head is `fix/<number>`, `feat/<number>`, or starts `fix/<number>-` or `feat/<number>-`:
      `jq --arg n <number> '[.[] | select(.headRefName | test("^(fix|feat)/" + $n + "(-|$)"))]'`
      (`test-dispatch.sh` runs this exact filter). Pick among them as step 3 does (OPEN, else MERGED, else the newest
@@ -148,6 +148,10 @@ worker's state is known.
      - PR MERGED: the "PR MERGED" row without `session.sh close` (the records are already gone);
      - PR OPEN or CLOSED: its row as usual;
      - none found, issue CLOSED: the "issue CLOSED, no spawn record" row;
+     - A PR found this way takes the case: the table's "issue CLOSED, no spawn record" row applies only when none
+       was found, and a found PR uses its own row whatever the issue's state (a CLOSED issue with a MERGED PR still
+       gets the deploy check; for a CLOSED issue with an unmerged CLOSED PR, remove the label only, as in the
+       "issue CLOSED, a spawn record" row, never `agent:blocked`).
      - none found, issue OPEN: `gh issue comment <number> --body "dispatch: agent:working but its spawn record is missing and no PR was found; blocked until answered here."`, then `gh issue edit <number> --remove-label agent:working --add-label agent:blocked`, then push `<repo>: #<number> lost its spawn record, no PR found; answer on the issue` once per issue. Never the "no PR, no worker" row.
 3. Find its PR (with a spawn record): `gh pr list --state all --head <type>/<slug> --json number,state,labels`. If
    several PRs share the head, use the OPEN one, else the MERGED one, else the newest CLOSED one.
