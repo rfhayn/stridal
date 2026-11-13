@@ -21,7 +21,7 @@ A copy-in kit for building with Claude Code: `bootstrap.sh` installs it into a p
 The Now column of the GitHub Project is the backlog (ADR-0001). `/dispatch` works it; the scripts read these lines.
 - Name: stridal · Project: rfhayn #4 · Approver: rfhayn · max_workers: 1
 - Deploy: true · Gates: .claude/bin/kit-check.sh
-- Agent: rfhayn-bot · Agent keychain: job-radar-github-bot
+- Agent: rfhayn-bot · Agent keychain: stridal-github-bot
 - Start: `.claude/bin/dispatch.sh` (checks, then runs `as-agent.sh <Agent keychain> claude --name dispatch-<Name> -- "/loop /dispatch"`)
 - `Deploy: true` is a documented no-op: nothing here deploys. No `Footprint areas`, so one worker at a time (ADR-0005).
 

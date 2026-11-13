@@ -26,4 +26,4 @@ collide on the worker name.
 - Revisit if: a multi-project dispatcher discovers keys and can check them.
 
 ## Links
-Ported from job-search ADR-0014 (commit 01dc4ad). Related: 0001, 0004.
+Ported from the repo this kit came from. Related: 0001, 0004.
