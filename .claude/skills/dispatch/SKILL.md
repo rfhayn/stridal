@@ -185,8 +185,10 @@ worker's state is known.
      gone, close types nothing and removes the markers itself. If close refuses for any other reason, push
      `<repo>: close <slug> refused: <reason>` once per slug, and do the same: skip this issue, go on with the
      others, and run no Advance this pass. Never pass `--abandon` on your own.
-7. For an open PR, run `gh pr checks <pr> --json name,bucket,link` and act on the first bullet that fits. A bucket
-   other than `pass`, `skipping` or `pending` (such as `cancel`) counts as `fail`.
+7. For an open PR, run `gh pr checks <pr> --json name,bucket,link,startedAt` and act on the first bullet that fits. A bucket
+   other than `pass`, `skipping` or `pending` (such as `cancel`) counts as `fail`. Each event adds another `lane`
+   row on the same head, so for `lane` read only the row with the newest `startedAt`: its bucket is the `lane`
+   bucket and its `link` is the one used to read the failing log. Other checks are unchanged.
 
    **Behind, and the update rule.** Read `gh pr view <pr> --json headRefOid,autoMergeRequest,mergeStateStatus`.
    The PR is behind when `gh api repos/{owner}/{repo}/compare/main...<headRefOid> --jq .behind_by` prints a
