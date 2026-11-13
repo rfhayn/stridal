@@ -86,10 +86,40 @@ labels, and copies this repo's own `CLAUDE.md` and `ci.yml` instead of the templ
    `./bootstrap.sh --enable-auto-merge owner/myproject <PR>`. It checks the PR is BLOCKED with `ci` failing, then
    turns auto-merge on. Close that PR.
 7. `/doctor` in Claude Code, then `/permissions` to confirm the deny rules loaded.
+8. Set up the Project board the dispatcher reads: [Project board setup](#project-board-setup).
 
 The ruleset is strict: a PR must be up to date with main to merge (the dispatcher merges main into a worker's PR branch with `gh pr update-branch`).
 The check names `ci` and `lane` are the job names. The ruleset requires exactly those names, so rename both or neither.
 Do not add `paths:` filters to required workflows: a skipped required check stays pending and blocks the merge.
+
+## Project board setup
+The dispatcher works the Now column of a GitHub Project (ADR-0001). The kit does not create the board, and GitHub's API
+cannot turn on the workflows below, so this is a one-time setup in the web UI.
+
+1. **Create a Project** (Projects > New project) with a Board view and a `Status` field whose options are exactly
+   `Now`, `Next`, `Later` and `Done`. A new Project starts with Todo, In Progress and Done: rename those options
+   rather than deleting and recreating them (see the warning below).
+2. **Turn on three built-in workflows** in the Project's web settings (`...` menu > Workflows):
+   - **Auto-add to project**: pick the repository and set the filter to `is:issue is:open`. GitHub's default filter is
+     `label:bug`, which adds almost nothing, so issues filed by workers would never reach the board.
+   - **Item added to project**: set Status to `Later`, so every new issue lands in Later.
+   - **Item closed**: set Status to `Done`.
+
+   Each workflow must be enabled (the toggle on) after you edit it. These run with GitHub's own authority, not the
+   agent's.
+3. **Check the issues that already exist.** On this repo's own board, open issues filed before auto-add was on were
+   not there. Add any that are missing by hand (Add item).
+4. **Put the Project in `CLAUDE.md`**: the `Project:` field of the `## Dispatcher` block names it.
+
+Three things to know:
+- **The API cannot set or enable a workflow.** There is no REST or GraphQL call for it; it is an edit on the Project's
+  web page. A setup script cannot do this step.
+- **Do not replace the Status options through the API.** Replacing the option list drops the option ids the workflows
+  point at, and they silently stop setting Status. Rename the existing options instead (in the web UI), then check the
+  workflows still show the right Status.
+- **The dispatcher cannot move a card.** Its token has `read:project` only, on purpose (#453;
+  [agent token runbook](docs/runbooks/agent-token.md)). **You move an issue into Now** to choose what ships; the
+  dispatcher reads Now, and progress shows in the `agent:working` and `agent:blocked` labels and a closed issue.
 
 ## Upgrade a project (ADR-0007)
 `bootstrap.sh` never overwrites, and `.claude/kit.lock` is how a later kit reaches a project: it holds the kit version and
