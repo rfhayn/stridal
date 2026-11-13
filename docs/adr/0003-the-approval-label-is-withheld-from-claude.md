@@ -6,7 +6,7 @@ Date: 2026-11-11 · Status: proposed
 `lane` counts `merge-ok` only when the owner added it (0002), but a Claude session running `gh` as the owner
 produces an event whose actor is the owner. This repo's guard is `Bash(*merge-ok*)` under `ask` in
 `.claude/settings.json`. An `ask` rule needs a person at the prompt; in auto mode a classifier decides, and in
-job-search's evidence (its #193) it allowed the command. The dispatcher makes unattended auto-mode workers the normal
+the source repo's evidence it allowed the command. The dispatcher makes unattended auto-mode workers the normal
 case, so a worker could label its own lane-3 PR.
 
 ## Decision
@@ -23,4 +23,4 @@ what holds: the label an agent adds as the machine user is rejected by `lane`.
 - Revisit if: `/merge` is retired (part C), after which move the rule to `deny` and check it is in no `ask` entry.
 
 ## Links
-Ported from job-search ADR-0011 (commit 01dc4ad). Related: 0002, 0004. Issue #436 part C = #438.
+Ported from the repo this kit came from. Related: 0002, 0004. Issue #436 part C = #438.

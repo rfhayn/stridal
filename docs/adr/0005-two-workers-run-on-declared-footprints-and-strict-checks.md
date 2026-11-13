@@ -28,5 +28,5 @@ against the `main` it branched from, so the second merges without ever being tes
 - Revisit if: a merge queue becomes cheaper than strict checks plus update-branch.
 
 ## Links
-Ported from job-search ADR-0013 (commit 01dc4ad). The ruleset in `.github/ruleset-main.json` is the owner's to
+Ported from the repo this kit came from. The ruleset in `.github/ruleset-main.json` is the owner's to
 apply (a GitHub setting). Related: 0001, 0002.

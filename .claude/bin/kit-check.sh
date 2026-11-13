@@ -67,11 +67,31 @@ done
 (cd "$d" && .claude/bin/test-session.sh && .claude/bin/test-dispatch.sh && .claude/bin/test-token-expiry.sh \
   && .claude/bin/test-launcher.sh && .claude/bin/test-scope-check.sh && sh .github/lane/test.sh) >"$tmp/selftests.out" 2>&1 \
   || { tail -n 20 "$tmp/selftests.out"; echo "kit-check: the dispatcher self-tests fail in a new project"; exit 1; }
-if (cd "$d" && grep -nE 'job-search|job-radar|rfhayn|/Users/' .claude/bin/session.sh .claude/bin/dispatch-next.sh \
+if (cd "$d" && grep -nE 'rfhayn|/Users/' .claude/bin/session.sh .claude/bin/dispatch-next.sh \
     .claude/bin/as-agent.sh .claude/bin/token-expiry.sh .claude/hooks/notify-waiting.sh \
     .claude/bin/dispatch.sh .claude/bin/test-launcher.sh docs/runbooks/agent-token.md \
     .claude/skills/dispatch/*.md .github/lane/*.sh); then
-  echo "kit-check: a dispatcher file in a new project names job-search, a login or a home path"; exit 1
+  echo "kit-check: a dispatcher file in a new project names a login or a home path"; exit 1
+fi
+
+# #454: the repo this kit was ported from must not be named in any tracked file, nor in anything a new project
+# receives. The names live in one file, .claude/banned-names.txt (regexes, comments allowed).
+banned="$tmp/banned.re"
+grep -vE '^[[:space:]]*(#|$)' .claude/banned-names.txt > "$banned" || true
+[ -s "$banned" ] || { echo "kit-check: .claude/banned-names.txt lists no names"; exit 1; }
+if git grep --untracked -n -I -i -E -f "$banned"; then
+  echo "kit-check: a tracked file names the repo this kit was ported from (see .claude/banned-names.txt)"; exit 1
+fi
+if grep -rnIiE -f "$banned" "$d"; then
+  echo "kit-check: a file installed into a new project names the repo this kit was ported from"; exit 1
+fi
+# The check itself must fail on a planted name (built here from parts so this script does not contain it).
+plant="$tmp/plant"
+git init -q "$plant"
+printf 'copied from job%ssearch\n' '-' > "$plant/note.md"
+git -C "$plant" add note.md
+if (cd "$plant" && git grep -n -I -i -E -f "$banned" >/dev/null); then :; else
+  echo "kit-check: the banned-names check did not catch a planted name"; exit 1
 fi
 # The runbook ships filled in, not as a template, and covers what an adopter must do.
 if head -n 1 "$d/docs/runbooks/agent-token.md" | grep -q '^> TEMPLATE'; then

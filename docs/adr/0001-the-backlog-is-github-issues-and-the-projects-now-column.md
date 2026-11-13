@@ -6,8 +6,7 @@ Date: 2026-11-11 · Status: proposed
 Stridal's process kept a markdown roadmap (`docs/ROADMAP.md`), and each item needed several human steps (`/brief`,
 `/ship`, `/land`, `/merge`, a worker tab). Maintaining that process was becoming the work. GitHub already holds what
 a roadmap file duplicates: Issues with a "Done when", one Project board (Now / Next / Later / Done), and the PRs that
-close them. The job-search repo made this move on 2026-11-08 and ran a dispatcher on it
-(job-search ADR-0007, spec `docs/specs/2026-11-09-dispatcher-design.md`).
+close them. The repo this kit was ported from made this move on 2026-11-08 and ran a dispatcher on it.
 
 ## Decision
 The backlog is Issues plus one Project: an issue in the Project's **Now** column, with a "Done when", is approved
@@ -23,4 +22,4 @@ is retired in part C of #436, not here.
 - Revisit if: the Project moves to an organisation, or GitHub changes what a token with `read:project` can read.
 
 ## Links
-Ported from job-search ADR-0007 (commit 01dc4ad). Issue #436 (parts A to D). Related: 0004, 0005.
+Ported from the repo this kit came from. Issue #436 (parts A to D). Related: 0004, 0005.

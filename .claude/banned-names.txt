@@ -1,0 +1,5 @@
+# Names that must not appear in any tracked file (#454). One extended regex per line, matched case-insensitively
+# by kit-check.sh. Each name is written with a bracketed separator so this file does not match itself.
+# Not copied to new projects.
+job[-_]?search
+job[-_]?radar

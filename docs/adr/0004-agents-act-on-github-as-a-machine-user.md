@@ -35,5 +35,5 @@ owner" on the board be trusted (0001).
   organisation.
 
 ## Links
-Ported from job-search ADR-0012 (commit 01dc4ad). This repo: Agent `rfhayn-bot`, keychain service
-`job-radar-github-bot` (shared with job-search; one bot serves both). Related: 0001, 0002, 0003.
+Ported from the repo this kit came from. This repo: Agent `rfhayn-bot`, keychain service
+`stridal-github-bot`. Related: 0001, 0002, 0003.
