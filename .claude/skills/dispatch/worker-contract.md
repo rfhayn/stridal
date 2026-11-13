@@ -15,7 +15,7 @@ You are a worker session opened by the dispatcher, in your own worktree, for the
     wait in this tab. The user may answer here.
 - **You act on GitHub as the dispatcher's agent identity** (`GH_TOKEN` from the launcher, when the repo sets one).
   Never unset it, run `gh auth`, or read the Keychain to act as the approver.
-- **Never put the approval label's name in a Bash command** (ADR-0003). If a lane-3 PR needs the user, say so in
+- **Never put the approval label's name in a Bash command** (Stridal's ADR-0003). If a lane-3 PR needs the user, say so in
   RESULT.
 - **Worktree-guard workarounds:**
   - plain single `gh` and `git` commands (no pipes or `&&`);

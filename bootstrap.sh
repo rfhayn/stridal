@@ -6,7 +6,7 @@
 #   ./bootstrap.sh --adopt <dest-repo-dir>                              write a lock for a project installed before locks existed
 #   ./bootstrap.sh --enable-auto-merge <owner/repo> <red-PR-number>     only after a red PR was refused
 # GitHub steps need `gh auth login` as a repo admin. Private repos need GitHub Pro/Team for rulesets.
-# --upgrade and --adopt never call gh and never delete a file (ADR-0007).
+# --upgrade and --adopt never call gh and never delete a file (Stridal's ADR-0007).
 set -euo pipefail
 KIT="$(cd "$(dirname "$0")" && pwd)"
 
@@ -61,7 +61,7 @@ stage() {
   fi
   echo "$out"
 }
-# Lock lines are "<sha256 or -> <path>" (two spaces); "-" means edited, never equal to a file's hash. See ADR-0007.
+# Lock lines are "<sha256 or -> <path>" (two spaces); "-" means edited, never equal to a file's hash. See Stridal's ADR-0007.
 lock_hash() { awk -v p="$2" '$2 == p && $1 != "version" && $1 != "runner" { print $1; exit }' "$1/$LOCK"; }
 lock_runner() { awk '$1 == "runner" { print $2; exit }' "$1/$LOCK"; }
 lock_version() { awk '$1 == "version" { print $2; exit }' "$1/$LOCK"; }
@@ -137,7 +137,7 @@ if [ "${1:-}" = "--upgrade" ]; then
     else echo "CLAUDE.md is never touched. The template differs from yours (- yours, + template):"; cat "$STAGE/claude.diff"; fi
   fi
   # Kit files depend on each other (.claude/kit.deps). A file added or replaced above may need a file kept as edited:
-  # warn, naming the .kit-new to merge first. Only a warning: nothing is written or removed because of it (ADR-0007).
+  # warn, naming the .kit-new to merge first. Only a warning: nothing is written or removed because of it (Stridal's ADR-0007).
   if [ -f "$KIT/.claude/kit.deps" ]; then
     while IFS=: read -r df needs; do
       case "$df" in "#"*|"") continue ;; esac

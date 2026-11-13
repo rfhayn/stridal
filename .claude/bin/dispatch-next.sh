@@ -340,7 +340,7 @@ while IFS= read -r n; do
   title=$(jq -r '.title // ""' <<<"$js")
   type=feat
   if jq -e '[.labels[]?.name] | index("bug")' >/dev/null 2>&1 <<<"$js" || [[ "$title" =~ $fix_re ]]; then type=fix; fi
-  # The approval label's name never goes into a slug: the settings deny Bash(*merge-ok*) (ADR-0003) would then stop every
+  # The approval label's name never goes into a slug: the settings deny Bash(*merge-ok*) (Stridal's ADR-0003) would then stop every
   # session.sh, git and gh command naming the slug or its branch.
   rest=$(printf '%s' "$title" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9][^a-z0-9]*/-/g; s/^-//; s/-$//; s/merge-ok/approval/g')
   slug=$n

@@ -4,9 +4,9 @@
 #        .claude/bin/scope-check.sh --footprint <issue-body-file> [glob...]
 # Globs use bash pattern matching (** behaves like *). Exits 0 if in scope, 1 and lists strays otherwise.
 # --footprint: each path on the issue body's Footprint line, read by `dispatch-next.sh --footprint-of` (the one
-# Footprint parser, ADR-0005), is in scope as itself and as a directory (<path>/*). Extra globs (the PR's
+# Footprint parser, Stridal's ADR-0005), is in scope as itself and as a directory (<path>/*). Extra globs (the PR's
 # "Footprint grew:" paths) count too. No Footprint line, a placeholder (none) or an unsafe value = nothing to check
-# against (ADR-0005 runs such an item alone): prints a notice and exits 0, unless extra globs were given.
+# against (Stridal's ADR-0005 runs such an item alone): prints a notice and exits 0, unless extra globs were given.
 set -uo pipefail
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 globs=()

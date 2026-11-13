@@ -21,7 +21,7 @@ Names used below:
   tab opens) holds its terminal id, `<spawn>/<slug>.waiting` is the permission-prompt marker, and
   `<spawn>/<slug>.notified` marks a prompt you pushed that the worker has not reported past yet.
   `session.sh close` refuses while either marker exists and the worker runs.
-- "the approval label": the label a lane-3 PR waits on (ADR-0003). Never write its name, in a Bash command or
+- "the approval label": the label a lane-3 PR waits on (Stridal's ADR-0003). Never write its name, in a Bash command or
   anywhere else; `.claude/settings.json` stops Bash commands that name it.
 - A **push** is a `PushNotification` (load it with ToolSearch if deferred): one line, under 200 characters,
   starting with `<repo>:` and leading with what the user acts on. Never push for routine progress.

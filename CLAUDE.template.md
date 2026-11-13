@@ -11,7 +11,7 @@
 - Single test: `{{pnpm test -- path/to/file}}` · Dev: `{{pnpm dev}}` · Install: `{{pnpm install}}`
 
 ## How we work
-- Every change: a GitHub issue with a "Done when" -> the Now column of the Project -> `.claude/bin/dispatch.sh` -> a worker's PR (ADR-0001). The owner chooses what ships by moving issues into Now; they do not review intermediate output.
+- Every change: a GitHub issue with a "Done when" -> the Now column of the Project -> `.claude/bin/dispatch.sh` -> a worker's PR ([Stridal's ADR-0001](https://github.com/rfhayn/stridal/tree/main/docs/adr); the "Stridal's ADR" citations below are in that folder). The owner chooses what ships by moving issues into Now; they do not review intermediate output.
 - Write the check first. Done means: the tests exit 0, the diff touches only files in the issue's Footprint or Files (`.claude/bin/scope-check.sh`), and every claim in the PR cites a source (file:line, test name or command output). "Looks good", "I'm confident" and "no errors raised" are not checks.
 - Return the unit, not the batch: when a check fails, fix only the failing file/test ("fix X only"), rerun only that check, then the full check. After 3 failed attempts on the same unit, stop and re-brief. Do not keep looping.
 - Deterministic work is code, not a model call: merging, sorting, ranking, dedup, diffing, comparisons, counting. Write or use a script and cite its output.
@@ -20,25 +20,25 @@
 - Do not script a rewrite of tracked source (`sed -i`, `perl -pi`, codemods); use the Edit tool.
 - New logic gets a test. Fix the code, not the test, unless the test is wrong (say so in the PR).
 - Architecture decisions: `docs/adr/NNNN-title.md` (copy 0000-template). Read an area's ADRs before changing it; supersede, don't contradict. There is no ADR index; list them and their status with `grep -HE '^(# |Date:)' docs/adr/*.md`.
-- Next work: the issues in the Project's Now column (ADR-0001); there is no markdown roadmap. The PR body says `Closes #<n>`.
+- Next work: the issues in the Project's Now column (Stridal's ADR-0001); there is no markdown roadmap. The PR body says `Closes #<n>`.
 
 ## Dispatcher
-The Now column of the GitHub Project is the backlog (ADR-0001). `/dispatch` works it; the scripts read these lines.
+The Now column of the GitHub Project is the backlog (Stridal's ADR-0001). `/dispatch` works it; the scripts read these lines.
 Each line is `Key: value` pairs joined by ` · `. Fill in `Approver` before you open the kit's PR (a lane-3 PR cannot be approved without it; lanes 1 and 2 don't need it), the rest before the first `/dispatch`, and set up the agents'
-machine user first (ADR-0004; the steps are in `docs/runbooks/agent-token.md`).
+machine user first (Stridal's ADR-0004; the steps are in `docs/runbooks/agent-token.md`).
 - Name: {{key: a letter first, lowercase, up to 20 characters; sessions are named dispatch-<key> and <key>-<slug>}} · Project: {{owner}} #{{project number}} · Approver: {{your GitHub login; must differ from Agent}} · max_workers: 1
 - Deploy: {{command that makes a merged main live, or `true` when nothing deploys}} · Gates: {{the Check command above}}
 - Agent: {{machine-user login}} · Agent keychain: {{Keychain service holding its token}}
 - Start: `.claude/bin/dispatch.sh` (checks, then runs `as-agent.sh <Agent keychain> claude --name dispatch-<Name> -- "/loop /dispatch"`)
 - Footprint areas: {{the directories issues name in a `Footprint:` line; leave this line out to run one worker at a time}}
 - An issue runs beside another only with a `Footprint:` line in its body (paths or footprint areas); otherwise it
-  runs alone (ADR-0005). `max_workers` above 1 also needs the ruleset's strict status checks.
+  runs alone (Stridal's ADR-0005). `max_workers` above 1 also needs the ruleset's strict status checks.
 
 ## Merge lanes (by blast radius, not confidence)
 The issue names the lane; the worker labels the PR. CI's `lane` check forces lane 3 for the paths below.
 1. `lane:1-contained`, reversible and contained (copy, tests, isolated covered code): auto-merge when CI is green.
 2. `lane:2-wide`, reversible but wide (shared utilities, schema additions, config): CI + one `reviewer` round, then auto-merge.
-3. `lane:3-hard`, hard to reverse (migrations, deletions, production data, money): never auto-merges. Reviewer runs on Opus; the owner adds `merge-ok` in GitHub's web UI and merges. Claude never adds it: Bash commands containing it are denied (ADR-0003).
+3. `lane:3-hard`, hard to reverse (migrations, deletions, production data, money): never auto-merges. Reviewer runs on Opus; the owner adds `merge-ok` in GitHub's web UI and merges. Claude never adds it: Bash commands containing it are denied (Stridal's ADR-0003).
 - Lane 3 paths here: {{every one-way path: migrations/schema, outbound email/SMS/webhooks, production-data writers (import, export, sync, delete scripts), credential handling, money, deploy/infra}} (keep in sync with `HARD_PATHS` in `.github/workflows/lane.yml`)
 
 ## Ask the owner first
