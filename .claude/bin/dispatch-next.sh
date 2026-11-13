@@ -28,7 +28,9 @@
 #                       they join its footprint (keys and hard). <n> must also be given by --with or --with-hard. A
 #                       placeholder value adds nothing; an unsafe path makes <n> count as having no Footprint.
 # With in-flight items the pick (and --why) also requires the item to be compatible with all of them. A footprint is a body
-# line "Footprint: <path>, <path>" (backticks, a "- " prefix, "**Footprint:**" or "**Footprint**:" allowed). A placeholder
+# line "Footprint: <path>, <path>" (backticks, a "- " prefix, "**Footprint:**" or "**Footprint**:" allowed), or a heading
+# line "## Footprint" (any level, any case) with the paths on the following non-empty lines up to the next blank line or
+# heading (a trailing "." is dropped); the "Footprint:" line wins when both appear. A placeholder
 # value (none, tbd, n/a, ?) or any unsafe path (absolute, "..", or a glob character * ? [ ] { }) counts as no Footprint.
 # Its key per path is the --areas entry the path
 # falls under, else the path; keys overlap when equal or one is a directory prefix of the other. No Footprint = runs alone.
@@ -91,9 +93,18 @@ fpval_jq='def fpval: gsub("`|\\*\\*"; "") | gsub("^\\s+|\\s+$"; "")
 # fp_paths JSON -> the declared footprint paths, one per line (nothing when there is no Footprint line, or its value
 # is a placeholder or unsafe: runs alone).
 fp_paths() {
-  jq -r "$fpval_jq"'(.body // "") | split("\n")
-    | map(select(test("^\\s*(-\\s+)?(\\*\\*)?\\s*footprint\\s*(\\*\\*)?\\s*:"; "i"))) | .[0] // empty
-    | sub("^[^:]*:"; "") | fpval | select(startswith("+")) | .[1:]' <<<"$1"
+  jq -r "$fpval_jq"'(.body // "") | split("\n") as $l
+    | ($l | map(select(test("^\\s*(-\\s+)?(\\*\\*)?\\s*footprint\\s*(\\*\\*)?\\s*:"; "i"))) | .[0]) as $c
+    | (if $c != null then $c | sub("^[^:]*:"; "")
+       else
+         ([range(0; $l | length) | select($l[.] | test("^\\s*#+\\s*footprint\\s*$"; "i"))] | .[0]) as $h
+         | if $h == null then empty
+           else $l[$h + 1:] | map(gsub("^\\s+|\\s+$"; "")) | until(length == 0 or .[0] != ""; .[1:])
+             | . as $r | ([range(0; $r | length) | select($r[.] == "" or ($r[.] | test("^#")))] | .[0]) as $e
+             | (if $e == null then $r else $r[:$e] end) | join(" ") | sub("\\.$"; "")
+           end
+       end)
+    | fpval | select(startswith("+")) | .[1:]' <<<"$1"
 }
 if [ -n "$fp_of" ]; then
   # The issue body saved to a file: print its Footprint paths, one per line, through the same parser the dispatcher
