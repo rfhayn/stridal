@@ -1,0 +1,12 @@
+# Kit files that call another kit file by flag or by path. Read by bootstrap.sh --upgrade (#460, ADR-0007).
+# One line: <file>: <file it needs> ... (paths from the project root). Not copied to new projects.
+# Upgrade warns when it adds or replaces <file> while a file it needs is kept as edited.
+.claude/bin/scope-check.sh: .claude/bin/dispatch-next.sh
+.claude/bin/dispatch.sh: .claude/bin/dispatch-next.sh .claude/bin/as-agent.sh
+.claude/bin/session.sh: .claude/bin/dispatch-next.sh
+.claude/bin/test-dispatch.sh: .claude/bin/dispatch-next.sh
+.claude/bin/test-scope-check.sh: .claude/bin/scope-check.sh .claude/bin/dispatch-next.sh
+.claude/bin/test-launcher.sh: .claude/bin/dispatch.sh .claude/bin/dispatch-next.sh .claude/bin/as-agent.sh
+.claude/bin/test-session.sh: .claude/bin/session.sh .claude/bin/as-agent.sh .claude/hooks/notify-waiting.sh
+.claude/bin/test-token-expiry.sh: .claude/bin/token-expiry.sh
+.github/lane/test.sh: .github/lane/lane.sh
