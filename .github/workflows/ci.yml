@@ -38,7 +38,7 @@ jobs:
           tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
       - name: Scan files for secrets
-        run: gitleaks dir --no-banner --redact .
+        run: gitleaks dir --no-banner --redact --verbose .
       - name: Scan the PR's commits for secrets
         if: github.event_name == 'pull_request'
         env:
@@ -49,7 +49,7 @@ jobs:
           # gitleaks exits 0 on a range git cannot resolve, so a bad range would read as "no leaks". Check first.
           git rev-parse --verify --quiet "$BASE^{commit}" >/dev/null || { echo "::error::Base commit not found: $BASE"; exit 1; }
           git rev-parse --verify --quiet "$HEAD^{commit}" >/dev/null || { echo "::error::Head commit not found: $HEAD"; exit 1; }
-          gitleaks git --no-banner --redact --log-opts="$BASE..$HEAD" .
+          gitleaks git --no-banner --redact --verbose --log-opts="$BASE..$HEAD" .
 
       # ---- The same command as "Check" in CLAUDE.md. ----
       - run: .claude/bin/kit-check.sh

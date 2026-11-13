@@ -525,4 +525,30 @@ expect "contract without Why:" 1 "mention Why:" pr_why_check "$fx/c-nowhy.md" .g
 expect "contract without template" 1 "mention pull_request_template" pr_why_check "$fx/c-notpl.md" .github/pull_request_template.md
 expect "template without Why: first line" 1 "start with a Why:" pr_why_check .claude/skills/dispatch/worker-contract.md "$fx/t-nowhy.md"
 
+# #470: without --verbose a failing gitleaks step prints only "leaks found: N". Each scan command in both ci files must
+# carry --verbose (and keep --redact, so the secret itself is not printed). Tested on a copy missing each flag.
+gitleaks_flags_check() {
+  local sub n
+  for sub in dir git; do
+    n=$(grep -c "gitleaks $sub " "$1" || true)
+    [ "$n" -ge 1 ] || { echo "kit-check: $1 has no 'gitleaks $sub' command"; return 1; }
+    [ "$(grep "gitleaks $sub " "$1" | grep -c -e '--verbose')" = "$n" ] \
+      || { echo "kit-check: a 'gitleaks $sub' command in $1 lacks --verbose"; return 1; }
+    [ "$(grep "gitleaks $sub " "$1" | grep -c -e '--redact')" = "$n" ] \
+      || { echo "kit-check: a 'gitleaks $sub' command in $1 lacks --redact"; return 1; }
+  done
+}
+for f in .github/ci.template.yml .github/workflows/ci.yml; do
+  gitleaks_flags_check "$f" || exit 1
+  sed 's/ --verbose//' "$f" > "$fx/ci-noverbose.yml"
+  expect "$f without --verbose" 1 "lacks --verbose" gitleaks_flags_check "$fx/ci-noverbose.yml"
+  sed '/gitleaks dir /s/ --verbose//' "$f" > "$fx/ci-nodirverbose.yml"
+  expect "$f gitleaks dir without --verbose" 1 "'gitleaks dir' command" gitleaks_flags_check "$fx/ci-nodirverbose.yml"
+  sed '/gitleaks git /s/ --verbose//' "$f" > "$fx/ci-nogitverbose.yml"
+  expect "$f gitleaks git without --verbose" 1 "'gitleaks git' command" gitleaks_flags_check "$fx/ci-nogitverbose.yml"
+done
+# The README says how to allowlist a false positive.
+grep -q '\.gitleaksignore' README.md || { echo "kit-check: README.md does not name .gitleaksignore"; exit 1; }
+grep -q '<file>:<rule>:<line>' README.md || { echo "kit-check: README.md does not give the <file>:<rule>:<line> fingerprint format"; exit 1; }
+
 echo "kit-check: all checks passed ($count shell scripts)"

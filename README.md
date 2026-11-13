@@ -226,6 +226,7 @@ timeout block too; without it the guard fails open. Use the slot for whatever yo
 - A local runner script that calls the same steps file as CI, for the inner loop when Actions minutes are scarce. It never writes a receipt a merge trusts.
 
 ## Costs and limits to know
+- A failing gitleaks scan names its findings: both steps run with `--verbose` (and `--redact`), so the log shows the file, rule and line, never the secret. A false positive is allowlisted by fingerprint in a `.gitleaksignore` file at the repo root, one `<file>:<rule>:<line>` per line (for the `git` scan, `<commit>:<file>:<rule>:<line>`, as the log prints it). Review each, put a `#` comment above it saying why it is not a secret, and never list a real secret: rotate that instead.
 - On hosted runners each `lane` run bills one rounded-up minute (4-8 runs per PR: it runs on both `pull_request` and `pull_request_target`, ADR-0002). The runner choice is install step 1.
 - `bypass_actors` is empty, so even admins merge through PRs. To pause the ruleset, set `enforcement` to
   `disabled` in Settings → Rules; it can't be deleted from a Claude session (denied).
