@@ -60,6 +60,10 @@ labels, and copies this repo's own `CLAUDE.md` and `ci.yml` instead of the templ
    `~/code/stridal-kit/bootstrap.sh ~/code/myproject <hosted|self-hosted> owner/myproject` (needs `gh auth login` as a repo admin;
    without `owner/repo` it copies files only). It posts the ruleset first, restores your previous merge
    settings if that fails, and leaves auto-merge OFF. Rulesets on a **private** repo need GitHub Pro or Team.
+   **Public repo:** it needs a `pull_request_target` Actions policy. `lane.yml` runs on that event, which GitHub blocks
+   by default for public repos from 2026-12-02. Until the policy allows it (Settings > Actions > General) there is no
+   `lane` check and nothing merges. That is a GitHub settings change, so it needs the owner's yes; `bootstrap.sh` prints the reminder
+   but does not make the change.
 3. Fill the `{{placeholders}}`: `CLAUDE.md` (stack, check command, lane-3 paths, personal-data paths, and `Approver:` in
    the `## Dispatcher` block, which the kit PR needs because it touches `.github/`; the rest of that block waits for the
    first `/dispatch`), `ci.yml`
