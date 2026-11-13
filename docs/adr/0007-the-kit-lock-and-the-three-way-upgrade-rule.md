@@ -33,6 +33,18 @@ project's (P), the lock's (L) and the new kit copy's (K):
 The lock is rewritten only for files upgrade added or replaced, plus its `version` line when it changed any. A kept
 file keeps its old lock line, so the next upgrade still offers it.
 
+## Amendment (#460): dependencies between kit files
+The rule above treats each file alone, but kit files call each other: on the first real adoption, upgrade added
+`scope-check.sh`, which calls `dispatch-next.sh --footprint-of`, while keeping the project's edited `dispatch-next.sh`
+without that flag, and reported success. The kit now records its dependencies in `.claude/kit.deps` (one
+`<file>: <needs-file> ...` per line; read from the kit, not copied to projects). After the per-file pass, for each file
+upgrade added or replaced, if a file it needs was kept as edited, `--upgrade` prints
+`WARNING: <file> needs <needs-file>, which you edited and upgrade kept`, naming `<needs-file>.kit-new` to merge first
+(or, when the kit did not change that file and so wrote no `.kit-new`, telling the owner to check their own copy).
+The warning is the whole change: no file is deleted, overwritten, held back or written differently because of it, and
+the lock is as before. `test-bootstrap.sh` fails if a path in `kit.deps` is not a kit file. Every kit script that calls
+another by path or flag must be listed; adding such a call means adding its line.
+
 ## Consequences
 - Good: a project can see its kit version, take unedited fixes unattended, and see exactly what it must merge by hand.
 - Cost / risk: P = L cannot tell "edited then reverted" from "never edited", which is fine, and it cannot detect a kit
