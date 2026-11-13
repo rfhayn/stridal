@@ -6,6 +6,10 @@
 #                                                         prints why that item is ineligible, or "eligible"
 #   dispatch-next.sh --list-now --owner <login> --project <n>
 #                                                         prints the Now column's Issue numbers in board order, one per line
+#   dispatch-next.sh --why-now --owner <login> --project <n>
+#                                                         prints "<number> <reason>" for every Now Issue in board order, the
+#                                                         reason exactly what --why <number> prints, from one board read;
+#                                                         prints nothing if it refuses; not combinable with --why/--list-now
 #   dispatch-next.sh --name-key [--claude-md <file>]       prints the repo's key, the Name: value of the ## Dispatcher
 #                                                         block of CLAUDE.md (in the cwd by default). The dispatcher's
 #                                                         session is dispatch-<key>, a worker's <key>-<slug>, so two
@@ -49,7 +53,7 @@ export LC_ALL=C
 
 refuse() { echo "dispatch-next.sh: refused: $*" >&2; exit 2; }
 
-owner="" project="" why="" list_now="" areas="" hard_file="" with_list="" with_hard_list="" grew_args=()
+owner="" project="" why="" list_now="" why_now="" areas="" hard_file="" with_list="" with_hard_list="" grew_args=()
 name_key="" claude_md="CLAUDE.md" field="" fp_of=""
 while [ $# -gt 0 ]; do
   case $1 in
@@ -58,7 +62,8 @@ while [ $# -gt 0 ]; do
     --claude-md) [ $# -ge 2 ] || refuse "--claude-md needs a value"; claude_md=$2; shift 2 ;;
     --footprint-of) [ $# -ge 2 ] || refuse "--footprint-of needs a value"; fp_of=$2; shift 2 ;;
     --list-now) list_now=1; shift ;;
-    --owner)   [ $# -ge 2 ] || refuse "--owner needs a value"; owner=$2; shift 2 ;;
+    --why-now) why_now=1; shift ;;
+    --owner)  [ $# -ge 2 ] || refuse "--owner needs a value"; owner=$2; shift 2 ;;
     --project) [ $# -ge 2 ] || refuse "--project needs a value"; project=$2; shift 2 ;;
     --why)     [ $# -ge 2 ] || refuse "--why needs a value"; why=$2; shift 2 ;;
     --areas)   [ $# -ge 2 ] || refuse "--areas needs a value"; areas=$2; shift 2 ;;
@@ -139,6 +144,8 @@ fi
 [[ "$project" =~ ^[0-9]+$ ]] || refuse "--project must be a number"
 if [ -n "$why" ]; then [[ "$why" =~ ^[0-9]+$ ]] || refuse "--why must be an issue number"; fi
 if [ -n "$why" ] && [ -n "$list_now" ]; then refuse "--why and --list-now cannot be combined"; fi
+if [ -n "$why_now" ] && [ -n "$why" ]; then refuse "--why-now and --why cannot be combined"; fi
+if [ -n "$why_now" ] && [ -n "$list_now" ]; then refuse "--why-now and --list-now cannot be combined"; fi
 
 # One page per item batch of 100, in board (POSITION) order; --paginate follows pageInfo.endCursor.
 # shellcheck disable=SC2016 # $owner etc. are GraphQL variables, not shell ones
@@ -304,6 +311,21 @@ if [ -n "$why" ]; then
   p=$(problem "$js") || refuse "bad issue JSON for #$why"
   [ -n "$p" ] || p=$(compat "$js")
   echo "${p:-eligible}"
+  exit 0
+fi
+
+if [ -n "$why_now" ]; then
+  # Every Now issue's --why reason from the one board read above: "<number> <reason>" in board order. Collect first and
+  # print last, so a refusal part-way (issue_json refuses, exit 2) leaves stdout empty.
+  out=""
+  while IFS= read -r n; do
+    [ -n "$n" ] || continue
+    js=$(issue_json "$n")
+    p=$(problem "$js") || refuse "bad issue JSON for #$n"
+    [ -n "$p" ] || p=$(compat "$js")
+    out="$out$n ${p:-eligible}"$'\n'
+  done < <(now_issues)
+  printf '%s' "$out"
   exit 0
 fi
 

@@ -11,6 +11,7 @@ mkdir -p "$T/issues" "$T/bin"
 # With FAKE_GH_PAGES set it records its argv to $FAKE_GH_ARGS and prints that file instead (the live board path).
 cat > "$T/bin/gh" <<'EOF'
 #!/bin/sh
+[ -z "${FAKE_GH_CALLS:-}" ] || printf '%s %s\n' "$1" "$2" >> "$FAKE_GH_CALLS"
 if [ -n "${FAKE_GH_PAGES:-}" ]; then printf '%s\n' "$@" > "$FAKE_GH_ARGS"; cat "$FAKE_GH_PAGES"; exit 0; fi
 echo "fake gh: no network in tests" >&2; exit 99
 EOF
@@ -224,6 +225,37 @@ board "$(item 6 Next Issue)"
 case_ "list-now empty Now" 0 '^$' --list-now --owner acme --project 2
 case_ "list-now with --why refused" 2 '^$' --list-now --why 5 --owner acme --project 2
 case_ "list-now needs --owner" 2 '^$' --list-now --project 2
+
+# --why-now: every Now issue's --why reason in board order, from one board read.
+issue 5 "Add the widget" "No criteria." OPEN
+issue 8 "Add the eight" "$DW" CLOSED
+issue 10 "Add the ten" "$DW" OPEN
+issue 11 "Add the eleven" "$DW" OPEN agent:blocked
+board "$(item 5 Now Issue)" "$(item 6 Next Issue)" "$(item 7 Now PullRequest)" "$(item 8 Now Issue)" \
+  "$(item 10 Now Issue)" "$(item 12 Now DraftIssue)" "$(item 11 Now Issue)"
+case_ "why-now: mixed board in board order" 0 $'^5 no Done when\n8 closed\n10 eligible\n11 labeled agent:blocked$' --why-now --owner acme --project 2
+# each line is what --why prints for that number
+total=$((total+1))
+for n in 5 8 10 11; do
+  want="$n $(bash "$DISPATCH" --why "$n" --owner acme --project 2)"
+  bash "$DISPATCH" --why-now --owner acme --project 2 | grep -qxF "$want" || { fail=$((fail+1)); echo "FAIL why-now: line for #$n differs from --why ($want)"; break; }
+done
+board "$(item 6 Next Issue)" "$(item 7 Now PullRequest)"
+case_ "why-now: empty Now prints nothing" 0 '^$' --why-now --owner acme --project 2
+board "$(item 5 Now Issue)" "$(item 99 Now Issue)" "$(item 10 Now Issue)"
+case_ "why-now: missing issue refuses, prints nothing" 2 '^$' --why-now --owner acme --project 2
+case_ "why-now with --why refused" 2 '^$' --why-now --why 5 --owner acme --project 2
+case_ "why-now with --list-now refused" 2 '^$' --why-now --list-now --owner acme --project 2
+case_ "why-now needs --owner" 2 '^$' --why-now --project 2
+# one live board read for a one-page board
+rm -f "$T/pages.json" "$T/gh-calls"
+gpage false "$(gnode 5 Now Issue)" "$(gnode 10 Now Issue)" "$(gnode 6 Next Issue)"
+DISPATCH_BOARD_JSON="" FAKE_GH_PAGES="$T/pages.json" FAKE_GH_ARGS="$T/gh-args" FAKE_GH_CALLS="$T/gh-calls" \
+  case_ "why-now: live read" 0 $'^5 no Done when\n10 eligible$' --why-now --owner acme --project 2
+total=$((total+1))
+if [ "$(grep -c graphql "$T/gh-calls")" != 1 ] || [ "$(wc -l < "$T/gh-calls" | tr -d ' ')" != 1 ]; then
+  fail=$((fail+1)); echo "FAIL why-now: want exactly one gh call (graphql), got: $(tr '\n' '|' < "$T/gh-calls")"
+fi
 
 total=$((total+1))
 bash "$DISPATCH" --project 2 2>&1 | grep -q 'dispatch-next.sh: refused:' || { fail=$((fail+1)); echo "FAIL refusal message format"; }
