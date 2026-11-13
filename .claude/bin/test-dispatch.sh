@@ -450,5 +450,19 @@ case_ "footprint-of: no line prints nothing" 0 '^$' --footprint-of "$T/fp8.md"
 case_ "footprint-of: missing file refused" 2 '^$' --footprint-of "$T/nope.md"
 case_ "footprint-of: needs a value" 2 '^$' --footprint-of
 
+# The head-name filter SKILL.md Reconcile step 2 gives for an agent:working issue with no spawn record (#462).
+# The test takes the filter from the skill itself, so the doc and the test cannot drift apart.
+skill="$here/../skills/dispatch/SKILL.md"
+hf=$(grep -o "jq --arg n <number> '[^']*'" "$skill" | head -n 1)
+total=$((total+1))
+if [ -z "$hf" ]; then fail=$((fail+1)); echo "FAIL head filter: not found in SKILL.md"; else
+  hf=${hf#jq --arg n <number> \'}; hf=${hf%\'}
+  prs='[{"number":1,"headRefName":"feat/12-x"},{"number":2,"headRefName":"fix/12"},{"number":3,"headRefName":"fix/12-y"},
+    {"number":4,"headRefName":"feat/120-z"},{"number":5,"headRefName":"docs/12-w"},{"number":6,"headRefName":"chore/12"}]'
+  got=$(printf '%s' "$prs" | jq --arg n 12 "$hf" | jq -c '[.[].headRefName]')
+  want='["feat/12-x","fix/12","fix/12-y"]'
+  [ "$got" = "$want" ] || { fail=$((fail+1)); echo "FAIL head filter: got $got, want $want"; }
+fi
+
 echo "$((total-fail))/$total passed"
 [ "$fail" = 0 ]
