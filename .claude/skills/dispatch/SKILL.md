@@ -238,14 +238,13 @@ worker's state is known.
 1. Deploy if behind: `git fetch origin main`, then `git rev-list --count HEAD..origin/main`. Above 0: run the
    block's Deploy command. If it fails, push `<repo>: deploy failed at <sha>: <first line of the error>` once per
    `origin/main` sha (`git rev-parse origin/main`), and stop this pass; the next pass retries.
-2. Block the Now items with no "Done when". Walk the Now issues in board order:
-   `bash .claude/bin/dispatch-next.sh --list-now --owner <owner> --project <n>` (one number per line; it reads the
-   board over GraphQL, since `gh project item-list` fails under the Agent's token). Exit 2: push
-   `<repo>: dispatch-next refused: <reason>` and stop this pass.
-   For each number, run `bash .claude/bin/dispatch-next.sh --why <number> --owner <owner> --project <n>`. On
-   `no Done when`: `gh issue comment <number> --body "dispatch: no Done when; add one, then reply here."`, then
-   `gh issue edit <number> --add-label agent:blocked`, then push
-   `<repo>: #<number> has no Done when`. The label excludes it afterwards, so each is pushed once. Other answers
+2. Block the Now items with no "Done when". Read every Now issue's reason in one board read:
+   `bash .claude/bin/dispatch-next.sh --why-now --owner <owner> --project <n>` (one `<number> <reason>` line per Now
+   issue, in board order; it reads the board over GraphQL, since `gh project item-list` fails under the Agent's
+   token). Exit 2: push `<repo>: dispatch-next refused: <reason>` and stop this pass.
+   For each line whose reason is `no Done when`: `gh issue comment <number> --body "dispatch: no Done when; add one,
+   then reply here."`, then `gh issue edit <number> --add-label agent:blocked`, then push
+   `<repo>: #<number> has no Done when`. The label excludes it afterwards, so each is pushed once. Other reasons
    need nothing here.
 3. Pick: `bash .claude/bin/dispatch-next.sh --owner <owner> --project <n>`, plus `--with <number>` for each
    issue holding a slot, including every issue opened earlier in this same pass (`--with-hard <number>`
