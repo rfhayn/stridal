@@ -187,7 +187,7 @@ esac
 
 [[ $slug =~ $SLUG_RE ]] || refuse "slug must match $SLUG_RE"
 if [ "$cmd" = open ]; then
-  # --key is required (ADR-0006): the worker's name is <key>-<slug> and open records it. The dispatcher always passes it.
+  # --key is required (Stridal's ADR-0006): the worker's name is <key>-<slug> and open records it. The dispatcher always passes it.
   [ -n "$key" ] || refuse "open needs --key <key>, the repo's Name from its ## Dispatcher block"
   [[ $key =~ $KEY_RE ]] || refuse "--key must match $KEY_RE"
   [ "$have_report" = 1 ] || refuse "open needs --report-to <name>"

@@ -4,11 +4,11 @@
 # Usage: .claude/bin/dispatch.sh      (or the alias bootstrap.sh prints)
 # It checks, in order, and refuses with exit 2 (starting nothing) when:
 #   - the main checkout is not on main;
-#   - the CLAUDE.md `## Dispatcher` block has no valid `Name:` (the session is dispatch-<key>, ADR-0006);
+#   - the CLAUDE.md `## Dispatcher` block has no valid `Name:` (the session is dispatch-<key>, Stridal's ADR-0006);
 #   - a session `claude --name dispatch-<key>` already runs (`ps`; the name must end at a space or the line's end);
-#   - `Agent:` is set but `Agent keychain:` is missing or a placeholder, or Agent equals Approver (ADR-0004).
+#   - `Agent:` is set but `Agent keychain:` is missing or a placeholder, or Agent equals Approver (Stridal's ADR-0004).
 # With no `Agent:` line it warns on stderr and starts claude under the user's own identity.
-# The launcher only wraps as-agent.sh: it never reads the token (ADR-0004). It reads the block through
+# The launcher only wraps as-agent.sh: it never reads the token (Stridal's ADR-0004). It reads the block through
 # dispatch-next.sh --name-key and --field, so there is one parser.
 # Test hooks: DISPATCH_PS names a command used in place of `ps -axo command=`; DISPATCH_EXEC names a command exec'd
 # with the argv in place of the real one.
@@ -44,7 +44,7 @@ if agent=$(bash "$next" --field Agent 2>/dev/null); then
     || refuse "Agent: is $agent but 'Agent keychain:' is missing or a placeholder in the ## Dispatcher block"
   if approver=$(bash "$next" --field Approver 2>/dev/null); then
     [ "$(printf '%s' "$agent" | tr '[:upper:]' '[:lower:]')" != "$(printf '%s' "$approver" | tr '[:upper:]' '[:lower:]')" ] \
-      || refuse "Agent and Approver are both $agent; the approver is never the agent (ADR-0004)"
+      || refuse "Agent and Approver are both $agent; the approver is never the agent (Stridal's ADR-0004)"
   fi
   cmd=("$main/.claude/bin/as-agent.sh" "$keychain" "${cmd[@]}")
 else
