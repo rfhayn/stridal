@@ -105,24 +105,24 @@ if [ "${1:-}" = "--upgrade" ]; then
   P="would "; [ "$APPLY" = 1 ] && P=""
   [ "$APPLY" = 1 ] || echo "Dry run: nothing is written. Add --apply to carry out this plan."
   echo "Project at kit $(lock_version "$DEST"), this kit is $VERSION (runner $runner)."
-  : > "$STAGE/changes"; n_add=0; n_rep=0; n_keep=0; n_cur=0
+  : > "$STAGE/changes"; : > "$STAGE/touched"; : > "$STAGE/kept"; n_add=0; n_rep=0; n_keep=0; n_cur=0
   for f in "${FILES[@]}"; do
     [ "$f" != CLAUDE.md ] || continue   # never touched; its diff is printed below
     s=$(stage "$f" "$runner"); ks=$(sha "$s")
     if [ ! -e "$DEST/$f" ]; then
-      echo "${P}add: $f"; n_add=$((n_add + 1))
+      echo "${P}add: $f"; n_add=$((n_add + 1)); echo "$f" >> "$STAGE/touched"
       if [ "$APPLY" = 1 ]; then mkdir -p "$DEST/$(dirname "$f")"; cp -p "$s" "$DEST/$f"; echo "$ks  $f" >> "$STAGE/changes"; fi
       continue
     fi
     ps=$(sha "$DEST/$f"); ls=$(lock_hash "$DEST" "$f")
     if [ "$ps" = "$ks" ]; then n_cur=$((n_cur + 1))
     elif [ "$ps" = "$ls" ]; then
-      echo "${P}replace (never edited): $f"; n_rep=$((n_rep + 1))
+      echo "${P}replace (never edited): $f"; n_rep=$((n_rep + 1)); echo "$f" >> "$STAGE/touched"
       if [ "$APPLY" = 1 ]; then cp -p "$s" "$DEST/$f"; echo "$ks  $f" >> "$STAGE/changes"; fi
     elif [ "$ks" = "$ls" ]; then
-      echo "keep (edited here, kit unchanged): $f"; n_keep=$((n_keep + 1))
+      echo "keep (edited here, kit unchanged): $f"; n_keep=$((n_keep + 1)); echo "$f unchanged" >> "$STAGE/kept"
     else
-      echo "keep (edited here, kit changed): $f -> ${P}write $f.kit-new"; n_keep=$((n_keep + 1))
+      echo "keep (edited here, kit changed): $f -> ${P}write $f.kit-new"; n_keep=$((n_keep + 1)); echo "$f kit-new" >> "$STAGE/kept"
       if [ "$APPLY" = 1 ]; then cp -p "$s" "$DEST/$f.kit-new"; fi
     fi
   done
@@ -135,6 +135,23 @@ if [ "${1:-}" = "--upgrade" ]; then
   if [ -f "$DEST/CLAUDE.md" ]; then
     if diff -u "$DEST/CLAUDE.md" "$KIT/CLAUDE.template.md" > "$STAGE/claude.diff"; then echo "CLAUDE.md: same as the template."
     else echo "CLAUDE.md is never touched. The template differs from yours (- yours, + template):"; cat "$STAGE/claude.diff"; fi
+  fi
+  # Kit files depend on each other (.claude/kit.deps). A file added or replaced above may need a file kept as edited:
+  # warn, naming the .kit-new to merge first. Only a warning: nothing is written or removed because of it (ADR-0007).
+  if [ -f "$KIT/.claude/kit.deps" ]; then
+    while IFS=: read -r df needs; do
+      case "$df" in "#"*|"") continue ;; esac
+      grep -qxF -e "$df" "$STAGE/touched" || continue
+      for nf in $needs; do
+        k=$(awk -v p="$nf" '$1 == p { print $2; exit }' "$STAGE/kept")
+        [ -n "$k" ] || continue
+        if [ "$k" = kit-new ]; then
+          echo "WARNING: $df needs $nf, which you edited and upgrade kept. Merge $nf.kit-new into $nf first, or $df may not work."
+        else
+          echo "WARNING: $df needs $nf, which you edited and upgrade kept. Check that your $nf still supports what $df calls."
+        fi
+      done
+    done < "$KIT/.claude/kit.deps"
   fi
   echo "Summary: $n_add to add, $n_rep to replace, $n_keep kept as edited, $n_cur already current."
   if [ "$APPLY" = 1 ] && [ -s "$STAGE/changes" ]; then

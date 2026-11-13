@@ -130,4 +130,58 @@ for bad in "--upgrade" "--upgrade $tmp/nope" "--upgrade $p --bogus" "--adopt" "-
   # shellcheck disable=SC2086  # the words are the arguments
   if "$new" $bad >/dev/null 2>&1; then die "bootstrap.sh accepted: $bad"; fi
 done
+# 8. Kit dependencies (#460): .claude/kit.deps lists which kit files need which. Every path in it is a kit file.
+deps=.claude/kit.deps
+[ -f "$deps" ] || die "no $deps"
+n_deps=0
+while IFS=: read -r df needs; do
+  case "$df" in "#"*|"") continue ;; esac
+  n_deps=$((n_deps + 1))
+  for f in $df $needs; do
+    [ -e "$f" ] || die "$deps names $f, which is not in the kit"
+    grep -qE "(^|[ (])$f([ )]|\$)" bootstrap.sh || die "$deps names $f, which is not in bootstrap.sh's file list"
+  done
+done < "$deps"
+grep -qx ".claude/bin/scope-check.sh: .claude/bin/dispatch-next.sh" "$deps" || die "$deps lacks scope-check.sh -> dispatch-next.sh"
+[ "$n_deps" -ge 1 ] || die "$deps has no entries"
+# A kit script that calls another by path must be listed with it (flags like --footprint-of live in the callee).
+grep -q 'here/dispatch-next.sh' .claude/bin/scope-check.sh || die "scope-check.sh no longer calls dispatch-next.sh: update $deps"
+
+# 9. A project whose dispatch-next.sh was edited and lacks scope-check.sh: the add warns, naming the .kit-new to merge.
+r="$tmp/proj-deps"
+"$old" "$r" hosted >/dev/null
+rm "$r/.claude/bin/scope-check.sh"
+echo "local edit" >> "$r/.claude/bin/dispatch-next.sh"
+echo "# kit change" >> "$tmp/kit-new/.claude/bin/dispatch-next.sh"
+tree "$r" > "$tmp/tree.before"
+out=$("$new" --upgrade "$r") || die "deps dry run failed"
+tree "$r" > "$tmp/tree.after"
+cmp -s "$tmp/tree.before" "$tmp/tree.after" || die "deps dry run changed the project"
+has "deps dry run" "$out" "would add: .claude/bin/scope-check.sh"
+has "deps dry run" "$out" "WARNING: .claude/bin/scope-check.sh needs .claude/bin/dispatch-next.sh"
+has "deps dry run" "$out" ".claude/bin/dispatch-next.sh.kit-new"
+out=$("$new" --upgrade "$r" --apply) || die "deps --apply failed"
+has "deps apply" "$out" "WARNING: .claude/bin/scope-check.sh needs .claude/bin/dispatch-next.sh"
+has "deps apply" "$out" "Merge .claude/bin/dispatch-next.sh.kit-new"
+tail -n 1 "$r/.claude/bin/dispatch-next.sh" | grep -qx "local edit" || die "deps apply changed the edited file"
+cmp -s "$tmp/kit-new/.claude/bin/dispatch-next.sh" "$r/.claude/bin/dispatch-next.sh.kit-new" || die "deps apply: dispatch-next.sh.kit-new is not the kit's copy"
+cmp -s "$tmp/kit-new/.claude/bin/scope-check.sh" "$r/.claude/bin/scope-check.sh" || die "deps apply did not add scope-check.sh"
+# 9b. A kept file whose kit copy did not change warns too, without naming a .kit-new (the old kit is the same kit).
+r2="$tmp/proj-deps2"
+"$old" "$r2" hosted >/dev/null
+rm "$r2/.claude/bin/scope-check.sh"
+echo "local edit" >> "$r2/.claude/bin/dispatch-next.sh"
+out=$("$old" --upgrade "$r2") || die "deps unchanged dry run failed"
+has "unchanged kept file" "$out" "WARNING: .claude/bin/scope-check.sh needs .claude/bin/dispatch-next.sh"
+lacks "unchanged kept file" "$out" "kit-new into"
+
+# 10. No warning when the needed file is current in the project.
+t="$tmp/proj-nowarn"
+"$old" "$t" hosted >/dev/null
+rm "$t/.claude/bin/scope-check.sh"
+out=$("$new" --upgrade "$t") || die "nowarn dry run failed"
+has "nowarn" "$out" "would add: .claude/bin/scope-check.sh"
+lacks "nowarn" "$out" "WARNING"
+out=$("$new" --upgrade "$t" --apply) || die "nowarn --apply failed"
+lacks "nowarn apply" "$out" "WARNING"
 echo "test-bootstrap: ok"

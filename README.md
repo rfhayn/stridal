@@ -96,6 +96,12 @@ alone and the kit's copy is written beside it as `<file>.kit-new` for you to mer
 the kit, it is reported and never deleted. `CLAUDE.md` is never touched: upgrade prints the template's diff for you to
 read. Upgrade never calls `gh`, so settings and the ruleset are not part of it.
 
+**`WARNING: <file> needs <other>, which you edited and upgrade kept.`** Kit files call each other (the kit lists them in
+`.claude/kit.deps`). When upgrade adds or replaces `<file>` but keeps your edited `<other>`, the new file may call
+something your `<other>` lacks, and fail. Merge `<other>.kit-new` into `<other>` first (the warning names it), then run
+the project's checks. If the warning says to check your own copy instead, the kit did not change `<other>`, so compare
+yours with the kit's. The warning changes nothing: upgrade still never overwrites an edited file.
+
 **A project installed before the lock existed** has no `.claude/kit.lock`, so `--upgrade` stops and writes nothing.
 Adopt it once: `~/code/stridal-kit/bootstrap.sh --adopt ~/code/myproject` writes a lock from the project's current files.
 A file equal to the kit's copy is recorded as it is; every file that differs is recorded as edited, so the next upgrade
@@ -144,6 +150,7 @@ leaves it alone and writes a `.kit-new`. Adopt refuses to overwrite a lock.
 | `.claude/bin/kit-check.sh` | This repo's own check: shellcheck, JSON, `bootstrap.sh` in copy-only mode, and `test-bootstrap.sh`. Not copied to new projects |
 | `.claude/bin/test-bootstrap.sh` | Self-test of the lock, `--upgrade` and `--adopt` against temp directories (two copies of the kit). Not copied to new projects |
 | `VERSION`, `CHANGELOG.md` | The kit version `bootstrap.sh` writes into `.claude/kit.lock`, and the release notes built from merged PR titles. Not copied to new projects |
+| `.claude/kit.deps` | Which kit files need which, one `<file>: <needs> ...` per line. Read by `--upgrade` to warn when an added file needs an edited one; `test-bootstrap.sh` checks every path in it. Not copied to new projects |
 | `.claude/kit.lock` | Written into a project by `bootstrap.sh`: kit version, runner, and a sha256 per installed file. Read by `--upgrade`; not a kit file |
 | `.claude/agents/reviewer.md` | Fresh-context reviewer with no shell: one round, blocking findings with file:line evidence, lane check, decisions and assumptions check. Sonnet by default, Opus for lane 3 |
 | `.claude/agents/researcher.md` | Read-only research agent (no Edit, Write or Bash); answers with sources |
