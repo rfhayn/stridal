@@ -164,8 +164,8 @@ bash .claude/bin/test-settings.sh >"$tmp/test-settings.out" 2>&1 \
 bare_citations() {
   local f
   while IFS= read -r f; do
-    sed "s/Stridal's ADR-[0-9][0-9]*//g; s/Stridal's PRAC-[0-9][0-9]*//g" "$f" \
-      | grep -nE '\b(ADR|PRAC)-[0-9]+' | sed "s|^|$f:|" || true
+    awk -v f="$f" '{ s = $0; gsub(/Stridal.s (ADR|PRAC)-[0-9]+/, "", s)
+                     if (s ~ /(^|[^A-Za-z0-9_])(ADR|PRAC)-[0-9]+/) print f ":" NR ": " $0 }' "$f"
   done < <(find "$@" -type f ! -path '*/.github/*' ! -path '*/.git/*' ! -name kit.lock 2>/dev/null)
 }
 bare=$(bare_citations "$d" bootstrap.sh)
