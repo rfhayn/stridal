@@ -144,6 +144,26 @@ rm -f "$G/spawn/demo.waiting"
 hook_case_ "hook: main checkout -> nothing" "{\"cwd\":\"$T/repo\"}" '[ -z "$(ls "$G/spawn" | grep waiting)" ]'
 hook_case_ "hook: garbage stdin -> exit 0" 'not json' '[ "$(ls "$G/spawn")" = demo.term ]'
 hook_case_ "hook: empty stdin -> exit 0" '' '[ "$(ls "$G/spawn")" = demo.term ]'
+# #445: an answered prompt must not leave a marker that blocks close. `notify-waiting.sh clear` (wired to
+# PostToolUse and Stop) removes .waiting and .notified for the worktree the session runs in.
+clear_case_() {
+  local name=$1 json=$2 check=$3 o got
+  total=$((total+1))
+  o=$(printf '%s' "$json" | NOTIFY_WAITING_NO_DESKTOP=1 sh "$HOOK" clear 2>&1)
+  got=$?
+  if [ "$got" != 0 ]; then fail=$((fail+1)); echo "FAIL $name: want exit 0, got $got ($o)"
+  elif [ -n "$o" ]; then fail=$((fail+1)); echo "FAIL $name: stdout/stderr must be empty: got '$o'"
+  elif ! eval "$check"; then fail=$((fail+1)); echo "FAIL $name: check failed: $check"; fi
+}
+touch "$G/spawn/demo.waiting" "$G/spawn/demo.notified"
+clear_case_ "clear: answered prompt -> .waiting and .notified removed" "{\"cwd\":\"$T/repo/.claude/worktrees/demo/src\"}" '[ ! -e "$G/spawn/demo.waiting" ] && [ ! -e "$G/spawn/demo.notified" ] && [ -f "$G/spawn/demo.term" ]'
+touch "$G/spawn/demo.waiting"
+clear_case_ "clear: main checkout -> marker kept" "{\"cwd\":\"$T/repo\"}" '[ -e "$G/spawn/demo.waiting" ]'
+clear_case_ "clear: garbage stdin -> exit 0, marker kept" 'not json' '[ -e "$G/spawn/demo.waiting" ]'
+# The close guard no longer refuses once the prompt is answered; a real unanswered prompt still does.
+case_ "close dry-run: unanswered prompt still refused" 0 ".waiting or .notified exists and claude --name demo is running" close demo --dry-run
+clear_case_ "clear: then close sees no marker" "{\"cwd\":\"$T/repo/.claude/worktrees/demo\"}" '[ ! -e "$G/spawn/demo.waiting" ]'
+rm -f "$G/spawn/demo.waiting" "$G/spawn/demo.notified"
 total=$((total+1))
 o=$(printf '%s' "{\"cwd\":\"$T/repo/.claude/worktrees/demo\"}" | NOTIFY_WAITING_NO_DESKTOP=1 sh "$HOOK" 2>/dev/null)
 if [ -n "$o" ]; then fail=$((fail+1)); echo "FAIL hook: stdout is empty: got '$o'"; fi
