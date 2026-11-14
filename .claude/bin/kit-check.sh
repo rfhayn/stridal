@@ -337,6 +337,27 @@ rest=${tabline#"tab command: /bin/zsh -lc '"}
 [[ $rest =~ ^exec\ [A-Za-z0-9/._-]+\ --name\ kit-zz-ok\ --permission-mode\ auto\ --strict-mcp-config\ --\ \"\$\(cat\ [A-Za-z0-9/._-]+\)\"\'$ ]] \
   || { echo "kit-check: tab command holds something other than validated tokens (and the one constant --strict-mcp-config): $tabline"; exit 1; }
 
+# The worker run cap (ADR-0009, #3): the cap value is validated before anything runs, the default is printed, the
+# internal subcommand is not named watch, the one notification line exists once, and README and the ADR say it.
+case "$out" in *"run cap: 3600 s of active time"*) ;; *) echo "kit-check: open --dry-run does not print the default run cap"; exit 1 ;; esac
+for bad in abc 0 -5 1e3 59 86401 '' '3600; touch zz-cap-pwned'; do
+  rc=0; capout=$(STRIDAL_WORKER_CAP_SECONDS="$bad" "$sess" open feat zz-ok --key kit --report-to main --dry-run 2>&1) || rc=$?
+  { [ "$rc" = 2 ] && [[ $capout == *"session.sh: refused"*STRIDAL_WORKER_CAP_SECONDS* ]]; } \
+    || { echo "kit-check: session.sh did not refuse STRIDAL_WORKER_CAP_SECONDS='$bad'"; exit 1; }
+done
+[ ! -e zz-cap-pwned ] || { rm -f zz-cap-pwned; echo "kit-check: a cap value was executed"; exit 1; }
+for good in 60 120 86400; do
+  capout=$(STRIDAL_WORKER_CAP_SECONDS="$good" "$sess" open feat zz-ok --key kit --report-to main --dry-run 2>&1) || capout="refused: $capout"
+  case "$capout" in *"run cap: $good s of active time"*) ;; *) echo "kit-check: session.sh refused STRIDAL_WORKER_CAP_SECONDS=$good: $capout"; exit 1 ;; esac
+done
+[ "$(grep -c 'display notification' "$sess")" = 1 ] || { echo "kit-check: session.sh must hold display notification exactly once"; exit 1; }
+grep -q '^  cap)' "$sess" || { echo "kit-check: session.sh has no cap subcommand"; exit 1; }
+! grep -qE '^  (cap-watch|capwatch)\)' "$sess" || { echo "kit-check: the cap subcommand is named like watch"; exit 1; }
+for w in cap-kill cap-nokill no-worker ended STRIDAL_WORKER_CAP_SECONDS STRIDAL_ALERT; do
+  grep -q -- "$w" README.md || { echo "kit-check: README does not describe $w"; exit 1; }
+  grep -q -- "$w" docs/adr/0009-*.md || { echo "kit-check: ADR-0009 does not describe $w"; exit 1; }
+done
+
 # Connector isolation, two layers: the flag above keeps claude.ai connectors out of a worker session.
 # The deny rule covers a worker started without session.sh. The allow rule lets workers run check-evidence.sh.
 jq -e '.permissions.deny | index("mcp__claude_ai_*") != null' .claude/settings.json >/dev/null \

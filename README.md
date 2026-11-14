@@ -33,6 +33,18 @@ hand you can still run `claude --worktree <slug>` and give it the issue. Workers
 mode (`--permission-mode auto`). If a worker never reports and `ListAgents` shows it stuck, look for a trust or
 permission prompt in its tab.
 
+**Worker run cap** (ADR-0009). A real `session.sh open` also starts a detached `session.sh cap <slug>` (not `watch`,
+which is unchanged). It adds up **active time**: the time neither `<slug>.waiting` nor `<slug>.notified` exists, so
+the hours a worker waits at a prompt for you never count. Past `STRIDAL_WORKER_CAP_SECONDS` of active time (a whole
+number from 60 to 86400; unset means 3600; anything else refuses `open`) it kills the worker's process group, but only
+a group it first saw as the worker's (every matching `ps` line in it, a matching process leading it, not init's or its
+own). Each outcome is one line in `.claude/review/runs.log` (git-ignored): `ended` (the worker exited on its own),
+`cap-kill`, `cap-nokill` (the group could not be verified, so nothing was signalled and the lock is kept) or
+`no-worker` (none found within two minutes). A `cap-kill` or `cap-nokill` also raises a macOS notification; set
+`STRIDAL_ALERT=0` to turn that off. After a kill only the lock is removed: the worktree and branch stay, and the
+dispatcher's Reconcile finds an `agent:working` issue with no live worker and no PR and blocks it with its existing
+comment. Read the log, then unblock the issue or close the worker with `session.sh close <slug> --abandon`.
+
 Your day: write issues with a "Done when", move the ones you want built into Now, and start the dispatcher
 (`.claude/bin/dispatch.sh`). It tells you only when something needs you: a worker blocked on a question, a permission
 prompt, or a lane-3 PR waiting for `merge-ok`. Everything else merges itself.
@@ -210,6 +222,7 @@ leaves it alone and writes a `.kit-new`. Adopt refuses to overwrite a lock.
 | `docs/cutover/2026-11-cutover-and-upgrade-test.md` | The owner's step-by-step for testing `--upgrade` on another repo and moving this kit to a clean repo. Delete it once the cutover is done. Not copied to new projects |
 | `docs/adr/0000-template.md` | Short ADR, only for decisions expensive to reverse |
 | `docs/adr/0001-*.md` to `0007-*.md` | This repo's decisions for the dispatcher: backlog is the Project's Now column, lane judged by the base branch, `merge-ok` withheld from Claude, agents act as a machine user, two workers on declared footprints, session names carry a repo key, and the kit lock with its three-way upgrade rule. Not copied to new projects |
+| `docs/adr/0009-*.md` | The worker run cap: a detached process that kills a worker's process group past a cap of active time, and what counts as active. Not copied to new projects |
 | `docs/ARCHITECTURE.md` | Live doc, installed unfilled: components, data flow, constraints. First line marks it a template until filled in |
 | `docs/RISKS.md` | Live doc, installed unfilled: risk table (ID, Risk, Impact, Likelihood, Mitigation, Owner, Status) with one example row |
 | `docs/templates/DATA-MODEL.md` | Template: entity-relationship diagram as a mermaid block |

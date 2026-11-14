@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2016  # the hook cases pass single-quoted CHECK snippets that hook_case_ evals
+# shellcheck disable=SC2016,SC2030,SC2031,SC2034  # the cases pass single-quoted CHECK snippets that assert_ evals (so
+# wt_before and br_before are read there); in_ sets SESSION inside a subshell on purpose, other cases read the original
 # Self-test for session.sh. Run: bash .claude/bin/test-session.sh (from any cwd).
 # Everything happens in a throwaway repo under mktemp -d; the real repo is never touched.
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -7,6 +8,9 @@ T=$(mktemp -d "${TMPDIR:-/tmp}/test-session.XXXXXX")   # macOS's bare mktemp -d 
 LIVE="" LIVE2=""
 trap 'rm -rf "$T"; [ -z "$LIVE$LIVE2" ] || kill $LIVE $LIVE2 2>/dev/null' EXIT
 total=0; fail=0
+# Run-cap timing: poll every second, and give up looking for a worker after one second, so a cap process that an
+# open case starts ends on its own (a case that needs a live worker sets its own values).
+export STRIDAL_CAP_POLL=1 STRIDAL_CAP_GRACE=1 STRIDAL_ALERT=0
 
 # Setup, in one place: a repo with one empty commit and a copy of session.sh. Later cases append below.
 git init -q "$T/repo"
@@ -354,6 +358,118 @@ rm -f "$PSCOUNT"; PATH="$SHIM:$PATH" in_ "$T/rc" case_ "open: fetch fails -> non
 assert_ "open: fetch fails -> no prompt copy and no lock left" '[ ! -e "$T/rc/.git/spawn/12-fix-x.prompt" ] && [ ! -e "$T/rc/.git/spawn/locks/12-fix-x" ]'
 git -C "$T/rc" remote set-url origin "$T/rc.origin.git"
 rm -f "$PSCOUNT"; PATH="$SHIM:$PATH" in_ "$T/rc" case_ "open: retry after the fetch failure -> opened" 0 "opened fix/12-fix-x" open fix 12-fix-x --key rc --report-to dispatch-rc
+
+# --- run cap (docs/adr/0009): the detached `cap` process counts only active time ---
+# A shim date returns a clock the test controls (FAKE_NOW), so a 60 s minimum cap runs in seconds. Every other date
+# call passes through. A shim osascript records its arguments, so the alert line is pinned.
+FAKE_NOW=$T/fakenow; export FAKE_NOW
+REALDATE=$(command -v date); export REALDATE
+CS=$T/capshim; mkdir -p "$CS"
+printf '#!/bin/sh\nif [ "$1" = +%%s ] && [ -f "$FAKE_NOW" ]; then cat "$FAKE_NOW"; else exec "$REALDATE" "$@"; fi\n' > "$CS/date"
+printf '#!/bin/sh\nprintf "%%s\\n" "$@" >> "$OSA_LOG"\n' > "$CS/osascript"
+chmod +x "$CS/date" "$CS/osascript"
+export OSA_LOG=$T/osa.log
+RUNS=$T/repo/.claude/review/runs.log
+CAPPIDS=""
+trap 'rm -rf "$T"; [ -z "$LIVE$LIVE2$CAPPIDS" ] || kill $LIVE $LIVE2 $CAPPIDS 2>/dev/null' EXIT
+tick_() { echo "$(( $(cat "$FAKE_NOW") + $1 ))" > "$FAKE_NOW"; }
+# alive_ PID: still running (a zombie the shell has not reaped yet is not alive).
+alive_() { kill -0 "$1" 2>/dev/null && [ "$(ps -o stat= -p "$1" 2>/dev/null | cut -c1)" != Z ]; }
+# wait_for_ SECONDS CHECK: poll a shell snippet once a second.
+wait_for_() { local n=0; while [ "$n" -lt "$1" ]; do eval "$2" && return 0; sleep 1; n=$((n+1)); done; return 1; }
+# stub_ NAME: a stub worker in its own process group (set -m), argv "claude --name NAME"; its pid is in STUB.
+stub_() { set -m; bash -c "exec -a \"claude --name $1\" sleep 600" & STUB=$!; disown "$STUB"; set +m; CAPPIDS="$CAPPIDS $STUB"; }
+# startcap_ SLUG: the detached cap, with cap 60 s, for the session acme-SLUG (recorded as open would); its pid is in CAP.
+startcap_() { printf 'acme-%s\n' "$1" > "$SP/$1.session"; set -m; PATH="$CS:$PATH" STRIDAL_WORKER_CAP_SECONDS=60 bash "$SESSION" cap "$1" >/dev/null 2>&1 & CAP=$!; disown "$CAP"; set +m; CAPPIDS="$CAPPIDS $CAP"; }
+
+# The new subcommand is not watch, and watch is unchanged.
+assert_ "cap: the subcommand is named cap, not watch" 'grep -q "^  cap)" "$SESSION" && [ "$(grep -c "^  watch)" "$SESSION")" = 1 ] && ! grep -q "cap-watch" "$SESSION"'
+case_ "cap: bad usage refused" 2 "usage: cap <slug>" cap
+case_ "watch still works: waiting marker" 0 "waiting demo" watch demo --timeout 5
+case_ "watch still works: unknown slug exits" 0 "exited ghost" watch ghost --timeout 5
+case_ "watch still rejects a bad timeout" 2 "refused" watch demo --timeout abc
+
+# Cap values, read from open --dry-run: unset prints the default, the bad ones refuse, the good ones print themselves.
+case_ "cap value: unset prints the default 3600" 0 "run cap: 3600 s" open feat demo --key acme --report-to dispatch-acme --dry-run
+capcase_() { local v=$1 want=$2 out=$3; STRIDAL_WORKER_CAP_SECONDS="$v" case_ "cap value: '$v'" "$want" "$out" open feat demo --key acme --report-to dispatch-acme --dry-run; }
+for v in abc 0 -5 1e3 59 86401 '' "3600; touch $T/pwned" "\$(touch $T/pwned)" 060 ' 120'; do capcase_ "$v" 2 "STRIDAL_WORKER_CAP_SECONDS must be"; done
+for v in 60 120 86400; do capcase_ "$v" 0 "run cap: $v s of active time"; done
+assert_ "cap value: the injection strings ran nothing" '[ ! -e "$T/pwned" ]'
+rm -f "$RUNS"
+bash "$SESSION" open feat demo --key acme --report-to dispatch-acme --dry-run >/dev/null 2>&1
+assert_ "open --dry-run leaves runs.log unchanged" '[ ! -e "$RUNS" ]'
+assert_ "display notification appears once in session.sh" '[ "$(grep -c "display notification" "$SESSION")" = 1 ]'
+
+# 1. A worker past the cap of active time is killed once; the lock is the only thing removed.
+git -C "$T/repo" worktree add -q "$T/repo/.claude/worktrees/capk" -b feat/capk
+echo feat/capk > "$SP/capk.branch"; echo t1 > "$SP/capk.term"; mkdir -p "$SP/locks/capk"
+wt_before=$(git -C "$T/repo" worktree list); br_before=$(git -C "$T/repo" branch --list)
+date +%s > "$FAKE_NOW"; rm -f "$RUNS" "$OSA_LOG"
+stub_ acme-capk; STRIDAL_ALERT=1 startcap_ capk
+sleep 2; tick_ 100
+wait_for_ 15 '[ -s "$RUNS" ]'
+assert_ "cap-kill: the worker is killed after the cap of active time" '! alive_ $STUB'
+assert_ "cap-kill: exactly one cap-kill line, and no other outcome" '[ "$(grep -c " cap-kill capk acme-capk " "$RUNS")" = 1 ] && [ "$(wc -l < "$RUNS" | tr -d " ")" = 1 ]'
+assert_ "cap-kill: only the lock is removed" '[ ! -e "$SP/locks/capk" ] && [ "$(git -C "$T/repo" worktree list)" = "$wt_before" ] && [ "$(git -C "$T/repo" branch --list)" = "$br_before" ] && [ -e "$SP/capk.branch" ] && [ -e "$SP/capk.term" ]'
+assert_ "cap-kill: the alert line is pinned" '[ "$(tail -n 1 "$OSA_LOG")" = "acme-capk: worker stopped at the run cap (60 s of active time)" ]'
+git -C "$T/repo" worktree remove "$T/repo/.claude/worktrees/capk"; git -C "$T/repo" branch -D feat/capk -q; rm -f "$SP"/capk.*
+
+# 2. A stub that exits on its own is logged ended, nothing is killed, and with STRIDAL_ALERT=0 nothing is shown.
+rm -f "$RUNS" "$OSA_LOG"
+stub_ acme-endd; startcap_ endd
+sleep 2; kill "$STUB" 2>/dev/null; wait "$STUB" 2>/dev/null
+wait_for_ 15 '[ -s "$RUNS" ]'
+assert_ "ended: a worker that exits on its own is logged ended, once" '[ "$(grep -c " ended endd acme-endd " "$RUNS")" = 1 ] && ! grep -q cap-kill "$RUNS"'
+assert_ "ended: no alert" '[ ! -e "$OSA_LOG" ]'
+sleep 1
+assert_ "ended: the cap process has exited" '! alive_ $CAP'
+
+# 3. Time with the .waiting (or .notified) marker present does not count.
+for marker in waiting notified; do
+  rm -f "$RUNS" "$OSA_LOG"; mkdir -p "$SP/locks/mk"
+  date +%s > "$FAKE_NOW"; touch "$SP/mk.$marker"
+  stub_ acme-mk; startcap_ mk
+  sleep 2; tick_ 200; sleep 2; tick_ 200; sleep 2; tick_ 200; sleep 2
+  assert_ "marker .$marker: a worker held longer than the cap is not killed" 'alive_ $STUB && [ ! -s "$RUNS" ]'
+  rm -f "$SP/mk.$marker"; sleep 3
+  assert_ "marker .$marker: cleared, the cap of active time has not yet run" 'alive_ $STUB && [ ! -s "$RUNS" ]'
+  tick_ 100
+  wait_for_ 15 '[ -s "$RUNS" ]'
+  assert_ "marker .$marker: killed after the marker clears and the cap of active time has run" '! alive_ $STUB && [ "$(grep -c " cap-kill mk acme-mk " "$RUNS")" = 1 ]'
+  rm -rf "$SP/locks/mk"
+done
+
+# 4. A same-named claude started after the worker ended, in another group, is not killed.
+rm -f "$RUNS"; date +%s > "$FAKE_NOW"
+stub_ acme-late; startcap_ late
+sleep 2; kill "$STUB" 2>/dev/null; wait "$STUB" 2>/dev/null
+wait_for_ 15 'grep -q " ended late " "$RUNS"'
+stub_ acme-late; LATE=$STUB
+tick_ 500; sleep 4
+assert_ "late same-named process: not killed, and no cap-kill logged" 'alive_ $LATE && ! grep -q cap-kill "$RUNS"'
+kill "$LATE" 2>/dev/null
+
+# 5. A second same-named claude in another group while the worker runs: cap-nokill, nothing killed, lock kept, alert sent.
+rm -f "$RUNS" "$OSA_LOG"; mkdir -p "$SP/locks/capn"; date +%s > "$FAKE_NOW"
+stub_ acme-capn; W1=$STUB; stub_ acme-capn; W2=$STUB; STRIDAL_ALERT=1 startcap_ capn
+sleep 2; tick_ 100
+wait_for_ 15 '[ -s "$RUNS" ]'
+assert_ "cap-nokill: logged once, neither process killed, lock kept" '[ "$(grep -c " cap-nokill capn acme-capn " "$RUNS")" = 1 ] && alive_ $W1 && alive_ $W2 && [ -d "$SP/locks/capn" ]'
+assert_ "cap-nokill: the alert line is pinned" '[ "$(tail -n 1 "$OSA_LOG")" = "acme-capn: run cap reached but the worker was not stopped (process group not verified); see .claude/review/runs.log" ]'
+kill "$W1" "$W2" 2>/dev/null; rm -rf "$SP/locks/capn"
+
+# 6. A worker never found within the grace period is logged no-worker.
+rm -f "$RUNS"; date +%s > "$FAKE_NOW"
+startcap_ nobody
+sleep 2; tick_ 10
+wait_for_ 15 '[ -s "$RUNS" ]'
+assert_ "no-worker: logged when no claude shows up" 'grep -q " no-worker nobody acme-nobody " "$RUNS"'
+
+# 7. open starts the cap detached: with no worker it logs no-worker on its own, after open has returned.
+mkrepo_ "$T/rd"
+rm -f "$PSCOUNT"; PATH="$SHIM:$PATH" in_ "$T/rd" case_ "open: starts the run cap and returns" 0 "opened fix/12-fix-x" open fix 12-fix-x --key rd --report-to dispatch-rd
+wait_for_ 20 '[ -s "$T/rd/.claude/review/runs.log" ]'
+assert_ "open: the detached cap logged no-worker" 'grep -q " no-worker 12-fix-x rd-12-fix-x " "$T/rd/.claude/review/runs.log"'
 
 echo "$((total-fail))/$total passed"
 [ "$fail" = 0 ]
