@@ -359,7 +359,7 @@ assert_ "open: fetch fails -> no prompt copy and no lock left" '[ ! -e "$T/rc/.g
 git -C "$T/rc" remote set-url origin "$T/rc.origin.git"
 rm -f "$PSCOUNT"; PATH="$SHIM:$PATH" in_ "$T/rc" case_ "open: retry after the fetch failure -> opened" 0 "opened fix/12-fix-x" open fix 12-fix-x --key rc --report-to dispatch-rc
 
-# --- run cap (docs/adr/0009): the detached `cap` process counts only active time ---
+# --- run cap (Stridal's ADR-0009): the detached `cap` process counts only active time ---
 # A shim date returns a clock the test controls (FAKE_NOW), so a 60 s minimum cap runs in seconds. Every other date
 # call passes through. A shim osascript records its arguments, so the alert line is pinned.
 FAKE_NOW=$T/fakenow; export FAKE_NOW

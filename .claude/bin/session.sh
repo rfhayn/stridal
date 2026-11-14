@@ -24,7 +24,7 @@
 # --agent-keychain <service> (matching ^[A-Za-z0-9._-]+$) runs the worker's claude through .claude/bin/as-agent.sh
 # <service>, so the worker acts on GitHub as the agent identity whose token that Keychain item holds. The tab
 # command carries only the service name; the token is read inside the tab and lives only in the environment.
-# Run cap (docs/adr/0009): a real open also starts a detached `session.sh cap <slug>` (internal; its name is not
+# Run cap (Stridal's ADR-0009): a real open also starts a detached `session.sh cap <slug>` (internal; its name is not
 # watch, whose behaviour is unchanged). It polls ps every 5 s and adds up ACTIVE time: ticks while neither
 # <slug>.waiting nor <slug>.notified exists (the owner is not holding the worker). Past STRIDAL_WORKER_CAP_SECONDS
 # (a whole number 60 to 86400, default 3600; set but empty or malformed refuses open) it sends TERM, then KILL, to the
