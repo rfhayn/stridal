@@ -149,7 +149,7 @@ hook_case_ "hook: main checkout -> nothing" "{\"cwd\":\"$T/repo\"}" '[ -z "$(ls 
 hook_case_ "hook: garbage stdin -> exit 0" 'not json' '[ "$(ls "$G/spawn")" = demo.term ]'
 hook_case_ "hook: empty stdin -> exit 0" '' '[ "$(ls "$G/spawn")" = demo.term ]'
 # #445: an answered prompt must not leave a marker that blocks close. `notify-waiting.sh clear` (wired to
-# PostToolUse and Stop) removes .waiting and .notified for the worktree the session runs in.
+# PostToolUse and UserPromptSubmit; Stop runs `idle`, which does the same) removes .waiting and .notified for the worktree the session runs in.
 clear_case_() {
   local name=$1 json=$2 check=$3 o got
   total=$((total+1))

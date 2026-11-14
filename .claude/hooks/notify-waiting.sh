@@ -6,7 +6,7 @@
 # common dir), this touches <git-common-dir>/spawn/<slug>.waiting. `session.sh watch <slug>` polls for that
 # marker and prints "waiting <slug>". It also raises a desktop notification on macOS.
 #
-# `notify-waiting.sh clear` (PostToolUse and Stop) is the other half: once the session runs a tool or ends a turn
+# `notify-waiting.sh clear` (PostToolUse, UserPromptSubmit) and `idle` (Stop) are the other half: once the session runs a tool or ends a turn
 # the prompt has been answered, so it removes .waiting and .notified. ADR: none, a one-hook signal change to the
 # existing marker; the choice (hook on PostToolUse/Stop, not a timestamp compare) is recorded in issue #445.
 #

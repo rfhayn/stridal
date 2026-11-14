@@ -33,8 +33,9 @@ Date: 2026-11-14 · Status: proposed
 ## Consequences
 - Good: a runaway worker is stopped and recorded; a worker held at a permission prompt (marker present) is not
   counted against.
-- Known gap: a worker idle after `BLOCKED:` or `RESULT` has no marker (the Stop hook clears both), so that time
-  counts. Closing it needs an idle marker from the hooks, which are outside #3's footprint; filed as a follow-up.
+- Good: a worker idle after `BLOCKED:` or `RESULT` is not counted against either (#7): the Stop hook sets `.idle`.
+  Remaining gap: `.idle` clears on the next `PostToolUse` or prompt, so if a resumed worker's wake-up does not fire
+  `UserPromptSubmit`, its first long tool call runs off the clock until it finishes.
 - Cost / risk: a process that sends signals to a process group is a sharp tool; the group checks above exist so a
   wrong match logs `cap-nokill` instead of killing. The marker rule trusts the hook and the dispatcher to set and clear
   the markers; a marker left behind stops the clock (the worker then runs uncapped, as today). If the cap process
