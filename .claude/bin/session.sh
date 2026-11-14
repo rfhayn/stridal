@@ -19,7 +19,9 @@
 # and runs from any worktree.
 # notified moves <slug>.waiting to <slug>.notified with mv -f (an atomic rename), or creates .notified if .waiting is
 # absent. The dispatcher runs it before it pushes a notification, so close's prompt guard never lapses, and a second
-# prompt can re-create .waiting. clear removes .notified; run it when the worker next reports or goes idle. Both print
+# prompt can re-create .waiting. clear removes .notified; run it when the worker next reports or goes idle. (The
+# worker's own PostToolUse and Stop hook, notify-waiting.sh clear, also removes .waiting and .notified once the prompt is
+# answered, so the dispatcher is not the only remover.) Both print
 # one line, need no Ghostty and run from any worktree, like watch.
 # --agent-keychain <service> (matching ^[A-Za-z0-9._-]+$) runs the worker's claude through .claude/bin/as-agent.sh
 # <service>, so the worker acts on GitHub as the agent identity whose token that Keychain item holds. The tab

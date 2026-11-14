@@ -164,8 +164,7 @@ clear_case_ "clear: answered prompt -> .waiting and .notified removed" "{\"cwd\"
 touch "$G/spawn/demo.waiting"
 clear_case_ "clear: main checkout -> marker kept" "{\"cwd\":\"$T/repo\"}" '[ -e "$G/spawn/demo.waiting" ]'
 clear_case_ "clear: garbage stdin -> exit 0, marker kept" 'not json' '[ -e "$G/spawn/demo.waiting" ]'
-# The close guard no longer refuses once the prompt is answered; a real unanswered prompt still does.
-case_ "close dry-run: unanswered prompt still refused" 0 ".waiting or .notified exists and claude --name demo is running" close demo --dry-run
+# (The real refusal of a live worker with a marker is exercised above: "close: live worker waiting on a prompt".)
 clear_case_ "clear: then close sees no marker" "{\"cwd\":\"$T/repo/.claude/worktrees/demo\"}" '[ ! -e "$G/spawn/demo.waiting" ]'
 rm -f "$G/spawn/demo.waiting" "$G/spawn/demo.notified"
 total=$((total+1))
