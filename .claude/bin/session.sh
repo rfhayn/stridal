@@ -24,6 +24,17 @@
 # --agent-keychain <service> (matching ^[A-Za-z0-9._-]+$) runs the worker's claude through .claude/bin/as-agent.sh
 # <service>, so the worker acts on GitHub as the agent identity whose token that Keychain item holds. The tab
 # command carries only the service name; the token is read inside the tab and lives only in the environment.
+# Run cap (Stridal's ADR-0009): a real open also starts a detached `session.sh cap <slug>` (internal; its name is not
+# watch, whose behaviour is unchanged). It polls ps every 5 s and adds up ACTIVE time: ticks while neither
+# <slug>.waiting nor <slug>.notified exists (the owner is not holding the worker). Past STRIDAL_WORKER_CAP_SECONDS
+# (a whole number 60 to 86400, default 3600; set but empty or malformed refuses open) it sends TERM, then KILL, to the
+# worker's process group, but only a group it first saw as the worker's: every matching ps line in it, a matching
+# process leading it, and neither init's nor its own. Otherwise it logs cap-nokill, keeps the lock and still alerts.
+# Outcomes go to .claude/review/runs.log (git-ignored), one line each: ended, cap-kill, cap-nokill, no-worker. A
+# cap-kill or cap-nokill also raises a macOS notification unless STRIDAL_ALERT=0. After a kill only the lock is
+# removed; the worktree, branch and spawn records stay, so the dispatcher's Reconcile blocks the issue. Two test
+# knobs, STRIDAL_CAP_POLL (1-60, default 5) and STRIDAL_CAP_GRACE (0-3600 s to find the worker, default 120), only
+# change timing.
 # The only text this script types into a terminal is the fixed /exit (close); there is no command that types
 # anything else, because typing arbitrary text into a terminal would be a keystroke-injection primitive.
 # The prompt is read only from .claude/review/spawn-<slug>.md in the main checkout (git-ignored): a regular
@@ -54,6 +65,11 @@ on run argv
   end tell
 end run
 OSA
+IFS= read -r -d '' APPLE_NOTIFY <<'OSA' || true
+on run argv
+  display notification (item 1 of argv) with title "Stridal"
+end run
+OSA
 IFS= read -r -d '' APPLE_CLOSE <<'OSA' || true
 on run argv
   tell application "Ghostty"
@@ -66,7 +82,7 @@ OSA
 
 cmd=${1:-}
 [ $# -gt 0 ] && shift
-type="" slug="" report="" dry=0 abandon=0 have_report=0 timeout=3600 agent_keychain="" key="" sname=""
+cap=3600 type="" slug="" report="" dry=0 abandon=0 have_report=0 timeout=3600 agent_keychain="" key="" sname=""
 
 # Sets sname for $slug from <spawn dir $1>/<slug>.session, or the bare slug when there is no record.
 resolve_sname() {
@@ -97,7 +113,19 @@ is_running() {
   return "$rc"
 }
 
+# Sets cap (seconds of active time) from STRIDAL_WORKER_CAP_SECONDS: unset means 3600; set but empty, or anything but
+# a whole number 60 to 86400 (no sign, exponent or leading zero), refuses. The value is never evaluated.
+resolve_cap() {
+  cap=${STRIDAL_WORKER_CAP_SECONDS-3600}
+  [[ $cap =~ ^[1-9][0-9]{1,4}$ ]] && [ "$cap" -ge 60 ] && [ "$cap" -le 86400 ] \
+    || refuse "STRIDAL_WORKER_CAP_SECONDS must be a whole number from 60 to 86400 (unset means 3600)"
+}
+
 case "$cmd" in
+  cap)
+    [ $# -eq 1 ] || refuse "usage: cap <slug> (internal: open starts it)"
+    slug=$1
+    ;;
   watch)
     [ $# -ge 1 ] || refuse "usage: watch <slug> [--timeout <secs>]"
     slug=$1
@@ -168,6 +196,7 @@ case "$cmd" in
       shift
     done
     case "$type" in feat|fix|chore|docs) ;; *) refuse "type must be feat, fix, chore or docs" ;; esac
+    resolve_cap
     ;;
   close)
     [ $# -ge 1 ] || refuse "usage: close <slug> [--abandon] [--dry-run]"
@@ -213,6 +242,76 @@ if [ "$cmd" = open ]; then
   [ "$(wc -c < "$prompt")" -le 20480 ] || refuse "the prompt file is over 20 KB: $prompt"
 fi
 spawn="$gcd/spawn"
+lockdir="$spawn/locks/$slug"
+
+if [ "$cmd" = cap ]; then
+  # The detached run cap. Runs only what open started; it reads ps and the markers, and signals at most one group.
+  resolve_cap
+  poll=${STRIDAL_CAP_POLL-5} grace=${STRIDAL_CAP_GRACE-120}
+  [[ $poll =~ ^[0-9]{1,2}$ ]] && [ "$((10#$poll))" -ge 1 ] && [ "$((10#$poll))" -le 60 ] || refuse "STRIDAL_CAP_POLL must be 1 to 60"
+  [[ $grace =~ ^[0-9]{1,4}$ ]] && [ "$((10#$grace))" -le 3600 ] || refuse "STRIDAL_CAP_GRACE must be 0 to 3600"
+  poll=$((10#$poll)) grace=$((10#$grace))
+  runs="$top/.claude/review/runs.log"
+  mkdir -p "$top/.claude/review"
+  alert() { [ "${STRIDAL_ALERT-1}" = 0 ] || osascript -e "$APPLE_NOTIFY" "$1" >/dev/null 2>&1 || true; }
+  active=0
+  runlog() { printf '%s %s %s %s active=%ss\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "$slug" "$sname" "$active" >> "$runs"; }
+  # ps with the group id: "pid pgid" of every line whose command is this worker's claude.
+  worker_lines() {
+    local p
+    p=$(ps -axo pid=,pgid=,command=) || return 2
+    awk -v re="(^|/)claude --name $sname( |\$)" \
+      '{ pid=$1; pg=$2; sub(/^[ ]*[0-9]+[ ]+[0-9]+[ ]+/, ""); if ($0 ~ re) print pid, pg }' <<<"$p"
+  }
+  mypg=$(ps -o pgid= -p "$$" 2>/dev/null | awk 'NR==1 { print $1 }') || mypg=""
+  seen=0 first="" fails=0
+  start=$(date +%s) last=$start
+  while :; do
+    now=$(date +%s)
+    d=$((now - last)); last=$now
+    # A suspended laptop must not count as worker time: one tick adds at most 300 s.
+    [ "$d" -ge 0 ] || d=0
+    [ "$d" -le 300 ] || d=300
+    # Time the owner is holding the worker (a prompt shown or notified) is not active time.
+    if [ ! -e "$spawn/$slug.waiting" ] && [ ! -e "$spawn/$slug.notified" ]; then active=$((active + d)); fi
+    rc=0; lines=$(worker_lines) || rc=$?
+    if [ "$rc" != 0 ]; then
+      # ps failed: the worker state is unknown, so nothing is logged or killed this tick.
+      fails=$((fails + 1)); [ "$fails" -lt 60 ] || exit 4
+    else
+      fails=0
+      if [ -z "$lines" ]; then
+        [ "$seen" = 0 ] || { runlog ended; exit 0; }
+        [ $((now - start)) -lt "$grace" ] || { runlog no-worker; exit 0; }
+      else
+        seen=1
+        [ -n "$first" ] || first=$(awk 'NR==1 { print $2 }' <<<"$lines")
+        if [ "$active" -ge "$cap" ]; then
+          # Signal only the group first seen: all matching lines in it, a matching process leading it, not init's or ours.
+          ok=1
+          [[ $first =~ ^[0-9]+$ ]] && [ "$first" -gt 1 ] && [ "$first" != "$mypg" ] || ok=0
+          awk -v f="$first" '$2 != f { bad=1 } END { exit bad }' <<<"$lines" || ok=0
+          awk -v f="$first" '$1 == f && $2 == f { found=1 } END { exit !found }' <<<"$lines" || ok=0
+          if [ "$ok" = 1 ]; then
+            kill -TERM -- "-$first" 2>/dev/null || true
+            n=0
+            while [ "$n" -lt 10 ] && [ -n "$(worker_lines || true)" ]; do sleep 1; n=$((n + 1)); done
+            [ -z "$(worker_lines || true)" ] || kill -KILL -- "-$first" 2>/dev/null || true
+            runlog cap-kill
+            alert "$sname: worker stopped at the run cap ($cap s of active time)"
+            rm -rf "$lockdir"
+          else
+            runlog cap-nokill
+            alert "$sname: run cap reached but the worker was not stopped (process group not verified); see .claude/review/runs.log"
+          fi
+          exit 0
+        fi
+      fi
+    fi
+    sleep "$poll"
+  done
+fi
+
 wt="$top/.claude/worktrees/$slug"
 promptfile="$spawn/$slug.prompt"
 termfile="$spawn/$slug.term"
@@ -300,6 +399,7 @@ if [ "$dry" = 1 ]; then
     echo "would take lock $lockdir"
     echo "branch: $type/$slug (new, from origin/main)"
     echo "session name: $sname (recorded in $sessionfile)"
+    echo "run cap: $cap s of active time (STRIDAL_WORKER_CAP_SECONDS), then a detached cap process kills the worker's process group; outcomes go to $top/.claude/review/runs.log"
     echo "worktree: $wt"
     echo "tab command: $tabcmd"
     echo "prompt append: $fetched_rule"
@@ -361,6 +461,9 @@ if [ "$cmd" = open ]; then
   termid=$(osascript -e "$APPLE_OPEN" "$wt" "$tabcmd") || refuse "Ghostty did not open the tab; clean up with: .claude/bin/session.sh close $slug --abandon"
   printf '%s\n' "$termid" > "$termfile"
   printf '%s\n' "$termid" > "$lockdir/term"
+  # The run cap: a detached process in its own process group (set -m), so it outlives this command and is never
+  # in the worker's group. Its name is `cap`, not `watch`. A failed start is reported, never fatal.
+  ( set -m; nohup bash "${BASH_SOURCE[0]}" cap "$slug" </dev/null >/dev/null 2>&1 & ) || echo "session.sh: could not start the run cap for $slug" >&2
   echo "opened $branch in terminal $termid (worktree $wt)"
   exit 0
 fi
