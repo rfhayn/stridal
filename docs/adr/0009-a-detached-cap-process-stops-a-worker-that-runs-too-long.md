@@ -13,7 +13,10 @@ Date: 2026-11-14 · Status: proposed
 ## Decision
 - A real `session.sh open` starts a detached `session.sh cap <slug>` (own process group, `nohup`, internal; not `watch`).
   It polls `ps` every 5 s.
-- **Active time** is the sum of poll ticks during which neither `<slug>.waiting` nor `<slug>.notified` exists. One tick
+- **Active time** is the sum of poll ticks during which none of `<slug>.waiting`, `<slug>.notified` or `<slug>.idle`
+  exists. `.idle` (#7) is set by the Stop hook (`notify-waiting.sh idle`, which also clears the other two) and cleared
+  by the next tool use or prompt (`notify-waiting.sh clear`), so a worker idle after `BLOCKED:` or `RESULT`, waiting
+  for the owner's answer or for `merge-ok` on a lane-3 PR, is not on the clock. `.idle` never blocks `close`. One tick
   adds at most 300 s, so a suspended laptop does not count. Past `STRIDAL_WORKER_CAP_SECONDS` (a whole number 60 to
   86400, default 3600; a bad value refuses `open`) of active time, the cap sends `TERM` to the worker's process
   group, then `KILL` after 10 s if it still runs.

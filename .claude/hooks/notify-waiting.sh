@@ -30,9 +30,19 @@ gcd=$(git -C "$top" rev-parse --path-format=absolute --git-common-dir 2>/dev/nul
 [ -f "$gcd/spawn/$slug.term" ] || exit 0
 
 if [ "${1:-}" = clear ]; then
-  # The session reached a PostToolUse or Stop: the prompt was answered (or the turn ended), so the marker is
-  # stale. Remove it, and .notified too, or `session.sh close` refuses a worker that is no longer waiting (#445).
+  # The session reached a PostToolUse or UserPromptSubmit: the prompt was answered (or the owner replied), so the
+  # markers are stale. Remove .waiting and .notified, or `session.sh close` refuses a worker that is no longer
+  # waiting (#445), and .idle, because the worker is active again (#7).
+  rm -f "$gcd/spawn/$slug.waiting" "$gcd/spawn/$slug.notified" "$gcd/spawn/$slug.idle" 2>/dev/null
+  exit 0
+fi
+
+if [ "${1:-}" = idle ]; then
+  # Stop: the turn ended. Clear the prompt markers as `clear` does, then set .idle: the worker sits idle after
+  # BLOCKED or RESULT (waiting for the owner or for the merge approval), and the run cap does not count that time.
+  # The next tool use or prompt runs `clear`, which removes .idle. Unlike .waiting, .idle never blocks `close` (#7).
   rm -f "$gcd/spawn/$slug.waiting" "$gcd/spawn/$slug.notified" 2>/dev/null
+  touch "$gcd/spawn/$slug.idle" 2>/dev/null
   exit 0
 fi
 

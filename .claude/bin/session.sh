@@ -28,7 +28,8 @@
 # command carries only the service name; the token is read inside the tab and lives only in the environment.
 # Run cap (Stridal's ADR-0009): a real open also starts a detached `session.sh cap <slug>` (internal; its name is not
 # watch, whose behaviour is unchanged). It polls ps every 5 s and adds up ACTIVE time: ticks while neither
-# <slug>.waiting nor <slug>.notified exists (the owner is not holding the worker). Past STRIDAL_WORKER_CAP_SECONDS
+# <slug>.waiting, <slug>.notified nor <slug>.idle exists (the owner is not holding the worker, and it is not idle
+# after BLOCKED or RESULT; the Stop hook sets .idle, the next tool use or prompt clears it). Past STRIDAL_WORKER_CAP_SECONDS
 # (a whole number 60 to 86400, default 3600; set but empty or malformed refuses open) it sends TERM, then KILL, to the
 # worker's process group, but only a group it first saw as the worker's: every matching ps line in it, a matching
 # process leading it, and neither init's nor its own. Otherwise it logs cap-nokill, keeps the lock and still alerts.
@@ -274,8 +275,9 @@ if [ "$cmd" = cap ]; then
     # A suspended laptop must not count as worker time: one tick adds at most 300 s.
     [ "$d" -ge 0 ] || d=0
     [ "$d" -le 300 ] || d=300
-    # Time the owner is holding the worker (a prompt shown or notified) is not active time.
-    if [ ! -e "$spawn/$slug.waiting" ] && [ ! -e "$spawn/$slug.notified" ]; then active=$((active + d)); fi
+    # Time the owner is holding the worker (a prompt shown or notified) or the worker is idle after its turn ended
+    # (BLOCKED or RESULT, set by the Stop hook) is not active time.
+    if [ ! -e "$spawn/$slug.waiting" ] && [ ! -e "$spawn/$slug.notified" ] && [ ! -e "$spawn/$slug.idle" ]; then active=$((active + d)); fi
     rc=0; lines=$(worker_lines) || rc=$?
     if [ "$rc" != 0 ]; then
       # ps failed: the worker state is unknown, so nothing is logged or killed this tick.
@@ -484,14 +486,14 @@ if [ "$gone" = 1 ]; then
       sleep 1
     done
   fi
-  rm -f "$promptfile" "$termfile" "$branchfile" "$sessionfile" "$spawn/$slug.waiting" "$spawn/$slug.notified"
+  rm -f "$promptfile" "$termfile" "$branchfile" "$sessionfile" "$spawn/$slug.waiting" "$spawn/$slug.notified" "$spawn/$slug.idle"
   release_lock
   echo "closed $slug: worktree and branch were already gone; deleted the spawn records only"
   exit 0
 fi
 if [ "$norecord" = 1 ]; then
   ! is_running || refuse "claude --name $sname is running but there is no branch record; end that session by hand, then rerun this"
-  rm -f "$promptfile" "$termfile" "$branchfile" "$sessionfile" "$spawn/$slug.waiting" "$spawn/$slug.notified"
+  rm -f "$promptfile" "$termfile" "$branchfile" "$sessionfile" "$spawn/$slug.waiting" "$spawn/$slug.notified" "$spawn/$slug.idle"
   release_lock
   echo "closed $slug: no branch record; removed the lock and any spawn records, nothing else"
   exit 0
@@ -530,6 +532,6 @@ if is_running; then
 fi
 git worktree remove "$wt" || refuse "git worktree remove refused (is $wt dirty?); nothing forced, branch kept"
 git branch -D "$branch"
-rm -f "$promptfile" "$termfile" "$branchfile" "$sessionfile" "$spawn/$slug.waiting" "$spawn/$slug.notified"
+rm -f "$promptfile" "$termfile" "$branchfile" "$sessionfile" "$spawn/$slug.waiting" "$spawn/$slug.notified" "$spawn/$slug.idle"
 release_lock
 echo "closed $slug: worktree and $branch removed"
