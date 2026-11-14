@@ -33,6 +33,11 @@ DO_ALIAS=0; ARGS=()
 for a in "$@"; do if [ "$a" = --install-alias ]; then DO_ALIAS=1; else ARGS+=("$a"); fi; done
 set -- ${ARGS[@]+"${ARGS[@]}"}
 if [ "$DO_ALIAS" = 1 ]; then
+  # With an install, check its arguments first: the rc write must not happen on a call that then fails.
+  case "${1:-}" in ""|--*) ;; *)
+    [ $# -ge 2 ] || { echo "runner choice required: hosted or self-hosted"; exit 1; }
+    case "$2" in hosted|self-hosted) ;; *) echo "runner must be 'hosted' or 'self-hosted'"; exit 1;; esac ;;
+  esac
   install_alias || exit 1
   [ $# -gt 0 ] || exit 0
 fi

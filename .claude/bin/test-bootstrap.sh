@@ -216,6 +216,17 @@ hi="$tmp/home-install"; mkdir -p "$hi"
 HOME="$hi" SHELL=/bin/zsh "$new" "$tmp/proj-alias" hosted --install-alias >/dev/null || die "install with --install-alias failed"
 [ -f "$tmp/proj-alias/.claude/kit.lock" ] || die "install with --install-alias wrote no lock"
 grep -qF "$marker" "$hi/.zshrc" || die "install with --install-alias wrote no alias"
+# Invalid install arguments (#6): no runner, or a bad runner, must exit non-zero and leave HOME and the project untouched.
+hn="$tmp/home-badargs"; mkdir -p "$hn"
+rc=0; out=$(HOME="$hn" SHELL=/bin/zsh "$new" "$tmp/proj-badargs" --install-alias 2>&1) || rc=$?
+[ "$rc" -ne 0 ] || die "--install-alias with no runner exited 0"
+has "alias no runner" "$out" "runner choice required"
+[ -z "$(find "$hn" -mindepth 1)" ] || die "--install-alias with no runner wrote into HOME"
+rc=0; out=$(HOME="$hn" SHELL=/bin/zsh "$new" "$tmp/proj-badargs" bogus --install-alias 2>&1) || rc=$?
+[ "$rc" -ne 0 ] || die "--install-alias with a bad runner exited 0"
+has "alias bad runner" "$out" "runner must be"
+[ -z "$(find "$hn" -mindepth 1)" ] || die "--install-alias with a bad runner wrote into HOME"
+[ ! -e "$tmp/proj-badargs" ] || die "invalid install args wrote the project"
 hp="$tmp/home-plain"; mkdir -p "$hp"
 out=$(HOME="$hp" SHELL=/bin/zsh "$new" "$tmp/proj-plain" hosted) || die "plain install failed"
 [ -z "$(find "$hp" -mindepth 1)" ] || die "a plain install wrote into HOME"
