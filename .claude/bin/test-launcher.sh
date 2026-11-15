@@ -95,13 +95,13 @@ repo noagent "- Name: alpha · Approver: acme"
 total=$((total+1)); run "$T/noagent"
 [ "$rc" = 0 ] || bad "no Agent: exit $rc: $(cat "$T/err")"
 grep -qi 'agent' "$T/err" || bad "no Agent: no warning on stderr"
-[ "$(cat "$T/argv" 2>/dev/null)" = "$(printf '%s\n' claude --name dispatch-alpha -- '/loop /dispatch')" ] \
+[ "$(cat "$T/argv" 2>/dev/null)" = "$(printf '%s\n' claude --name dispatch-alpha --permission-mode auto -- '/loop /dispatch')" ] \
   || bad "no Agent: argv was: $(tr '\n' ' ' < "$T/argv" 2>/dev/null)"
 
-# 8. happy path: exactly <main>/.claude/bin/as-agent.sh <keychain> claude --name dispatch-<key> -- "/loop /dispatch"
+# 8. happy path: exactly <main>/.claude/bin/as-agent.sh <keychain> claude --name dispatch-<key> --permission-mode auto -- "/loop /dispatch"
 total=$((total+1)); run "$T/running"
 main=$(cd "$T/running" && pwd -P)
-want=$(printf '%s\n' "$main/.claude/bin/as-agent.sh" acme-bot-token claude --name dispatch-alpha -- '/loop /dispatch')
+want=$(printf '%s\n' "$main/.claude/bin/as-agent.sh" acme-bot-token claude --name dispatch-alpha --permission-mode auto -- '/loop /dispatch')
 [ "$rc" = 0 ] || bad "happy path: exit $rc: $(cat "$T/err")"
 [ "$(cat "$T/argv" 2>/dev/null)" = "$want" ] || bad "happy path: argv was: $(tr '\n' ' ' < "$T/argv" 2>/dev/null)"
 [ ! -s "$T/err" ] || bad "happy path: wrote to stderr: $(cat "$T/err")"

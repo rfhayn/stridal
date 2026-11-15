@@ -29,7 +29,7 @@ machine user first (Stridal's ADR-0004; the steps are in `docs/runbooks/agent-to
 - Name: {{key: a letter first, lowercase, up to 20 characters; sessions are named dispatch-<key> and <key>-<slug>}} · Project: {{owner}} #{{project number}} · Approver: {{your GitHub login; must differ from Agent}} · max_workers: 1
 - Deploy: {{command that makes a merged main live, or `true` when nothing deploys}} · Gates: {{the Check command above}}
 - Agent: {{machine-user login}} · Agent keychain: {{Keychain service holding its token}}
-- Start: `.claude/bin/dispatch.sh` (checks, then runs `as-agent.sh <Agent keychain> claude --name dispatch-<Name> -- "/loop /dispatch"`)
+- Start: `.claude/bin/dispatch.sh` (checks, then runs `as-agent.sh <Agent keychain> claude --name dispatch-<Name> --permission-mode auto -- "/loop /dispatch"`). The dispatcher runs in auto mode, as its workers do.
 - Footprint areas: {{the directories issues name in a `Footprint:` line; leave this line out to run one worker at a time}}
 - An issue runs beside another only with a `Footprint:` line in its body (paths or footprint areas); otherwise it
   runs alone (Stridal's ADR-0005). `max_workers` above 1 also needs the ruleset's strict status checks.
