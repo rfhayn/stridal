@@ -1,5 +1,6 @@
 Why: <one line>
-Roadmap: <ID or none>
+Closes #<n> <!-- the issue you were given; write Refs #<n> instead only if it must stay open -->
+
 
 ## What and why
 <!-- 1-3 lines: the brief's goal -->

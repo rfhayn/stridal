@@ -546,6 +546,20 @@ expect "contract without Why:" 1 "mention Why:" pr_why_check "$fx/c-nowhy.md" .g
 expect "contract without template" 1 "mention pull_request_template" pr_why_check "$fx/c-notpl.md" .github/pull_request_template.md
 expect "template without Why: first line" 1 "start with a Why:" pr_why_check .claude/skills/dispatch/worker-contract.md "$fx/t-nowhy.md"
 
+# #12: GitHub closes an issue on merge only from a `Closes #<n>` line in the PR body. The template's second line must be
+# that line (not the retired `Roadmap:` line) and the worker contract must tell workers to keep it. Tested on copies.
+pr_closes_check() {
+  [ "$(sed -n 2p "$2")" = 'Closes #<n>' ] || [ "$(sed -n 2p "$2" | cut -c1-12)" = 'Closes #<n> ' ] \
+    || { echo "kit-check: pull_request_template.md line 2 is not a Closes #<n> line"; return 1; }
+  ! grep -q 'Roadmap:' "$2" || { echo "kit-check: pull_request_template.md still has a Roadmap: line"; return 1; }
+  grep -q 'Closes #<n>' "$1" || { echo "kit-check: worker-contract.md does not say the PR body contains Closes #<n>"; return 1; }
+}
+pr_closes_check .claude/skills/dispatch/worker-contract.md .github/pull_request_template.md || exit 1
+grep -v 'Closes #<n>' .claude/skills/dispatch/worker-contract.md > "$fx/c-noclose.md"
+sed '2s/.*/Roadmap: <ID or none>/' .github/pull_request_template.md > "$fx/t-roadmap.md"
+expect "contract without Closes" 1 "contains Closes" pr_closes_check "$fx/c-noclose.md" .github/pull_request_template.md
+expect "template with Roadmap: line" 1 "not a Closes" pr_closes_check .claude/skills/dispatch/worker-contract.md "$fx/t-roadmap.md"
+
 # #470: without --verbose a failing gitleaks step prints only "leaks found: N". Each scan command in both ci files must
 # carry --verbose (and keep --redact, so the secret itself is not printed). Tested on a copy missing each flag.
 gitleaks_flags_check() {
