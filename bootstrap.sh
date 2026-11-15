@@ -6,7 +6,7 @@
 #   ./bootstrap.sh --adopt <dest-repo-dir>                              write a lock for a project installed before locks existed
 #   ./bootstrap.sh --enable-auto-merge <owner/repo> <red-PR-number>     only after a red PR was refused
 #   ./bootstrap.sh --install-alias                                      append a `dispatch` alias to ~/.zshrc or ~/.bashrc (opt-in; also accepted with an install)
-# GitHub steps need `gh auth login` as a repo admin. Private repos need GitHub Pro/Team for rulesets.
+# GitHub steps need `gh auth login` as a repo admin, with the workflow scope (`gh auth refresh -h github.com -s workflow`) to push the kit PR. Private repos need GitHub Pro/Team for rulesets.
 # --upgrade and --adopt never call gh and never delete a file (Stridal's ADR-0007).
 set -euo pipefail
 KIT="$(cd "$(dirname "$0")" && pwd)"
@@ -219,7 +219,7 @@ grep -qF '.claude/worktrees/' "$DEST/.gitignore" 2>/dev/null || cat "$KIT/gitign
 echo "Runner: $RUNNER for ci and lane."
 [ "$RUNNER" = hosted ] && echo "  Each lane run bills 1 minute (it runs on two events per PR update) and each ci run its length. If this account has ever paused pull_request CI for minutes, rerun with self-hosted."
 
-echo "Public repo? lane.yml runs on pull_request_target, which GitHub blocks by default for public repos from 2026-12-02, so without an Actions policy that allows it there is no lane check and nothing merges. Setting it is a GitHub settings change (Settings > Actions > General) and needs the owner's yes; this script does not do it."
+echo "Public repo? lane.yml runs on pull_request_target, which GitHub blocks by default for public repos from 2026-12-02, so without an Actions policy that allows it there is no lane check and nothing merges. Setting it is a GitHub settings change (Settings > Actions > Policies: under Restrict events keep only pull_request, pull_request_target, merge_group and workflow_dispatch ticked) and needs the owner's yes; this script does not do it."
 
 # Offered, written only with --install-alias: it resolves the repo when you use it, so one alias serves every kit project.
 if [ "$DO_ALIAS" = 0 ]; then
@@ -239,6 +239,9 @@ rollback() {
     -f squash_merge_commit_title="$p_title" -f squash_merge_commit_message="$p_message" >/dev/null
   exit 1
 }
+if ! gh api "repos/$REPO/branches/main" >/dev/null 2>&1; then
+  echo "$REPO has no main branch yet: push an initial commit to main first. The ruleset below requires ci and lane, so the first push to an empty main is rejected once it is active (to fix it, set the ruleset to Disabled, push, set it back to Active)."
+fi
 gh repo edit "$REPO" --enable-squash-merge --enable-merge-commit=false --enable-rebase-merge=false \
   --delete-branch-on-merge --enable-auto-merge=false || rollback
 # Squash commits carry the PR title and body, so the history keeps each PR's why.
@@ -257,7 +260,7 @@ Ruleset 'main' is active. Auto-merge is OFF.
 Next:
 $( [ "$RUNNER" = self-hosted ] && echo "  0. Register a runner: https://github.com/$REPO/settings/actions/runners/new (until one is online, ci and lane queue and nothing merges)." )
   1. Fill the {{placeholders}} in CLAUDE.md, ci.yml (check + format) and HARD_PATHS in lane.yml; set PERSONAL_DATA in settings.json and .gitignore.
-  2. Merge the kit PR (lane:2-wide) by hand once ci and lane are green.
+  2. Merge the kit PR (lane:3-hard: it touches .github/ and .claude/settings.json) by hand once ci and lane are green.
   3. Prove it: open a PR with a deliberately failing test, label it lane:1-contained, wait for ci to go red.
   4. ./bootstrap.sh --enable-auto-merge $REPO <that PR number>   (checks it is BLOCKED with ci red, then enables auto-merge)
 MSG
