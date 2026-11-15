@@ -34,8 +34,9 @@ Date: 2026-11-14 · Status: proposed
 - Good: a runaway worker is stopped and recorded; a worker held at a permission prompt (marker present) is not
   counted against.
 - Good: a worker idle after `BLOCKED:` or `RESULT` is not counted against either (#7): the Stop hook sets `.idle`.
-  Remaining gap: `.idle` clears on the next `PostToolUse` or prompt, so if a resumed worker's wake-up does not fire
-  `UserPromptSubmit`, its first long tool call runs off the clock until it finishes.
+  A resumed worker clears `.idle` at once: the docs list "a message another session sends to your main conversation"
+  among the things that fire `UserPromptSubmit` (https://code.claude.com/docs/en/cross-session-messaging.md), so no
+  `PreToolUse` clear is needed (#15). Not confirmed live: the `notify_when_idle` notice, which the docs do not name.
 - Cost / risk: a process that sends signals to a process group is a sharp tool; the group checks above exist so a
   wrong match logs `cap-nokill` instead of killing. The marker rule trusts the hook and the dispatcher to set and clear
   the markers; a marker left behind stops the clock (the worker then runs uncapped, as today). If the cap process

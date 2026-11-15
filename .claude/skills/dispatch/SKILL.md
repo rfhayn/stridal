@@ -20,8 +20,9 @@ Names used below:
   started, `<spawn>/<slug>.branch` holds its branch `<type>/<slug>`, `<spawn>/<slug>.term` (written last, as the
   tab opens) holds its terminal id, `<spawn>/<slug>.waiting` is the permission-prompt marker, and
   `<spawn>/<slug>.notified` marks a prompt you pushed that the worker has not reported past yet. The worker's
-  PostToolUse and Stop hook (`notify-waiting.sh clear`) removes both once the prompt is answered; you also clear
-  `.notified` on its next report.
+  hooks remove both once the prompt is answered: `notify-waiting.sh clear` (PostToolUse, UserPromptSubmit) and
+  `notify-waiting.sh idle` (Stop, which also sets `<spawn>/<slug>.idle`); you also clear `.notified` on its next
+  report.
   `session.sh close` refuses while either marker exists and the worker runs.
 - "the approval label": the label a lane-3 PR waits on (Stridal's ADR-0003). Never write its name, in a Bash command or
   anywhere else; `.claude/settings.json` stops Bash commands that name it.
