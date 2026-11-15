@@ -13,7 +13,10 @@ Date: 2026-11-14 · Status: proposed
 ## Decision
 - A real `session.sh open` starts a detached `session.sh cap <slug>` (own process group, `nohup`, internal; not `watch`).
   It polls `ps` every 5 s.
-- **Active time** is the sum of poll ticks during which neither `<slug>.waiting` nor `<slug>.notified` exists. One tick
+- **Active time** is the sum of poll ticks during which none of `<slug>.waiting`, `<slug>.notified` or `<slug>.idle`
+  exists. `.idle` (#7) is set by the Stop hook (`notify-waiting.sh idle`, which also clears the other two) and cleared
+  by the next tool use or prompt (`notify-waiting.sh clear`), so a worker idle after `BLOCKED:` or `RESULT`, waiting
+  for the owner's answer or for `merge-ok` on a lane-3 PR, is not on the clock. `.idle` never blocks `close`. One tick
   adds at most 300 s, so a suspended laptop does not count. Past `STRIDAL_WORKER_CAP_SECONDS` (a whole number 60 to
   86400, default 3600; a bad value refuses `open`) of active time, the cap sends `TERM` to the worker's process
   group, then `KILL` after 10 s if it still runs.
@@ -30,8 +33,9 @@ Date: 2026-11-14 · Status: proposed
 ## Consequences
 - Good: a runaway worker is stopped and recorded; a worker held at a permission prompt (marker present) is not
   counted against.
-- Known gap: a worker idle after `BLOCKED:` or `RESULT` has no marker (the Stop hook clears both), so that time
-  counts. Closing it needs an idle marker from the hooks, which are outside #3's footprint; filed as a follow-up.
+- Good: a worker idle after `BLOCKED:` or `RESULT` is not counted against either (#7): the Stop hook sets `.idle`.
+  Remaining gap: `.idle` clears on the next `PostToolUse` or prompt, so if a resumed worker's wake-up does not fire
+  `UserPromptSubmit`, its first long tool call runs off the clock until it finishes.
 - Cost / risk: a process that sends signals to a process group is a sharp tool; the group checks above exist so a
   wrong match logs `cap-nokill` instead of killing. The marker rule trusts the hook and the dispatcher to set and clear
   the markers; a marker left behind stops the clock (the worker then runs uncapped, as today). If the cap process

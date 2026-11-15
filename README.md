@@ -34,8 +34,9 @@ mode (`--permission-mode auto`). If a worker never reports and `ListAgents` show
 permission prompt in its tab.
 
 **Worker run cap** (ADR-0009). A real `session.sh open` also starts a detached `session.sh cap <slug>` (not `watch`,
-which is unchanged). It adds up **active time**: the time neither `<slug>.waiting` nor `<slug>.notified` exists, so
-the hours a worker waits at a prompt for you never count. Past `STRIDAL_WORKER_CAP_SECONDS` of active time (a whole
+which is unchanged). It adds up **active time**: the time none of `<slug>.waiting`, `<slug>.notified` or `<slug>.idle` exists, so
+the hours a worker waits at a prompt for you never count, nor do the hours it sits idle after `BLOCKED:` or `RESULT`
+(the Stop hook sets `.idle`; the next tool use or prompt clears it). Past `STRIDAL_WORKER_CAP_SECONDS` of active time (a whole
 number from 60 to 86400; unset means 3600; anything else refuses `open`) it kills the worker's process group, but only
 a group it first saw as the worker's (every matching `ps` line in it, a matching process leading it, not init's or its
 own). Each outcome is one line in `.claude/review/runs.log` (git-ignored): `ended` (the worker exited on its own),
@@ -215,7 +216,7 @@ leaves it alone and writes a `.kit-new`. Adopt refuses to overwrite a lock.
 | `docs/runbooks/agent-token.md` | The machine user and its token: account and 2FA, least access, classic-token scopes and why, Keychain, the `Agent:` lines, expiry warning and rotation |
 | `.claude/bin/dispatch-next.sh`, `as-agent.sh`, `token-expiry.sh` | Pick the next Now item (and a footprint-safe second), start a command with the machine user's token from the Keychain, and warn before that token expires |
 | `.claude/bin/test-session.sh`, `test-dispatch.sh`, `test-token-expiry.sh` | Self-tests for `session.sh` and the three dispatcher scripts. A new project's `ci` runs them, with `test-launcher.sh`, `test-scope-check.sh` and `.github/lane/test.sh` |
-| `.claude/hooks/notify-waiting.sh` | Wired to the `permission_prompt` notification: marks a worker as waiting on a prompt so the dispatcher can tell the owner; with `clear` (PostToolUse, Stop) it removes the marker once the prompt is answered |
+| `.claude/hooks/notify-waiting.sh` | Wired to the `permission_prompt` notification: marks a worker as waiting on a prompt so the dispatcher can tell the owner; with `clear` (PostToolUse, UserPromptSubmit) it removes the marker once the prompt is answered, and the idle marker; with `idle` (Stop) it clears the prompt markers and sets `<slug>.idle`, which pauses the run cap while the worker waits after `BLOCKED:` or `RESULT` |
 | `.github/ruleset-main.json` | Ruleset for the default branch: PR required (0 approvals), squash only, checks `ci` + `lane`, no deletion, no force push, no bypass actors |
 | `.github/pull_request_template.md` | `Why:` and `Roadmap:` lines (lane.yml fails a PR with no real `Why:`), then what/why, lane, done-when evidence, decisions & assumptions with sources, review, guard |
 | `docs/ROADMAP.md` | A pointer to this repo's backlog, GitHub Project #4. There is no markdown roadmap template: the backlog is Issues plus the Project's Now column (ADR-0001). Not copied to new projects |

@@ -149,7 +149,7 @@ hook_case_ "hook: main checkout -> nothing" "{\"cwd\":\"$T/repo\"}" '[ -z "$(ls 
 hook_case_ "hook: garbage stdin -> exit 0" 'not json' '[ "$(ls "$G/spawn")" = demo.term ]'
 hook_case_ "hook: empty stdin -> exit 0" '' '[ "$(ls "$G/spawn")" = demo.term ]'
 # #445: an answered prompt must not leave a marker that blocks close. `notify-waiting.sh clear` (wired to
-# PostToolUse and Stop) removes .waiting and .notified for the worktree the session runs in.
+# PostToolUse and UserPromptSubmit; Stop runs `idle`, which does the same) removes .waiting and .notified for the worktree the session runs in.
 clear_case_() {
   local name=$1 json=$2 check=$3 o got
   total=$((total+1))
@@ -164,6 +164,22 @@ clear_case_ "clear: answered prompt -> .waiting and .notified removed" "{\"cwd\"
 touch "$G/spawn/demo.waiting"
 clear_case_ "clear: main checkout -> marker kept" "{\"cwd\":\"$T/repo\"}" '[ -e "$G/spawn/demo.waiting" ]'
 clear_case_ "clear: garbage stdin -> exit 0, marker kept" 'not json' '[ -e "$G/spawn/demo.waiting" ]'
+# #7: Stop runs `idle` (clear the prompt markers, set .idle); the next tool use or prompt runs `clear`, removing .idle.
+idle_case_() {
+  local name=$1 mode=$2 json=$3 check=$4 o got
+  total=$((total+1))
+  o=$(printf '%s' "$json" | NOTIFY_WAITING_NO_DESKTOP=1 sh "$HOOK" "$mode" 2>&1)
+  got=$?
+  if [ "$got" != 0 ]; then fail=$((fail+1)); echo "FAIL $name: want exit 0, got $got ($o)"
+  elif [ -n "$o" ]; then fail=$((fail+1)); echo "FAIL $name: stdout/stderr must be empty: got '$o'"
+  elif ! eval "$check"; then fail=$((fail+1)); echo "FAIL $name: check failed: $check"; fi
+}
+touch "$G/spawn/demo.waiting" "$G/spawn/demo.notified"
+idle_case_ "idle: Stop -> .idle set, .waiting and .notified removed" idle "{\"cwd\":\"$T/repo/.claude/worktrees/demo\"}" '[ -e "$G/spawn/demo.idle" ] && [ ! -e "$G/spawn/demo.waiting" ] && [ ! -e "$G/spawn/demo.notified" ]'
+idle_case_ "idle: next tool use or prompt (clear) -> .idle removed" clear "{\"cwd\":\"$T/repo/.claude/worktrees/demo\"}" '[ ! -e "$G/spawn/demo.idle" ]'
+idle_case_ "idle: worktree without .term -> no marker" idle "{\"cwd\":\"$T/repo/.claude/worktrees/plain\"}" '[ ! -e "$G/spawn/plain.idle" ]'
+idle_case_ "idle: main checkout -> no marker" idle "{\"cwd\":\"$T/repo\"}" '[ -z "$(ls "$G/spawn" | grep idle)" ]'
+rm -f "$G/spawn/demo.idle"
 # (The real refusal of a live worker with a marker is exercised above: "close: live worker waiting on a prompt".)
 clear_case_ "clear: then close sees no marker" "{\"cwd\":\"$T/repo/.claude/worktrees/demo\"}" '[ ! -e "$G/spawn/demo.waiting" ]'
 rm -f "$G/spawn/demo.waiting" "$G/spawn/demo.notified"
@@ -423,8 +439,8 @@ assert_ "ended: no alert" '[ ! -e "$OSA_LOG" ]'
 sleep 1
 assert_ "ended: the cap process has exited" '! alive_ $CAP'
 
-# 3. Time with the .waiting (or .notified) marker present does not count.
-for marker in waiting notified; do
+# 3. Time with the .waiting, .notified or .idle (set by the Stop hook after BLOCKED or RESULT) marker present does not count.
+for marker in waiting notified idle; do
   rm -f "$RUNS" "$OSA_LOG"; mkdir -p "$SP/locks/mk"
   date +%s > "$FAKE_NOW"; touch "$SP/mk.$marker"
   stub_ acme-mk; startcap_ mk
