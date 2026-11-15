@@ -38,7 +38,8 @@ if grep -Eq "claude --name dispatch-$key( |\$)" <<<"$ps_out"; then
   refuse "dispatch-$key already runs; switch to that tab (two dispatchers would take the same issues)"
 fi
 
-cmd=(claude --name "dispatch-$key" -- "/loop /dispatch")
+# Auto mode, as session.sh starts workers, so a pass does not stop on permission prompts (#8).
+cmd=(claude --name "dispatch-$key" --permission-mode auto -- "/loop /dispatch")
 if agent=$(bash "$next" --field Agent 2>/dev/null); then
   keychain=$(bash "$next" --field "Agent keychain" 2>/dev/null) \
     || refuse "Agent: is $agent but 'Agent keychain:' is missing or a placeholder in the ## Dispatcher block"
