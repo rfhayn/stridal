@@ -62,6 +62,9 @@ You are a worker session opened by the dispatcher, in your own worktree, for the
   4. **Evidence in the PR body.** Every claim cites a source (file:line, test name or command output); one without
      a source is removed or marked "unverified". Put the review result and the lane's reason in the body. Leave
      `.claude/review/` uncommitted.
+- **The PR body's second line is `Closes #<n>`**, `<n>` being the issue you were given: GitHub closes the issue on
+  merge only from that line, and the dispatcher marks an issue whose PR merged but stayed open as blocked. Use
+  `Refs #<n>` only if the issue must stay open.
 - **The PR body's first line is `Why: <one sentence>`**; the `lane` check fails a body without it. Start from
   `.github/pull_request_template.md` and label the PR with its lane. `gh pr edit` fails under the agent token
   ("needs read:org"), so edit through the REST API, each as a single plain command (the body file written with the
