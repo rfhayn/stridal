@@ -50,16 +50,17 @@ Your day: write issues with a "Done when", move the ones you want built into Now
 (`.claude/bin/dispatch.sh`). It tells you only when something needs you: a worker blocked on a question, a permission
 prompt, or a lane-3 PR waiting for `merge-ok`. Everything else merges itself.
 
-**Paths never exercised live.** The dispatcher's tests run against stubs. These paths have not run against a real
+**What has run live.** The live proof (2026-11-14, #4) ran a lane-1 item through to merge, a lane-3 item that stopped
+at `merge-ok`, and two dispatchers each with a worker on the same issue number.
+
+**Paths not yet exercised live.** The dispatcher's tests run against stubs. These paths have not run against a real
 worker and GitHub, so watch the first time each one happens:
-- a permission prompt leaving its marker: the `notify-waiting.sh` hook writing `<slug>.waiting`, the dispatcher
-  notifying you, and `session.sh close` refusing to type `/exit` into that tab (`.claude/skills/dispatch/SKILL.md`,
-  the close-refused step);
 - a failing required check: a worker's PR whose `ci` or `lane` goes red, handled by the dispatcher's open-PR step
   (`gh pr checks`, any bucket other than `pass`, `skipping` or `pending` counts as a failure);
 - a failed deploy: the `Deploy:` command exiting non-zero after a merge, which the dispatcher reports once and
-  retries on each later pass (the deploy-failed step).
-The live runs are tracked in #439.
+  retries on each later pass (the deploy-failed step);
+- a worker killed by the run cap (the `cap-kill` outcome above);
+- a BLOCKED worker while another project's worker is live.
 
 ## Install into a new project (under 30 minutes)
 `bootstrap.sh` is the only real install route. GitHub's "Use this template" skips the ruleset, runner choice and
@@ -69,12 +70,17 @@ labels, and copies this repo's own `CLAUDE.md` and `ci.yml` instead of the templ
    `ci` run). If this account has ever run out of minutes or paused `pull_request` CI, choose `self-hosted`
    (a machine you own that is on while you work; never a production box).
 2. Get the kit at a release tag, then run it:
-   `git clone --depth 1 --branch v0.1.0 https://github.com/rfhayn/stridal.git ~/code/stridal-kit`, then
-   `~/code/stridal-kit/bootstrap.sh ~/code/myproject <hosted|self-hosted> owner/myproject` (needs `gh auth login` as a repo admin;
+   `git clone --depth 1 --branch v0.1.0 https://github.com/rfhayn/stridal.git ~/code/stridal-kit`. **Push an initial
+   commit to `main` first** if the remote is empty: the `main` ruleset requires `ci` and `lane`, so once it is active
+   the first push is rejected and a PR has no base branch (`bootstrap.sh` prints this when the remote has no `main`).
+   Then `~/code/stridal-kit/bootstrap.sh ~/code/myproject <hosted|self-hosted> owner/myproject` (needs `gh auth login` as a
+   repo admin, and the kit PR adds `.github/workflows/`, so the login needs the `workflow` scope: `gh auth refresh -h github.com -s workflow`;
    without `owner/repo` it copies files only). It posts the ruleset first, restores your previous merge
    settings if that fails, and leaves auto-merge OFF. Rulesets on a **private** repo need GitHub Pro or Team.
    **Public repo:** it needs a `pull_request_target` Actions policy. `lane.yml` runs on that event, which GitHub blocks
-   by default for public repos from 2026-12-02. Until the policy allows it (Settings > Actions > General) there is no
+   by default for public repos from 2026-12-02. Until the policy allows it (Settings > Actions > **Policies**; "Restrict events" is an
+   allowlist that starts with every event ticked, so keep only `pull_request`, `pull_request_target`, `merge_group` and
+   `workflow_dispatch`) there is no
    `lane` check and nothing merges. That is a GitHub settings change, so it needs the owner's yes; `bootstrap.sh` prints the reminder
    but does not make the change.
    **Optional launcher alias (opt-in):** `~/code/stridal-kit/bootstrap.sh --install-alias` (alone, or added to an install)

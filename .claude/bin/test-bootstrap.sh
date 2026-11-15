@@ -234,4 +234,21 @@ hp="$tmp/home-plain"; mkdir -p "$hp"
 out=$(HOME="$hp" SHELL=/bin/zsh "$new" "$tmp/proj-plain" hosted) || die "plain install failed"
 [ -z "$(find "$hp" -mindepth 1)" ] || die "a plain install wrote into HOME"
 has "plain install" "$out" "--install-alias"
+# 12. (#11) With owner/repo, a remote with no main prints the push-first line; one with a main does not. Stub gh, no network.
+mkdir -p "$tmp/stubbin"
+cat > "$tmp/stubbin/gh" <<'STUB'
+#!/bin/sh
+case "$*" in
+  *branches/main*) [ -z "${STUB_HAS_MAIN:-}" ] && exit 1; exit 0 ;;
+  "api repos/o/r --jq"*) echo "false false true false false PR_TITLE PR_BODY" ;;
+esac
+exit 0
+STUB
+chmod +x "$tmp/stubbin/gh"
+out=$(PATH="$tmp/stubbin:$PATH" "$new" "$tmp/proj-nomain" hosted o/r) || die "install against a stub gh with no main failed"
+has "no main" "$out" "push an initial commit to main first"
+has "kit PR lane" "$out" "lane:3-hard"
+lacks "kit PR lane" "$out" "kit PR (lane:2"
+out=$(STUB_HAS_MAIN=1 PATH="$tmp/stubbin:$PATH" "$new" "$tmp/proj-hasmain" hosted o/r) || die "install against a stub gh with a main failed"
+lacks "has main" "$out" "push an initial commit"
 echo "test-bootstrap: ok"
