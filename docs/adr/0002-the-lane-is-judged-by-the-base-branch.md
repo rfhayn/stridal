@@ -29,7 +29,7 @@ own PRs.
 
 ## Consequences
 - Good: a PR cannot weaken the check that judges it. A PR-added job named `lane` cannot mask main's: the ruleset
-  requires every check run with that name (observed in the source repo's probes).
+  requires every check run with that name (observed in the source repo's probes, which are not public, and again in this repo: rfhayn/stridal PR 23).
 - Cost / risk: two `lane` runs per PR event (hosted minutes double). A rule change takes effect one PR late. The token in a `pull_request_target` job can write, so the job
   must never run head code. GitHub blocks `pull_request_target` by default in public repos from 2026-12-02, so a
   public repo needs an Actions event policy that allows it. A PR with no changed files, or 3000 or more, fails.

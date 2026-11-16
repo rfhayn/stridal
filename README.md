@@ -5,7 +5,7 @@ A copy-in kit for building with Claude Code, without the process tax.
 ## What it is
 Stridal is a copy-in kit for building with Claude Code: skills, agents, a permissions and sandbox config, GitHub CI and
 merge controls, and doc templates. `bootstrap.sh` installs it into a project. A new project gets 36 files, `.claude/kit.lock` (which records the kit
-version and a hash per file) and a `.gitignore` addition (this repo tracks 57; `bootstrap.sh` in copy-only mode prints one `added:` line per file). Later kit fixes reach it with `--upgrade` (below).
+version and a hash per file) and a `.gitignore` addition (`bootstrap.sh` in copy-only mode prints one `added:` line per file). Later kit fixes reach it with `--upgrade` (below).
 
 ## What it does
 - **One change per worktree.** The dispatcher opens each issue in its own worktree and Ghostty tab; the main checkout stays on `main`.
@@ -62,33 +62,44 @@ worker and GitHub, so watch the first time each one happens:
 - a worker killed by the run cap (the `cap-kill` outcome above);
 - a BLOCKED worker while another project's worker is live.
 
-## Install into a new project (under 30 minutes)
+## Install into a new project
 `bootstrap.sh` is the only real install route. GitHub's "Use this template" skips the ruleset, runner choice and
 labels, and copies this repo's own `CLAUDE.md` and `ci.yml` instead of the templates.
+
+**Before you start, you need:**
+- macOS, with Ghostty running (one instance, one window), and Claude Code.
+- `git`, `gh` (logged in as an admin of the project's repo) and `jq` (the status line needs it).
+- A GitHub repo for the project, and a GitHub Project board (steps 3 and 12). A **private** repo needs GitHub Pro or
+  Team for rulesets.
+- A second GitHub account to act as the agents' machine user (step 13; `docs/runbooks/agent-token.md`, ADR-0004).
 
 1. **Choose the runner.** `hosted` bills Actions minutes (`lane` ~1 minute per run, 4-8 runs per PR since it listens to two events (ADR-0002), plus every
    `ci` run). If this account has ever run out of minutes or paused `pull_request` CI, choose `self-hosted`
    (a machine you own that is on while you work; never a production box).
-2. Get the kit at a release tag, then run it:
-   `git clone --depth 1 --branch v0.1.0 https://github.com/rfhayn/stridal.git ~/code/stridal-kit`. **Push an initial
-   commit to `main` first** if the remote is empty: the `main` ruleset requires `ci` and `lane`, so once it is active
-   the first push is rejected and a PR has no base branch (`bootstrap.sh` prints this when the remote has no `main`).
-   Then `~/code/stridal-kit/bootstrap.sh ~/code/myproject <hosted|self-hosted> owner/myproject` (needs `gh auth login` as a
-   repo admin, and the kit PR adds `.github/workflows/`, so the login needs the `workflow` scope: `gh auth refresh -h github.com -s workflow`;
-   without `owner/repo` it copies files only). It posts the ruleset first, restores your previous merge
+2. **Get the kit at a release tag.**
+   `git clone --depth 1 --branch v0.1.0 https://github.com/rfhayn/stridal.git ~/code/stridal-kit`
+3. **Prepare the project's GitHub repo.**
+   - **Push an initial commit to `main` first** if the remote is empty: the `main` ruleset requires `ci` and `lane`, so
+     once it is active the first push is rejected and a PR has no base branch (`bootstrap.sh` prints this when the
+     remote has no `main`).
+   - Log in with `gh auth login` as a repo admin. The kit PR adds `.github/workflows/`, so the login also needs the
+     `workflow` scope: `gh auth refresh -h github.com -s workflow`.
+4. **Run the installer.**
+   `~/code/stridal-kit/bootstrap.sh ~/code/myproject <hosted|self-hosted> owner/myproject`
+   Without `owner/repo` it copies files only. With it, it posts the ruleset first, restores your previous merge
    settings if that fails, and leaves auto-merge OFF. Rulesets on a **private** repo need GitHub Pro or Team.
-   **Public repo:** it needs a `pull_request_target` Actions policy. `lane.yml` runs on that event, which GitHub blocks
+5. **Public repo only:** it needs a `pull_request_target` Actions policy. `lane.yml` runs on that event, which GitHub blocks
    by default for public repos from 2026-12-02. Until the policy allows it (Settings > Actions > **Policies**; "Restrict events" is an
    allowlist that starts with every event ticked, so keep only `pull_request`, `pull_request_target`, `merge_group` and
    `workflow_dispatch`) there is no
    `lane` check and nothing merges. That is a GitHub settings change, so it needs the owner's yes; `bootstrap.sh` prints the reminder
    but does not make the change.
-   **Optional launcher alias (opt-in):** `~/code/stridal-kit/bootstrap.sh --install-alias` (alone, or added to an install)
+6. **Optional launcher alias (opt-in):** `~/code/stridal-kit/bootstrap.sh --install-alias` (alone, or added to an install)
    appends one line, `alias dispatch='"$(git rev-parse --show-toplevel)"/.claude/bin/dispatch.sh' # stridal-dispatch-alias`, to
    `~/.zshrc` when `$SHELL` is zsh or `~/.bashrc` when it is bash, and prints what it wrote and where. A second run changes
    nothing. With any other shell it writes nothing, exits non-zero and prints the line to paste. Without the flag the
    installer writes nothing outside the project; this is the only place it does.
-3. Fill the `{{placeholders}}`: `CLAUDE.md` (stack, check command, lane-3 paths, personal-data paths, and `Approver:` in
+7. Fill the `{{placeholders}}`: `CLAUDE.md` (stack, check command, lane-3 paths, personal-data paths, and `Approver:` in
    the `## Dispatcher` block, which the kit PR needs because it touches `.github/`; the rest of that block waits for the
    first `/dispatch`), `ci.yml`
    (the same check command, including the format check), `HARD_PATHS` in `lane.yml` (every one-way path: schema,
@@ -96,16 +107,25 @@ labels, and copies this repo's own `CLAUDE.md` and `ci.yml` instead of the templ
    `.claude/settings.json` and `.gitignore`. Add package registries to `sandbox.network.allowedDomains`.
    For a pnpm project, add `"packageManager": "pnpm@9.15.4"` to `package.json` and commit `pnpm-lock.yaml`, because the
    CI template's `pnpm/action-setup@v6` has no `version` input.
-4. If the project's one-way failure is a git command, wire the optional hook (below) now, not after it happens.
-5. Open one PR with the kit and label it `lane:3-hard` (it touches `.github/` and `.claude/settings.json`). `lane` runs
+8. If the project's one-way failure is a git command, wire the optional hook (below) now, not after it happens.
+9. Open one PR with the kit and label it `lane:3-hard` (it touches `.github/` and `.claude/settings.json`). `lane` runs
    from the PR's own copy this once, since main has none yet (ADR-0002). Add `merge-ok` yourself in GitHub's web UI
    (the `Approver:` in `CLAUDE.md` must be your login) and merge by hand when `ci` and `lane` are green. Time `ci`; over
    10 minutes, move slow suites to a nightly workflow.
-6. **Prove a red PR can't merge**: open a PR with a deliberately failing test; when `ci` is red run
-   `./bootstrap.sh --enable-auto-merge owner/myproject <PR>`. It checks the PR is BLOCKED with `ci` failing, then
-   turns auto-merge on. Close that PR.
-7. `/doctor` in Claude Code, then `/permissions` to confirm the deny rules loaded.
-8. Set up the Project board the dispatcher reads: [Project board setup](#project-board-setup).
+10. **Prove a red PR can't merge**: open a PR with a deliberately failing test; when `ci` is red run
+    `./bootstrap.sh --enable-auto-merge owner/myproject <PR>`. It checks the PR is BLOCKED with `ci` failing, then
+    turns auto-merge on. Close that PR.
+11. `/doctor` in Claude Code, then `/permissions` to confirm the deny rules loaded.
+12. Set up the Project board the dispatcher reads: [Project board setup](#project-board-setup).
+13. **Set up the machine user** the dispatcher acts as: a second GitHub account with write access to the repo and a
+    token in your macOS Keychain. The steps are in [agent token runbook](docs/runbooks/agent-token.md); do them yourself
+    in your own terminal. Then fill the rest of the `## Dispatcher` block in `CLAUDE.md` (`Name:`, `Project:`, `Agent:`,
+    `Agent keychain:`, `Deploy:`, `Gates:`). `Approver:` is your own login and must differ from `Agent:`.
+14. **Start the dispatcher** from the project's main checkout: `.claude/bin/dispatch.sh` (or the `dispatch` alias from
+    step 6). It refuses when `Name:` is missing, when a dispatcher with that name already runs, or when `Agent:` and
+    `Approver:` are the same login. With no `Agent:` line it only warns and runs as you, which is not advised (the
+    approver and agent are then the same account), so do step 13 first. Move one issue with a "Done when" into the Now
+    column to give it work.
 
 The ruleset is strict: a PR must be up to date with main to merge (the dispatcher merges main into a worker's PR branch with `gh pr update-branch`).
 The check names `ci` and `lane` are the job names. The ruleset requires exactly those names, so rename both or neither.
@@ -136,8 +156,8 @@ Three things to know:
 - **Do not replace the Status options through the API.** Replacing the option list drops the option ids the workflows
   point at, and they silently stop setting Status. Rename the existing options instead (in the web UI), then check the
   workflows still show the right Status.
-- **The dispatcher cannot move a card.** Its token has `read:project` only, on purpose (#453;
-  [agent token runbook](docs/runbooks/agent-token.md)). **You move an issue into Now** to choose what ships; the
+- **The dispatcher cannot move a card.** Its token has `read:project` only, on purpose
+  ([agent token runbook](docs/runbooks/agent-token.md)). **You move an issue into Now** to choose what ships; the
   dispatcher reads Now, and progress shows in the `agent:working` and `agent:blocked` labels and a closed issue.
 
 ## Upgrade a project (ADR-0007)
@@ -226,9 +246,9 @@ leaves it alone and writes a `.kit-new`. Adopt refuses to overwrite a lock.
 | `.github/ruleset-main.json` | Ruleset for the default branch: PR required (0 approvals), squash only, checks `ci` + `lane`, no deletion, no force push, no bypass actors |
 | `.github/pull_request_template.md` | `Why:` and `Closes #<n>` lines (lane.yml fails a PR with no real `Why:`), then what/why, lane, done-when evidence, decisions & assumptions with sources, review, guard |
 | `docs/ROADMAP.md` | A pointer to this repo's backlog, GitHub Project #4. There is no markdown roadmap template: the backlog is Issues plus the Project's Now column (ADR-0001). Not copied to new projects |
-| `docs/cutover/2026-11-cutover-and-upgrade-test.md` | The owner's step-by-step for testing `--upgrade` on another repo and moving this kit to a clean repo. Delete it once the cutover is done. Not copied to new projects |
 | `docs/adr/0000-template.md` | Short ADR, only for decisions expensive to reverse |
-| `docs/adr/0001-*.md` to `0007-*.md` | This repo's decisions for the dispatcher: backlog is the Project's Now column, lane judged by the base branch, `merge-ok` withheld from Claude, agents act as a machine user, two workers on declared footprints, session names carry a repo key, and the kit lock with its three-way upgrade rule. Not copied to new projects |
+| `docs/adr/0001-*.md` to `0007-*.md` | This repo's decisions for the dispatcher: backlog is the Project's Now column, lane judged by the base branch, `merge-ok` withheld from Claude, agents act as a machine user, two workers on declared footprints, session names carry a repo key, and the kit lock with its three-way upgrade rule. Where they cite issues, PRs or probes (#436, #438 and so on), those are in the repository the kit was moved from, which is not public. Not copied to new projects |
+| `docs/adr/0008-*.md` | Why a dispatcher pass runs without permission prompts (the unsandboxed `ps`, `dispatch-next.sh` and `token-expiry.sh`). Not copied to new projects |
 | `docs/adr/0009-*.md` | The worker run cap: a detached process that kills a worker's process group past a cap of active time, and what counts as active. Not copied to new projects |
 | `docs/ARCHITECTURE.md` | Live doc, installed unfilled: components, data flow, constraints. First line marks it a template until filled in |
 | `docs/RISKS.md` | Live doc, installed unfilled: risk table (ID, Risk, Impact, Likelihood, Mitigation, Owner, Status) with one example row |
@@ -289,5 +309,9 @@ timeout block too; without it the guard fails open. Use the slot for whatever yo
 - A session in `.claude/worktrees/<slug>` also loads the main checkout's `CLAUDE.md`, so an older copy can appear beside
   the branch's own.
 
+## License
+MIT. See [LICENSE](LICENSE).
+
 ## History
-The earlier project is preserved at tag `stridal-final`.
+The kit in its present form is the result of reducing an earlier, larger project. That project is not part of this
+repository and is not published. `CHANGELOG.md` lists the kit's releases.

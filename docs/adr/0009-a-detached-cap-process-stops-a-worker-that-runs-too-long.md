@@ -44,5 +44,5 @@ Date: 2026-11-14 · Status: proposed
 - Revisit if: the dispatcher gains its own per-worker timer, or workers stop running as `claude --name <session>`.
 
 ## Links
-- Issue #3; ADR-0006 (session names), ADR-0001 (the Now column). The earlier attempt, a closed PR on the old repo,
+- Issue #3; ADR-0006 (session names), ADR-0001 (the Now column). The earlier attempt, a closed PR in the repository the kit was moved from (not public),
   collided with `watch` and used a wall-clock cap.
