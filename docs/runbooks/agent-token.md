@@ -33,7 +33,7 @@ and nothing else does.
    Copy the value once; GitHub shows it only on this page.
 
    **Who moves cards.** The token has `read:project`, not `project`, so the dispatcher can read the Now column but
-   cannot move a card between columns or change a board field. That is intended (#453): **you move cards**. You put
+   cannot move a card between columns or change a board field. That is intended: **you move cards**. You put
    an issue in Now to start it; the dispatcher tracks progress with the `agent:working` and `agent:blocked` labels
    and a closed issue, never the board. Do not add the `project` scope to make cards move on their own: it gives the
    token write access to every Project you can reach. How to set the board up (auto-add, new issues to Later, closed

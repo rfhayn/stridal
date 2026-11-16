@@ -1,6 +1,6 @@
 # Stridal
 
-A copy-in kit for building with Claude Code: `bootstrap.sh` installs it into a project. The previous project is at tag `stridal-final`.
+A copy-in kit for building with Claude Code: `bootstrap.sh` installs it into a project.
 
 ## Stack and layout
 - POSIX-style shell, JSON, Markdown and GitHub Actions. There is no application code.

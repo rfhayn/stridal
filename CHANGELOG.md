@@ -1,6 +1,6 @@
 # Changelog
 
-Built from the titles of merged PRs. The kit in its present form starts at #409; the earlier Stridal engine is at tag `stridal-final`.
+Built from the titles of merged PRs. The kit in its present form starts at #409. PR numbers from #409 to #484 refer to the repository the kit was moved from, which is not public; the same numbers here are unrelated.
 
 ## 0.1.0
 

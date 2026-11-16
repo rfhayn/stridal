@@ -3,7 +3,7 @@
 Date: 2026-11-12 · Status: proposed
 
 ## Context
-`/loop /dispatch` stopped the owner on routine commands (#453). Two causes:
+`/loop /dispatch` stopped the owner on routine commands. Two causes:
 - A command that needs the network or the process table fails inside the sandbox (`ps -axo command=`: "operation not
   permitted"; the GraphQL call in `dispatch-next.sh`: `x509: OSStatus -26276`). The retry outside the sandbox falls
   under the `Bash(dangerouslyDisableSandbox:true)` ask rule, so it prompts every pass.
