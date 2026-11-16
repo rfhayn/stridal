@@ -1,11 +1,36 @@
 # Changelog
 
-Built from the titles of merged PRs. The kit in its present form starts at #409. PR numbers from #409 to #484 refer to the repository the kit was moved from, which is not public; the same numbers here are unrelated.
+Built from the titles of merged PRs. The kit in its present form starts at #409. PR numbers from #409 to #484 refer to the repository the kit was moved from, which is not public; the same numbers here are unrelated. Numbers below #409 are this repository's.
 
 ## 0.1.0
 
 First release a project can pin to. `bootstrap.sh` now records `.claude/kit.lock` and can `--upgrade` and `--adopt` (ADR-0007).
 
+- docs: release cleanup: install steps, drop stale old-repo references, delete the cutover runbook (#2) (#24)
+- docs: README says the PR template has Why: and Closes #<n> lines (#18) (#22)
+- fix: install wording from the live proof; push main first on an empty remote (#11) (#21)
+- docs: SKILL.md names clear and idle hooks; ADR-0009 records resume evidence (#15) (#20)
+- fix: PR template and worker contract say Closes #<n>, not Roadmap (#12) (#19)
+- feat: dispatcher session starts in auto mode from dispatch.sh and the alias (#8) (#17)
+- feat: run cap pauses while a worker is idle after BLOCKED or RESULT (#7) (#16)
+- fix: comments match the .waiting clear lifecycle; drop a vacuous dry-run test (#5) (#14)
+- fix: bootstrap.sh --install-alias checks the install arguments before writing the rc (#6) (#10)
+- feat: worker run cap that counts only active time (#3) (#9)
+- docs: README Project board setup section (#474) (#484)
+- feat: gitleaks steps run with --verbose so a failing scan names its findings; README documents .gitleaksignore (#470) (#482)
+- feat: bootstrap.sh --install-alias appends a one-line launcher alias to the shell rc, opt-in (#471) (#481)
+- feat: the Footprint parser reads the ## Footprint heading form (#467) (#479)
+- feat: worker contract says the PR body starts with Why:, uses the template and a lane label, and edits via REST (#466) (#478)
+- feat: bootstrap.sh and the README say a public repo needs a pull_request_target Actions policy (#442) (#477)
+- feat: an answered permission prompt clears its .waiting marker so session.sh close no longer refuses (#445) (#476)
+- feat: shipped files cite Stridal's ADRs as "Stridal's ADR-NNNN", and kit-check fails a bare one (#360) (#473)
+- feat: dispatcher reads only the newest lane check row on a PR (#463) (#469)
+- feat: dispatcher looks for the PR when an agent:working issue has no spawn record (#462) (#468)
+- feat: dispatch-next.sh --why-now reads the board once for every Now reason (#461) (#465)
+- feat: upgrade warns when an added file needs a file kept as edited (#460) (#464)
+- docs: save the cutover and upgrade-test runbook (#458) (#459)
+- chore: remove the ported-from project's names from the kit (#454 part 1) (#457)
+- fix: a dispatcher pass runs without approval prompts (#453) (#456)
 - Installer: version stamp, `--upgrade`, `--adopt` and this changelog (#452)
 - feat: retire the hand-run loop: /brief, /ship, /merge, /land (#438 C2) (#451)
 - feat: workers run /ship's checks themselves (#438 part C1, #443) (#446)
