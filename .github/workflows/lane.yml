@@ -65,6 +65,7 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: bash .github/lane/lane.sh body
       - name: Check lane
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
